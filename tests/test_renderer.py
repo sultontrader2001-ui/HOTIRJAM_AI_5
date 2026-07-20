@@ -13,6 +13,7 @@ from hotirjam_ai5.dashboard.models import (
     FeedStatus,
     LiveMarketView,
     MarketStatus,
+    PhysicsView,
     StatisticsView,
     SystemView,
 )
@@ -27,22 +28,21 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "FEED HEALTH" in text
     assert "DOM" in text
     assert "DOM HEALTH" in text
+    assert "PHYSICS" in text
     assert "STATISTICS" in text
     assert "LOG" in text
     assert "- Best Bid Size:" in text
-    assert "- Best Ask Size:" in text
-    assert "- Total Bid Size:" in text
-    assert "- Total Ask Size:" in text
-    assert "- Depth Levels:" in text
-    assert "- DOM Update Rate:" in text
+    assert "- Tick Velocity:" in text
+    assert "- Tick Acceleration:" in text
 
 
 def test_render_shows_placeholder_not_fake_prices() -> None:
     text = DashboardRenderer().render(DashboardState())
     assert "Last Price: —" in text
     assert "Last Tick Age: —" in text
-    assert "Tick Delay: —" in text
     assert "Best Bid Size: —" in text
+    assert "Tick Velocity: —" in text
+    assert "Tick Acceleration: —" in text
     assert "Tick Count: 0" in text
 
 
@@ -84,6 +84,12 @@ def test_render_with_real_market_and_health_values() -> None:
             update_rate=15.0,
             peak_update_rate=40.0,
         ),
+        physics=PhysicsView(
+            spread=0.25,
+            mid_price=20100.375,
+            tick_velocity=1.5,
+            tick_acceleration=-0.25,
+        ),
         statistics=StatisticsView(
             tick_count=120,
             tick_rate=12.5,
@@ -92,14 +98,11 @@ def test_render_with_real_market_and_health_values() -> None:
         events=("Connected", "DOM connected"),
     )
     text = DashboardRenderer().render(state)
-    assert "Feed Status: HEALTHY" in text
-    assert "Best Bid Size: 11" in text
-    assert "Best Ask Size: 9" in text
-    assert "Total Bid Size: 80" in text
-    assert "Total Ask Size: 70" in text
-    assert "Depth Levels: 10" in text
-    assert "DOM Update Rate: 15.00/s" in text
-    assert "Peak Update Rate: 40.00/s" in text
+    assert "PHYSICS" in text
+    assert "Spread: 0.25" in text
+    assert "Mid Price: 20100.38" in text
+    assert "Tick Velocity: 1.5000" in text
+    assert "Tick Acceleration: -0.2500" in text
     assert "• DOM connected" in text
 
 

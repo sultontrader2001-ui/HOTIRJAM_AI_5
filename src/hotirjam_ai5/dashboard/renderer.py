@@ -38,6 +38,12 @@ def _format_ms(value: float | None) -> str:
     return f"{value:.0f} ms"
 
 
+def _format_physics(value: float | None, *, digits: int = 4) -> str:
+    if value is None:
+        return MISSING
+    return f"{value:.{digits}f}"
+
+
 def _format_duration(seconds: float) -> str:
     total = max(0, int(seconds))
     hours, remainder = divmod(total, 3600)
@@ -57,6 +63,7 @@ class DashboardRenderer:
         health = state.feed_health
         dom = state.dom
         dom_health = state.dom_health
+        physics = state.physics
         events = list(state.events) if state.events else ["(none)"]
 
         lines = [
@@ -94,6 +101,11 @@ class DashboardRenderer:
             f"- Last Update Age: {_format_ms(dom_health.last_update_age_ms)}",
             f"- Update Rate: {_format_rate(dom_health.update_rate)}",
             f"- Peak Update Rate: {_format_rate(dom_health.peak_update_rate)}",
+            "PHYSICS",
+            f"- Spread: {_format_physics(physics.spread, digits=2)}",
+            f"- Mid Price: {_format_physics(physics.mid_price, digits=2)}",
+            f"- Tick Velocity: {_format_physics(physics.tick_velocity)}",
+            f"- Tick Acceleration: {_format_physics(physics.tick_acceleration)}",
             "STATISTICS",
             f"- Tick Count: {stats.tick_count}",
             f"- Tick Rate: {_format_rate(stats.tick_rate)}",

@@ -11,6 +11,7 @@ from hotirjam_ai5.dashboard.models import (
     FeedStatus,
     LiveMarketView,
     MarketStatus,
+    PhysicsView,
     StatisticsView,
     SystemView,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "FeedStatus",
     "LiveMarketView",
     "MarketStatus",
+    "PhysicsView",
     "StatisticsView",
     "SystemView",
 ]

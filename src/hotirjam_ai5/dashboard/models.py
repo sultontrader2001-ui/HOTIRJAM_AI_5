@@ -120,6 +120,16 @@ class DomHealthView:
 
 
 @dataclass(frozen=True, slots=True)
+class PhysicsView:
+    """PHYSICS section (Sprint 5)."""
+
+    spread: float | None = None
+    mid_price: float | None = None
+    tick_velocity: float | None = None
+    tick_acceleration: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class StatisticsView:
     """STATISTICS section."""
 
@@ -137,5 +147,6 @@ class DashboardState:
     feed_health: FeedHealthView = field(default_factory=FeedHealthView)
     dom: DomView = field(default_factory=DomView)
     dom_health: DomHealthView = field(default_factory=DomHealthView)
+    physics: PhysicsView = field(default_factory=PhysicsView)
     statistics: StatisticsView = field(default_factory=StatisticsView)
     events: Sequence[str] = ()

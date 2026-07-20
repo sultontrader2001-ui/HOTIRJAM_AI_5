@@ -22,12 +22,14 @@ from hotirjam_ai5.dashboard.models import (
     FeedStatus,
     LiveMarketView,
     MarketStatus,
+    PhysicsView,
     StatisticsView,
     SystemView,
 )
 from hotirjam_ai5.dashboard.statistics import SessionStatistics
 from hotirjam_ai5.live_data.dom import DomSnapshot
 from hotirjam_ai5.live_data.tick import LiveTick
+from hotirjam_ai5.physics.engine import PhysicsEngine
 
 # Backward-compatible alias used by CLI / older call sites.
 DEFAULT_STALE_SECONDS = DEFAULT_DISCONNECT_SECONDS
@@ -48,6 +50,7 @@ class DashboardController:
         event_log: EventLog | None = None,
         feed_health: FeedHealthMonitor | None = None,
         dom_health: DomHealthMonitor | None = None,
+        physics: PhysicsEngine | None = None,
         stale_seconds: float = DEFAULT_DISCONNECT_SECONDS,
         stall_seconds: float = DEFAULT_STALL_SECONDS,
         clock: Callable[[], float] | None = None,
@@ -70,11 +73,13 @@ class DashboardController:
             disconnect_seconds=stale_seconds,
             clock=self._clock,
         )
+        self._physics = physics or PhysicsEngine()
         self._engine_status = EngineStatus.STARTING
         self._connection_status = ConnectionStatus.DISCONNECTED
         self._market_status = MarketStatus.WAITING
         self._market = LiveMarketView(symbol=self._symbol)
         self._dom = DomView()
+        self._physics_view = PhysicsView()
 
     def start(self) -> None:
         """Mark the engine running and begin waiting for live ticks."""
@@ -99,6 +104,13 @@ class DashboardController:
             bid=tick.bid,
             ask=tick.ask,
             volume=tick.volume,
+        )
+        physics = self._physics.on_tick(tick)
+        self._physics_view = PhysicsView(
+            spread=physics.spread,
+            mid_price=physics.mid_price,
+            tick_velocity=physics.tick_velocity,
+            tick_acceleration=physics.tick_acceleration,
         )
         self._statistics.record_tick()
         self._connection_status = ConnectionStatus.CONNECTED
@@ -179,6 +191,7 @@ class DashboardController:
                 update_rate=dom_health.update_rate,
                 peak_update_rate=dom_health.peak_update_rate,
             ),
+            physics=self._physics_view,
             statistics=StatisticsView(
                 tick_count=self._statistics.tick_count,
                 tick_rate=self._statistics.tick_rate(),

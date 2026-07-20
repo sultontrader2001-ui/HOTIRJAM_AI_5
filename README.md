@@ -10,10 +10,11 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 2 | Live tick ingress (NT01 NDJSON) | Done |
 | 3 | Dashboard feed health monitor | Done |
 | 4 | DOM ingress + visualization | Done |
+| 5 | Physics measurements | Done |
 
-**Out of scope still:** physics, momentum, decision, BUY/SELL, AI
+**Out of scope still:** momentum, decision, BUY/SELL, AI, risk
 
-Market/DOM fields show `—` until the first valid live update. No synthetic data. No historical replay (file tails start at EOF).
+Market/DOM/physics fields show `—` until enough live updates exist. No synthetic data.
 
 ### Requirements
 
@@ -39,20 +40,18 @@ python -m hotirjam_ai5 \
   --dom-file "/path/to/HOTIRJAM/mnq_dom.ndjson"
 ```
 
-Dashboard redraw uses line-diff updates (no full-screen clear / flicker). Display refresh is clamped to 250–500 ms (`--refresh`); tick/DOM polling stays faster (`--poll`, default 50 ms). LOG keeps significant events only.
+Dashboard redraw uses line-diff updates when ANSI/VT is available; otherwise a Windows-safe full redraw. Display refresh is clamped to 250–500 ms (`--refresh`); tick/DOM polling stays faster (`--poll`, default 50 ms).
 
-### DOM section
+### PHYSICS section
 
-| Field | Source |
-|--------|--------|
-| Best Bid/Ask Size | Top of book level size |
-| Total Bid/Ask Size | `bid_total_size` / `ask_total_size` |
-| Depth Levels | `depth_levels` |
-| DOM Update Rate | Live updates/sec |
+| Measurement | Formula |
+|-------------|---------|
+| Spread | `ask − bid` |
+| Mid Price | `(bid + ask) / 2` |
+| Tick Velocity | `Δlast_price / Δt` |
+| Tick Acceleration | `Δvelocity / Δt` |
 
-DOM HEALTH mirrors tick feed health (`HEALTHY` / `STALE` / `DISCONNECTED`).
-
-LOG also records: `DOM connected`, `DOM stalled`, `DOM resumed`, `DOM connection lost`.
+Velocity needs ≥2 ticks; acceleration needs ≥2 velocity samples.
 
 ### Test
 
