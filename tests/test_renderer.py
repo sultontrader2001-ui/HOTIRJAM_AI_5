@@ -12,6 +12,7 @@ from hotirjam_ai5.dashboard.models import (
     FeedHealthView,
     FeedStatus,
     LiveMarketView,
+    MarketStateView,
     MarketStatus,
     PhysicsView,
     StatisticsView,
@@ -29,11 +30,14 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "DOM" in text
     assert "DOM HEALTH" in text
     assert "PHYSICS" in text
+    assert "MARKET STATE" in text
     assert "STATISTICS" in text
     assert "LOG" in text
     assert "- Best Bid Size:" in text
     assert "- Tick Velocity:" in text
     assert "- Tick Acceleration:" in text
+    assert "- State:" in text
+    assert "- Reason:" in text
 
 
 def test_render_shows_placeholder_not_fake_prices() -> None:
@@ -43,6 +47,7 @@ def test_render_shows_placeholder_not_fake_prices() -> None:
     assert "Best Bid Size: —" in text
     assert "Tick Velocity: —" in text
     assert "Tick Acceleration: —" in text
+    assert "State: UNKNOWN" in text
     assert "Tick Count: 0" in text
 
 
@@ -90,6 +95,10 @@ def test_render_with_real_market_and_health_values() -> None:
             tick_velocity=1.5,
             tick_acceleration=-0.25,
         ),
+        market_state=MarketStateView(
+            state="ACTIVE",
+            reason="Tick activity increasing",
+        ),
         statistics=StatisticsView(
             tick_count=120,
             tick_rate=12.5,
@@ -99,6 +108,9 @@ def test_render_with_real_market_and_health_values() -> None:
     )
     text = DashboardRenderer().render(state)
     assert "PHYSICS" in text
+    assert "MARKET STATE" in text
+    assert "State: ACTIVE" in text
+    assert "Reason: Tick activity increasing" in text
     assert "Spread: 0.25" in text
     assert "Mid Price: 20100.38" in text
     assert "Tick Velocity: 1.5000" in text

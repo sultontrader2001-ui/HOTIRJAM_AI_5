@@ -34,6 +34,7 @@ def test_default_state_has_no_fake_prices() -> None:
     assert state.market.bid is None
     assert state.market.ask is None
     assert state.market.volume is None
+    assert state.market_state.state == "UNKNOWN"
     assert state.statistics == StatisticsView()
     assert state.events == ()
 

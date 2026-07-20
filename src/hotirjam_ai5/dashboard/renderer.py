@@ -64,6 +64,7 @@ class DashboardRenderer:
         dom = state.dom
         dom_health = state.dom_health
         physics = state.physics
+        market_state = state.market_state
         events = list(state.events) if state.events else ["(none)"]
 
         lines = [
@@ -106,6 +107,9 @@ class DashboardRenderer:
             f"- Mid Price: {_format_physics(physics.mid_price, digits=2)}",
             f"- Tick Velocity: {_format_physics(physics.tick_velocity)}",
             f"- Tick Acceleration: {_format_physics(physics.tick_acceleration)}",
+            "MARKET STATE",
+            f"- State: {market_state.state}",
+            f"- Reason: {market_state.reason}",
             "STATISTICS",
             f"- Tick Count: {stats.tick_count}",
             f"- Tick Rate: {_format_rate(stats.tick_rate)}",

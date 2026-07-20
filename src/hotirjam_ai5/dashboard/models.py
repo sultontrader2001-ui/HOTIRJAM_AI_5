@@ -139,6 +139,14 @@ class StatisticsView:
 
 
 @dataclass(frozen=True, slots=True)
+class MarketStateView:
+    """MARKET STATE section (Sprint 6) — observation only."""
+
+    state: str = "UNKNOWN"
+    reason: str = "Waiting for market data"
+
+
+@dataclass(frozen=True, slots=True)
 class DashboardState:
     """Complete snapshot rendered each refresh cycle."""
 
@@ -148,5 +156,6 @@ class DashboardState:
     dom: DomView = field(default_factory=DomView)
     dom_health: DomHealthView = field(default_factory=DomHealthView)
     physics: PhysicsView = field(default_factory=PhysicsView)
+    market_state: MarketStateView = field(default_factory=MarketStateView)
     statistics: StatisticsView = field(default_factory=StatisticsView)
     events: Sequence[str] = ()

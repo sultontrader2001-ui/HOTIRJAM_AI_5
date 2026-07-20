@@ -21,6 +21,7 @@ from hotirjam_ai5.dashboard.models import (
     FeedHealthView,
     FeedStatus,
     LiveMarketView,
+    MarketStateView,
     MarketStatus,
     PhysicsView,
     StatisticsView,
@@ -29,6 +30,7 @@ from hotirjam_ai5.dashboard.models import (
 from hotirjam_ai5.dashboard.statistics import SessionStatistics
 from hotirjam_ai5.live_data.dom import DomSnapshot
 from hotirjam_ai5.live_data.tick import LiveTick
+from hotirjam_ai5.market_state import MarketStateEngine, MarketStateInputs
 from hotirjam_ai5.physics.engine import PhysicsEngine
 
 # Backward-compatible alias used by CLI / older call sites.
@@ -52,6 +54,7 @@ class DashboardController:
         feed_health: FeedHealthMonitor | None = None,
         dom_health: DomHealthMonitor | None = None,
         physics: PhysicsEngine | None = None,
+        market_state: MarketStateEngine | None = None,
         stale_seconds: float = DEFAULT_DISCONNECT_SECONDS,
         stall_seconds: float = DEFAULT_STALL_SECONDS,
         clock: Callable[[], float] | None = None,
@@ -75,6 +78,7 @@ class DashboardController:
             clock=self._clock,
         )
         self._physics = physics or PhysicsEngine()
+        self._market_state = market_state or MarketStateEngine(clock=wall_clock or time.time)
         self._engine_status = EngineStatus.STARTING
         self._connection_status = ConnectionStatus.DISCONNECTED
         self._market_status = MarketStatus.WAITING
@@ -169,6 +173,21 @@ class DashboardController:
         """Build one immutable dashboard state for rendering."""
         health = self._feed_health.snapshot()
         dom_health = self._dom_health.snapshot()
+        tick_rate = self._statistics.tick_rate()
+        tick_count = self._statistics.tick_count
+        market_state = self._market_state.evaluate(
+            MarketStateInputs(
+                tick_count=tick_count,
+                tick_rate=tick_rate,
+                feed_connected=health.feed_status is not FeedStatus.DISCONNECTED,
+                feed_stale=health.feed_status is FeedStatus.STALE,
+                connection_quality=health.connection_quality.value,
+                spread=self._physics_view.spread,
+                tick_velocity=self._physics_view.tick_velocity,
+                tick_acceleration=self._physics_view.tick_acceleration,
+                dom_update_rate=dom_health.update_rate,
+            )
+        )
         return DashboardState(
             system=SystemView(
                 engine_status=self._engine_status,
@@ -193,9 +212,13 @@ class DashboardController:
                 peak_update_rate=dom_health.peak_update_rate,
             ),
             physics=self._physics_view,
+            market_state=MarketStateView(
+                state=market_state.state.value,
+                reason=market_state.reason,
+            ),
             statistics=StatisticsView(
-                tick_count=self._statistics.tick_count,
-                tick_rate=self._statistics.tick_rate(),
+                tick_count=tick_count,
+                tick_rate=tick_rate,
                 running_time_seconds=self._statistics.running_time_seconds(),
             ),
             events=self._event_log.latest(),
