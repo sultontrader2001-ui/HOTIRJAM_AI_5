@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 class EventLog:
     """Stores the most recent dashboard events (newest last)."""
 
-    capacity: int = 8
+    capacity: int = 5
     _events: deque[str] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:

@@ -21,6 +21,52 @@ def test_write_appends_newline_when_missing() -> None:
     assert buffer.getvalue() == "hello\n"
 
 
+def test_prepare_clears_terminal_exactly_once() -> None:
+    clears: list[int] = []
+    buffer = io.StringIO()
+    display = TerminalDisplay(
+        stream=buffer,
+        ansi_supported=False,
+        clear_command=lambda: clears.append(1),
+    )
+    # Non-interactive stream skips os clear; force path via interactive mock.
+    display._is_interactive_console = lambda: True  # type: ignore[method-assign]
+    display.prepare()
+    display.render_frame("A")
+    display.render_frame("B")
+    assert clears == [1]
+    assert display.is_prepared is True
+
+
+def test_shutdown_restores_cursor_when_ansi() -> None:
+    buffer = _TtyStream()
+    display = TerminalDisplay(stream=buffer, ansi_supported=True, clear_command=lambda: None)
+    display.prepare()
+    display.render_frame("line1\nline2")
+    buffer.seek(0)
+    buffer.truncate(0)
+    display.shutdown()
+    output = buffer.getvalue()
+    assert "\033[?25h" in output
+    assert display.is_prepared is False
+
+
+def test_render_frame_never_full_clears_after_prepare() -> None:
+    clears: list[int] = []
+    buffer = io.StringIO()
+    display = TerminalDisplay(
+        stream=buffer,
+        ansi_supported=False,
+        clear_command=lambda: clears.append(1),
+    )
+    display._is_interactive_console = lambda: True  # type: ignore[method-assign]
+    display.prepare()
+    assert clears == [1]
+    display.render_frame("one")
+    display.render_frame("two")
+    assert clears == [1]
+
+
 def test_non_tty_skips_unchanged_frame() -> None:
     buffer = io.StringIO()
     display = TerminalDisplay(stream=buffer, ansi_supported=False)
@@ -40,7 +86,12 @@ def test_non_tty_rewrites_when_content_changes() -> None:
 
 def test_ansi_diff_rewrites_only_changed_line() -> None:
     buffer = _TtyStream()
-    display = TerminalDisplay(stream=buffer, ansi_supported=True)
+    display = TerminalDisplay(
+        stream=buffer,
+        ansi_supported=True,
+        clear_command=lambda: None,
+    )
+    display.prepare()
     display.render_frame("A\nB\nC")
     buffer.seek(0)
     buffer.truncate(0)
@@ -49,11 +100,19 @@ def test_ansi_diff_rewrites_only_changed_line() -> None:
     assert "\033[2;1H" in second
     assert "X" in second
     assert "\033[1;1H" not in second
+    assert "\033[2J" not in second
 
 
-def test_ansi_mode_does_not_full_screen_clear_sequence() -> None:
+def test_ansi_mode_does_not_full_screen_clear_on_refresh() -> None:
     buffer = _TtyStream()
-    display = TerminalDisplay(stream=buffer, ansi_supported=True)
+    display = TerminalDisplay(
+        stream=buffer,
+        ansi_supported=True,
+        clear_command=lambda: None,
+    )
+    display.prepare()
+    buffer.seek(0)
+    buffer.truncate(0)
     display.render_frame("hello")
     assert "\033[2J" not in buffer.getvalue()
 

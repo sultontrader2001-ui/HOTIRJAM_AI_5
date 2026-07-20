@@ -33,6 +33,7 @@ from hotirjam_ai5.physics.engine import PhysicsEngine
 
 # Backward-compatible alias used by CLI / older call sites.
 DEFAULT_STALE_SECONDS = DEFAULT_DISCONNECT_SECONDS
+DASHBOARD_EVENT_LOG_CAPACITY = 5
 
 
 class DashboardController:
@@ -61,7 +62,7 @@ class DashboardController:
         self._symbol = symbol.strip().upper() or "MNQ"
         self._clock = clock or time.monotonic
         self._statistics = statistics or SessionStatistics(clock=self._clock)
-        self._event_log = event_log or EventLog()
+        self._event_log = event_log or EventLog(capacity=DASHBOARD_EVENT_LOG_CAPACITY)
         self._feed_health = feed_health or FeedHealthMonitor(
             stall_seconds=stall_seconds,
             disconnect_seconds=stale_seconds,

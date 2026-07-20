@@ -156,6 +156,37 @@ def test_app_updates_from_live_ingress(tmp_path: Path) -> None:
     assert "Tick received" not in output
 
 
+def test_app_prepare_and_shutdown_are_called(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    clock = FakeClock(0.0)
+
+    class TrackingDisplay(TerminalDisplay):
+        def prepare(self) -> None:
+            calls.append("prepare")
+            super().prepare()
+
+        def shutdown(self) -> None:
+            calls.append("shutdown")
+            super().shutdown()
+
+    display = TrackingDisplay(
+        stream=io.StringIO(),
+        ansi_supported=False,
+        clear_command=lambda: None,
+    )
+    app = DashboardApp(
+        controller=DashboardController(symbol="MNQ"),
+        renderer=DashboardRenderer(),
+        display=display,
+        refresh_seconds=0.25,
+        poll_seconds=0.05,
+        sleep_fn=lambda seconds: setattr(clock, "now", clock.now + seconds),
+        clock=clock,
+    )
+    assert app.run(max_frames=1) == 0
+    assert calls == ["prepare", "shutdown"]
+
+
 def test_app_rejects_non_positive_refresh() -> None:
     with pytest.raises(ValueError, match="refresh_seconds"):
         DashboardApp(refresh_seconds=0)

@@ -102,6 +102,7 @@ class DashboardApp:
         ``max_frames`` limits display frames (not poll cycles).
         Returns 0 on clean exit.
         """
+        self._display.prepare()
         self._controller.start()
         frames = 0
         last_render_at = None
@@ -123,7 +124,7 @@ class DashboardApp:
         except KeyboardInterrupt:
             pass
         finally:
-            self._display.reset()
+            self._display.shutdown()
             self._controller.stop()
         return 0
 

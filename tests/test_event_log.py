@@ -23,6 +23,20 @@ def test_capacity_evicts_oldest() -> None:
     assert log.latest() == ("b", "c")
 
 
+def test_default_capacity_is_five() -> None:
+    log = EventLog()
+    for index in range(7):
+        log.append(f"event-{index}")
+    assert len(log) == 5
+    assert log.latest() == (
+        "event-2",
+        "event-3",
+        "event-4",
+        "event-5",
+        "event-6",
+    )
+
+
 def test_reject_empty_message() -> None:
     log = EventLog()
     with pytest.raises(ValueError, match="non-empty"):
