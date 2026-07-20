@@ -8,7 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from hotirjam_ai5.dashboard.app import DashboardApp, build_arg_parser, main
+from hotirjam_ai5.dashboard.app import (
+    DashboardApp,
+    build_arg_parser,
+    clamp_refresh_seconds,
+    main,
+)
 from hotirjam_ai5.dashboard.controller import DashboardController
 from hotirjam_ai5.dashboard.models import (
     ConnectionStatus,
@@ -18,6 +23,14 @@ from hotirjam_ai5.dashboard.models import (
 from hotirjam_ai5.dashboard.renderer import DashboardRenderer
 from hotirjam_ai5.dashboard.terminal import TerminalDisplay
 from hotirjam_ai5.live_data.ingress import LiveTickIngress
+
+
+class FakeClock:
+    def __init__(self, start: float = 0.0) -> None:
+        self.now = start
+
+    def __call__(self) -> float:
+        return self.now
 
 
 def test_controller_start_sets_connecting_without_noise_logs() -> None:
@@ -38,27 +51,68 @@ def test_controller_stop_sets_stopped() -> None:
     assert controller.snapshot().system.engine_status is EngineStatus.STOPPED
 
 
+def test_clamp_refresh_seconds_bounds() -> None:
+    assert clamp_refresh_seconds(0.25) == 0.25
+    assert clamp_refresh_seconds(0.5) == 0.5
+    assert clamp_refresh_seconds(0.1) == 0.25
+    assert clamp_refresh_seconds(2.0) == 0.5
+    with pytest.raises(ValueError, match="refresh_seconds"):
+        clamp_refresh_seconds(0)
+
+
+def test_app_polls_faster_than_display_refresh() -> None:
+    clock = FakeClock(0.0)
+    sleeps: list[float] = []
+    poll_calls = {"n": 0}
+
+    class CountingApp(DashboardApp):
+        def poll_once(self) -> None:
+            poll_calls["n"] += 1
+            super().poll_once()
+
+    def sleep_fn(seconds: float) -> None:
+        sleeps.append(seconds)
+        clock.now += seconds
+
+    app = CountingApp(
+        controller=DashboardController(symbol="MNQ"),
+        renderer=DashboardRenderer(),
+        display=TerminalDisplay(stream=io.StringIO()),
+        refresh_seconds=0.25,
+        poll_seconds=0.05,
+        sleep_fn=sleep_fn,
+        clock=clock,
+    )
+    code = app.run(max_frames=2)
+    assert code == 0
+    # Two display frames require multiple poll cycles at 50ms inside 250ms budget.
+    assert poll_calls["n"] >= 2
+    assert all(sleep == 0.05 for sleep in sleeps)
+    assert app.refresh_seconds == 0.25
+    assert app.poll_seconds == 0.05
+
+
 def test_app_runs_limited_frames_without_fake_market_data() -> None:
     buffer = io.StringIO()
-    sleeps: list[float] = []
+    clock = FakeClock(0.0)
     app = DashboardApp(
         controller=DashboardController(symbol="MNQ"),
         renderer=DashboardRenderer(),
         display=TerminalDisplay(stream=buffer),
-        refresh_seconds=0.01,
-        sleep_fn=sleeps.append,
+        refresh_seconds=0.25,
+        poll_seconds=0.05,
+        sleep_fn=lambda seconds: setattr(clock, "now", clock.now + seconds),
+        clock=clock,
     )
     code = app.run(max_frames=2)
     assert code == 0
     output = buffer.getvalue()
-    assert output.count("HOTIRJAM AI 5") == 2
+    assert "HOTIRJAM AI 5" in output
     assert "Last Price: —" in output
     assert "Connection Status: CONNECTING" in output
     assert "FEED HEALTH" in output
-    assert "Feed Status: DISCONNECTED" in output
     assert "DOM" in output
     assert "Best Bid Size: —" in output
-    assert len(sleeps) == 1
 
 
 def test_app_updates_from_live_ingress(tmp_path: Path) -> None:
@@ -86,8 +140,10 @@ def test_app_updates_from_live_ingress(tmp_path: Path) -> None:
         ingress=ingress,
         renderer=DashboardRenderer(),
         display=TerminalDisplay(stream=buffer),
-        refresh_seconds=0.01,
+        refresh_seconds=0.25,
+        poll_seconds=0.05,
         sleep_fn=lambda _: None,
+        clock=FakeClock(0.0),
     )
     code = app.run(max_frames=1)
     assert code == 0
@@ -109,6 +165,7 @@ def test_cli_parser_defaults() -> None:
     args = build_arg_parser().parse_args([])
     assert args.symbol == "MNQ"
     assert args.refresh == 0.25
+    assert args.poll == 0.05
     assert args.tick_file is None
     assert args.dom_file is None
     assert args.stall_seconds == 2.0

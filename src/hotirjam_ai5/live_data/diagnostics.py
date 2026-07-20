@@ -8,9 +8,9 @@ from typing import TextIO
 
 
 def ingress_debug_enabled() -> bool:
-    """Diagnostics default ON; set HOTIRJAM_INGRESS_DEBUG=0 to disable."""
-    raw = os.environ.get("HOTIRJAM_INGRESS_DEBUG", "1").strip().lower()
-    return raw not in {"0", "false", "no", "off"}
+    """Diagnostics default OFF; set HOTIRJAM_INGRESS_DEBUG=1 to enable."""
+    raw = os.environ.get("HOTIRJAM_INGRESS_DEBUG", "0").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
 
 
 class IngressDiagnostics:

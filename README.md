@@ -39,6 +39,8 @@ python -m hotirjam_ai5 \
   --dom-file "/path/to/HOTIRJAM/mnq_dom.ndjson"
 ```
 
+Dashboard redraw uses line-diff updates (no full-screen clear / flicker). Display refresh is clamped to 250–500 ms (`--refresh`); tick/DOM polling stays faster (`--poll`, default 50 ms). LOG keeps significant events only.
+
 ### DOM section
 
 | Field | Source |
