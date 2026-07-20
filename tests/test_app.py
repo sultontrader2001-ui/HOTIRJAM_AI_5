@@ -20,7 +20,7 @@ from hotirjam_ai5.dashboard.terminal import TerminalDisplay
 from hotirjam_ai5.live_data.ingress import LiveTickIngress
 
 
-def test_controller_start_sets_connecting_and_logs() -> None:
+def test_controller_start_sets_connecting_without_noise_logs() -> None:
     controller = DashboardController()
     controller.start()
     state = controller.snapshot()
@@ -28,8 +28,7 @@ def test_controller_start_sets_connecting_and_logs() -> None:
     assert state.system.connection_status is ConnectionStatus.CONNECTING
     assert state.system.market_status is MarketStatus.WAITING
     assert state.market.last_price is None
-    assert "Dashboard started" in state.events
-    assert any("waiting for first live tick" in event for event in state.events)
+    assert state.events == ()
 
 
 def test_controller_stop_sets_stopped() -> None:
@@ -55,6 +54,10 @@ def test_app_runs_limited_frames_without_fake_market_data() -> None:
     assert output.count("HOTIRJAM AI 5") == 2
     assert "Last Price: —" in output
     assert "Connection Status: CONNECTING" in output
+    assert "FEED HEALTH" in output
+    assert "Feed Status: DISCONNECTED" in output
+    assert "DOM" in output
+    assert "Best Bid Size: —" in output
     assert len(sleeps) == 1
 
 
@@ -62,7 +65,6 @@ def test_app_updates_from_live_ingress(tmp_path: Path) -> None:
     path = tmp_path / "mnq_ticks.ndjson"
     path.write_text("", encoding="utf-8")
     ingress = LiveTickIngress(path)
-    # Prime tail at EOF (no replay).
     assert ingress.poll() == ()
 
     line = json.dumps(
@@ -91,13 +93,11 @@ def test_app_updates_from_live_ingress(tmp_path: Path) -> None:
     assert code == 0
     output = buffer.getvalue()
     assert "Connection Status: CONNECTED" in output
+    assert "Feed Status: HEALTHY" in output
     assert "Last Price: 20110.00" in output
-    assert "Bid: 20109.75" in output
-    assert "Ask: 20110.00" in output
-    assert "Volume: 5" in output
     assert "Tick Count: 1" in output
-    assert "Connection established" in output
-    assert "Tick received" in output
+    assert "Connected" in output
+    assert "Tick received" not in output
 
 
 def test_app_rejects_non_positive_refresh() -> None:
@@ -110,6 +110,8 @@ def test_cli_parser_defaults() -> None:
     assert args.symbol == "MNQ"
     assert args.refresh == 0.25
     assert args.tick_file is None
+    assert args.dom_file is None
+    assert args.stall_seconds == 2.0
     assert args.stale_seconds == 5.0
 
 

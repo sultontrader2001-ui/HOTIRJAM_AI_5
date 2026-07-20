@@ -22,8 +22,20 @@ def _format_volume(value: float | None) -> str:
     return f"{value:.2f}"
 
 
+def _format_int(value: int | None) -> str:
+    if value is None:
+        return MISSING
+    return str(value)
+
+
 def _format_rate(value: float) -> str:
     return f"{value:.2f}/s"
+
+
+def _format_ms(value: float | None) -> str:
+    if value is None:
+        return MISSING
+    return f"{value:.0f} ms"
 
 
 def _format_duration(seconds: float) -> str:
@@ -36,12 +48,15 @@ def _format_duration(seconds: float) -> str:
 
 
 class DashboardRenderer:
-    """Converts a DashboardState into the Sprint 1 terminal layout."""
+    """Converts a DashboardState into the terminal layout."""
 
     def render(self, state: DashboardState) -> str:
         """Return the full dashboard text."""
         market = state.market
         stats = state.statistics
+        health = state.feed_health
+        dom = state.dom
+        dom_health = state.dom_health
         events = list(state.events) if state.events else ["(none)"]
 
         lines = [
@@ -59,6 +74,26 @@ class DashboardRenderer:
             f"- Ask: {_format_price(market.ask)}",
             f"- Spread: {_format_price(market.spread)}",
             f"- Volume: {_format_volume(market.volume)}",
+            "FEED HEALTH",
+            f"- Feed Status: {health.feed_status.value}",
+            f"- Connection Quality: {health.connection_quality.value}",
+            f"- Last Tick Age: {_format_ms(health.last_tick_age_ms)}",
+            f"- Tick Delay: {_format_ms(health.tick_delay_ms)}",
+            f"- Average Tick Rate: {_format_rate(health.average_tick_rate)}",
+            f"- Peak Tick Rate: {_format_rate(health.peak_tick_rate)}",
+            "DOM",
+            f"- Best Bid Size: {_format_int(dom.best_bid_size)}",
+            f"- Best Ask Size: {_format_int(dom.best_ask_size)}",
+            f"- Total Bid Size: {_format_int(dom.total_bid_size)}",
+            f"- Total Ask Size: {_format_int(dom.total_ask_size)}",
+            f"- Depth Levels: {_format_int(dom.depth_levels)}",
+            f"- DOM Update Rate: {_format_rate(dom.update_rate)}",
+            "DOM HEALTH",
+            f"- Feed Status: {dom_health.feed_status.value}",
+            f"- Connection Quality: {dom_health.connection_quality.value}",
+            f"- Last Update Age: {_format_ms(dom_health.last_update_age_ms)}",
+            f"- Update Rate: {_format_rate(dom_health.update_rate)}",
+            f"- Peak Update Rate: {_format_rate(dom_health.peak_update_rate)}",
             "STATISTICS",
             f"- Tick Count: {stats.tick_count}",
             f"- Tick Rate: {_format_rate(stats.tick_rate)}",

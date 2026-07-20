@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from hotirjam_ai5.dashboard.models import (
+    ConnectionQuality,
     ConnectionStatus,
     DashboardState,
+    DomHealthView,
+    DomView,
     EngineStatus,
+    FeedHealthView,
+    FeedStatus,
     LiveMarketView,
     MarketStatus,
     StatisticsView,
@@ -19,34 +24,29 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "HOTIRJAM AI 5" in text
     assert "SYSTEM" in text
     assert "LIVE MARKET" in text
+    assert "FEED HEALTH" in text
+    assert "DOM" in text
+    assert "DOM HEALTH" in text
     assert "STATISTICS" in text
     assert "LOG" in text
-    assert "- Engine Status:" in text
-    assert "- Connection Status:" in text
-    assert "- Market Status:" in text
-    assert "- Symbol:" in text
-    assert "- Last Price:" in text
-    assert "- Bid:" in text
-    assert "- Ask:" in text
-    assert "- Spread:" in text
-    assert "- Volume:" in text
-    assert "- Tick Count:" in text
-    assert "- Tick Rate:" in text
-    assert "- Running Time:" in text
-    assert "- Last Events:" in text
+    assert "- Best Bid Size:" in text
+    assert "- Best Ask Size:" in text
+    assert "- Total Bid Size:" in text
+    assert "- Total Ask Size:" in text
+    assert "- Depth Levels:" in text
+    assert "- DOM Update Rate:" in text
 
 
 def test_render_shows_placeholder_not_fake_prices() -> None:
     text = DashboardRenderer().render(DashboardState())
     assert "Last Price: —" in text
-    assert "Bid: —" in text
-    assert "Ask: —" in text
-    assert "Spread: —" in text
-    assert "Volume: —" in text
+    assert "Last Tick Age: —" in text
+    assert "Tick Delay: —" in text
+    assert "Best Bid Size: —" in text
     assert "Tick Count: 0" in text
 
 
-def test_render_with_real_market_values() -> None:
+def test_render_with_real_market_and_health_values() -> None:
     state = DashboardState(
         system=SystemView(
             engine_status=EngineStatus.RUNNING,
@@ -60,26 +60,47 @@ def test_render_with_real_market_values() -> None:
             ask=20100.5,
             volume=4.0,
         ),
+        feed_health=FeedHealthView(
+            feed_status=FeedStatus.HEALTHY,
+            connection_quality=ConnectionQuality.GOOD,
+            last_tick_age_ms=12.0,
+            tick_delay_ms=45.0,
+            average_tick_rate=8.5,
+            peak_tick_rate=22.0,
+        ),
+        dom=DomView(
+            best_bid_size=11,
+            best_ask_size=9,
+            total_bid_size=80,
+            total_ask_size=70,
+            depth_levels=10,
+            update_rate=15.0,
+            status="OK",
+        ),
+        dom_health=DomHealthView(
+            feed_status=FeedStatus.HEALTHY,
+            connection_quality=ConnectionQuality.GOOD,
+            last_update_age_ms=8.0,
+            update_rate=15.0,
+            peak_update_rate=40.0,
+        ),
         statistics=StatisticsView(
             tick_count=120,
             tick_rate=12.5,
             running_time_seconds=65,
         ),
-        events=("tick accepted",),
+        events=("Connected", "DOM connected"),
     )
     text = DashboardRenderer().render(state)
-    assert "Engine Status: RUNNING" in text
-    assert "Connection Status: CONNECTED" in text
-    assert "Market Status: OPEN" in text
-    assert "Last Price: 20100.50" in text
-    assert "Bid: 20100.25" in text
-    assert "Ask: 20100.50" in text
-    assert "Spread: 0.25" in text
-    assert "Volume: 4" in text
-    assert "Tick Count: 120" in text
-    assert "Tick Rate: 12.50/s" in text
-    assert "Running Time: 01:05" in text
-    assert "• tick accepted" in text
+    assert "Feed Status: HEALTHY" in text
+    assert "Best Bid Size: 11" in text
+    assert "Best Ask Size: 9" in text
+    assert "Total Bid Size: 80" in text
+    assert "Total Ask Size: 70" in text
+    assert "Depth Levels: 10" in text
+    assert "DOM Update Rate: 15.00/s" in text
+    assert "Peak Update Rate: 40.00/s" in text
+    assert "• DOM connected" in text
 
 
 def test_empty_log_shows_none() -> None:

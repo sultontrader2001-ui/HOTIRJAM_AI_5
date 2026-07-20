@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from hotirjam_ai5.live_data.paths import (
+    default_dom_path,
     default_ninjatrader_user_data_dir,
     default_tick_path,
 )
@@ -15,6 +16,11 @@ from hotirjam_ai5.live_data.paths import (
 def test_default_tick_path_uses_user_data_dir(tmp_path: Path) -> None:
     path = default_tick_path(user_data_dir=tmp_path)
     assert path == (tmp_path / "HOTIRJAM" / "mnq_ticks.ndjson").resolve()
+
+
+def test_default_dom_path_uses_user_data_dir(tmp_path: Path) -> None:
+    path = default_dom_path(user_data_dir=tmp_path)
+    assert path == (tmp_path / "HOTIRJAM" / "mnq_dom.ndjson").resolve()
 
 
 def test_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

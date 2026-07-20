@@ -35,6 +35,23 @@ class MarketStatus(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+class FeedStatus(StrEnum):
+    """Live feed health derived from tick arrival timing."""
+
+    HEALTHY = "HEALTHY"
+    STALE = "STALE"
+    DISCONNECTED = "DISCONNECTED"
+
+
+class ConnectionQuality(StrEnum):
+    """Coarse connection quality from recent tick freshness."""
+
+    UNKNOWN = "UNKNOWN"
+    GOOD = "GOOD"
+    FAIR = "FAIR"
+    POOR = "POOR"
+
+
 @dataclass(frozen=True, slots=True)
 class SystemView:
     """SYSTEM section."""
@@ -67,6 +84,42 @@ class LiveMarketView:
 
 
 @dataclass(frozen=True, slots=True)
+class FeedHealthView:
+    """FEED HEALTH section (Sprint 3)."""
+
+    feed_status: FeedStatus = FeedStatus.DISCONNECTED
+    connection_quality: ConnectionQuality = ConnectionQuality.UNKNOWN
+    last_tick_age_ms: float | None = None
+    tick_delay_ms: float | None = None
+    average_tick_rate: float = 0.0
+    peak_tick_rate: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class DomView:
+    """DOM section (Sprint 4)."""
+
+    best_bid_size: int | None = None
+    best_ask_size: int | None = None
+    total_bid_size: int | None = None
+    total_ask_size: int | None = None
+    depth_levels: int | None = None
+    update_rate: float = 0.0
+    status: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DomHealthView:
+    """DOM HEALTH section (Sprint 4)."""
+
+    feed_status: FeedStatus = FeedStatus.DISCONNECTED
+    connection_quality: ConnectionQuality = ConnectionQuality.UNKNOWN
+    last_update_age_ms: float | None = None
+    update_rate: float = 0.0
+    peak_update_rate: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
 class StatisticsView:
     """STATISTICS section."""
 
@@ -81,5 +134,8 @@ class DashboardState:
 
     system: SystemView = field(default_factory=SystemView)
     market: LiveMarketView = field(default_factory=LiveMarketView)
+    feed_health: FeedHealthView = field(default_factory=FeedHealthView)
+    dom: DomView = field(default_factory=DomView)
+    dom_health: DomHealthView = field(default_factory=DomHealthView)
     statistics: StatisticsView = field(default_factory=StatisticsView)
     events: Sequence[str] = ()

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hotirjam-ai5"
-version = "0.1.0"
-description = "HOTIRJAM AI 5 — MNQ futures assistant (Sprint 2: live tick ingress)"
+version = "0.4.0"
+description = "HOTIRJAM AI 5 — MNQ futures assistant (Sprint 4: DOM ingress)"
 readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "Proprietary" }

@@ -1,4 +1,4 @@
-"""Terminal dashboard entry point with live NinjaTrader tick ingress."""
+"""Terminal dashboard entry point with live NinjaTrader tick + DOM ingress."""
 
 from __future__ import annotations
 
@@ -8,22 +8,25 @@ from collections.abc import Callable
 from pathlib import Path
 
 from hotirjam_ai5.dashboard.controller import DEFAULT_STALE_SECONDS, DashboardController
+from hotirjam_ai5.dashboard.feed_health import DEFAULT_STALL_SECONDS
 from hotirjam_ai5.dashboard.renderer import DashboardRenderer
 from hotirjam_ai5.dashboard.terminal import TerminalDisplay
+from hotirjam_ai5.live_data.dom_ingress import LiveDomIngress
 from hotirjam_ai5.live_data.ingress import LiveTickIngress
-from hotirjam_ai5.live_data.paths import default_tick_path
+from hotirjam_ai5.live_data.paths import default_dom_path, default_tick_path
 
 DEFAULT_REFRESH_SECONDS = 0.25
 
 
 class DashboardApp:
-    """Polls live ticks and refreshes the terminal dashboard."""
+    """Polls live ticks/DOM and refreshes the terminal dashboard."""
 
     def __init__(
         self,
         *,
         controller: DashboardController | None = None,
         ingress: LiveTickIngress | None = None,
+        dom_ingress: LiveDomIngress | None = None,
         renderer: DashboardRenderer | None = None,
         display: TerminalDisplay | None = None,
         refresh_seconds: float = DEFAULT_REFRESH_SECONDS,
@@ -33,6 +36,7 @@ class DashboardApp:
             raise ValueError("refresh_seconds must be positive")
         self._controller = controller or DashboardController()
         self._ingress = ingress
+        self._dom_ingress = dom_ingress
         self._renderer = renderer or DashboardRenderer()
         self._display = display or TerminalDisplay()
         self._refresh_seconds = refresh_seconds
@@ -47,6 +51,15 @@ class DashboardApp:
             self._controller.on_tick(tick)
         return len(ticks)
 
+    def poll_dom_ingress(self) -> int:
+        """Pull new live DOM snapshots into the controller."""
+        if self._dom_ingress is None:
+            return 0
+        snapshots = self._dom_ingress.poll()
+        for snapshot in snapshots:
+            self._controller.on_dom(snapshot)
+        return len(snapshots)
+
     def run(self, *, max_frames: int | None = None) -> int:
         """Start the dashboard and refresh until Ctrl+C or max_frames.
 
@@ -57,6 +70,7 @@ class DashboardApp:
         try:
             while max_frames is None or frames < max_frames:
                 self.poll_ingress()
+                self.poll_dom_ingress()
                 self._controller.check_connection_health()
                 state = self._controller.snapshot()
                 text = self._renderer.render(state)
@@ -74,7 +88,7 @@ class DashboardApp:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="HOTIRJAM AI 5 — live terminal dashboard (NinjaTrader ticks)",
+        description="HOTIRJAM AI 5 — live terminal dashboard (NinjaTrader ticks + DOM)",
     )
     parser.add_argument(
         "--refresh",
@@ -94,10 +108,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="NT01 NDJSON path (default: NinjaTrader UserDataDir/HOTIRJAM/mnq_ticks.ndjson)",
     )
     parser.add_argument(
+        "--dom-file",
+        type=Path,
+        default=None,
+        help="NT04 NDJSON path (default: NinjaTrader UserDataDir/HOTIRJAM/mnq_dom.ndjson)",
+    )
+    parser.add_argument(
+        "--stall-seconds",
+        type=float,
+        default=DEFAULT_STALL_SECONDS,
+        help=f"Seconds without updates before stalled (default: {DEFAULT_STALL_SECONDS})",
+    )
+    parser.add_argument(
         "--stale-seconds",
         type=float,
         default=DEFAULT_STALE_SECONDS,
-        help=f"Seconds without ticks before Connection lost (default: {DEFAULT_STALE_SECONDS})",
+        help=f"Seconds without updates before connection lost (default: {DEFAULT_STALE_SECONDS})",
     )
     return parser
 
@@ -106,14 +132,16 @@ def main(argv: list[str] | None = None) -> int:
     """CLI entry used by ``python -m hotirjam_ai5`` and the console script."""
     args = build_arg_parser().parse_args(argv)
     tick_path = args.tick_file or default_tick_path()
+    dom_path = args.dom_file or default_dom_path()
     controller = DashboardController(
         symbol=args.symbol,
+        stall_seconds=args.stall_seconds,
         stale_seconds=args.stale_seconds,
     )
-    ingress = LiveTickIngress(tick_path, expected_symbol=args.symbol)
     app = DashboardApp(
         controller=controller,
-        ingress=ingress,
+        ingress=LiveTickIngress(tick_path, expected_symbol=args.symbol),
+        dom_ingress=LiveDomIngress(dom_path, expected_symbol=args.symbol),
         refresh_seconds=args.refresh,
     )
     return app.run()

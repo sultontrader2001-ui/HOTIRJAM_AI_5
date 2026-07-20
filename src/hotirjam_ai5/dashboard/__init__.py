@@ -1,9 +1,14 @@
-"""Terminal dashboard package (Sprint 1)."""
+"""Terminal dashboard package."""
 
 from hotirjam_ai5.dashboard.models import (
+    ConnectionQuality,
     ConnectionStatus,
     DashboardState,
+    DomHealthView,
+    DomView,
     EngineStatus,
+    FeedHealthView,
+    FeedStatus,
     LiveMarketView,
     MarketStatus,
     StatisticsView,
@@ -12,10 +17,15 @@ from hotirjam_ai5.dashboard.models import (
 from hotirjam_ai5.dashboard.renderer import DashboardRenderer
 
 __all__ = [
+    "ConnectionQuality",
     "ConnectionStatus",
     "DashboardRenderer",
     "DashboardState",
+    "DomHealthView",
+    "DomView",
     "EngineStatus",
+    "FeedHealthView",
+    "FeedStatus",
     "LiveMarketView",
     "MarketStatus",
     "StatisticsView",

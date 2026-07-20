@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 TICK_FILENAME = "mnq_ticks.ndjson"
+DOM_FILENAME = "mnq_dom.ndjson"
 HOTIRJAM_SUBDIR = "HOTIRJAM"
 
 
@@ -36,6 +37,9 @@ def default_ninjatrader_user_data_dir() -> Path:
         tick_file = candidate / HOTIRJAM_SUBDIR / TICK_FILENAME
         if tick_file.is_file():
             return candidate.resolve()
+        dom_file = candidate / HOTIRJAM_SUBDIR / DOM_FILENAME
+        if dom_file.is_file():
+            return candidate.resolve()
 
     for candidate in candidates:
         if candidate.is_dir():
@@ -48,3 +52,9 @@ def default_tick_path(*, user_data_dir: Path | None = None) -> Path:
     """Default NT01 output: ``{UserDataDir}/HOTIRJAM/mnq_ticks.ndjson``."""
     base = user_data_dir or default_ninjatrader_user_data_dir()
     return (Path(base).expanduser() / HOTIRJAM_SUBDIR / TICK_FILENAME).resolve()
+
+
+def default_dom_path(*, user_data_dir: Path | None = None) -> Path:
+    """Default NT04 output: ``{UserDataDir}/HOTIRJAM/mnq_dom.ndjson``."""
+    base = user_data_dir or default_ninjatrader_user_data_dir()
+    return (Path(base).expanduser() / HOTIRJAM_SUBDIR / DOM_FILENAME).resolve()
