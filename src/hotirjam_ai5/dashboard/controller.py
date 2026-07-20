@@ -22,6 +22,7 @@ from hotirjam_ai5.dashboard.models import (
     FeedStatus,
     LiveMarketView,
     MarketStateView,
+    MarketTransitionView,
     MarketStatus,
     PhysicsView,
     StatisticsView,
@@ -30,7 +31,12 @@ from hotirjam_ai5.dashboard.models import (
 from hotirjam_ai5.dashboard.statistics import SessionStatistics
 from hotirjam_ai5.live_data.dom import DomSnapshot
 from hotirjam_ai5.live_data.tick import LiveTick
-from hotirjam_ai5.market_state import MarketStateEngine, MarketStateInputs
+from hotirjam_ai5.market_state import (
+    MarketStateEngine,
+    MarketStateInputs,
+    MarketStateSnapshot,
+)
+from hotirjam_ai5.market_transition import MarketTransitionEngine
 from hotirjam_ai5.physics.engine import PhysicsEngine
 
 # Backward-compatible alias used by CLI / older call sites.
@@ -55,6 +61,7 @@ class DashboardController:
         dom_health: DomHealthMonitor | None = None,
         physics: PhysicsEngine | None = None,
         market_state: MarketStateEngine | None = None,
+        market_transition: MarketTransitionEngine | None = None,
         stale_seconds: float = DEFAULT_DISCONNECT_SECONDS,
         stall_seconds: float = DEFAULT_STALL_SECONDS,
         clock: Callable[[], float] | None = None,
@@ -79,6 +86,8 @@ class DashboardController:
         )
         self._physics = physics or PhysicsEngine()
         self._market_state = market_state or MarketStateEngine(clock=wall_clock or time.time)
+        self._market_transition = market_transition or MarketTransitionEngine()
+        self._previous_market_state: MarketStateSnapshot | None = None
         self._engine_status = EngineStatus.STARTING
         self._connection_status = ConnectionStatus.DISCONNECTED
         self._market_status = MarketStatus.WAITING
@@ -188,6 +197,11 @@ class DashboardController:
                 dom_update_rate=dom_health.update_rate,
             )
         )
+        market_transition = self._market_transition.evaluate(
+            market_state,
+            self._previous_market_state,
+        )
+        self._previous_market_state = market_state
         return DashboardState(
             system=SystemView(
                 engine_status=self._engine_status,
@@ -215,6 +229,18 @@ class DashboardController:
             market_state=MarketStateView(
                 state=market_state.state.value,
                 reason=market_state.reason,
+            ),
+            market_transition=MarketTransitionView(
+                current_state=market_transition.current_state.value,
+                previous_state=(
+                    market_transition.previous_state.value
+                    if market_transition.previous_state is not None
+                    else "—"
+                ),
+                transition=market_transition.transition,
+                changed=market_transition.changed,
+                duration_seconds=market_transition.duration_seconds,
+                reason=market_transition.reason,
             ),
             statistics=StatisticsView(
                 tick_count=tick_count,

@@ -13,6 +13,7 @@ from hotirjam_ai5.dashboard.models import (
     FeedStatus,
     LiveMarketView,
     MarketStateView,
+    MarketTransitionView,
     MarketStatus,
     PhysicsView,
     StatisticsView,
@@ -31,6 +32,7 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "DOM HEALTH" in text
     assert "PHYSICS" in text
     assert "MARKET STATE" in text
+    assert "MARKET TRANSITION" in text
     assert "STATISTICS" in text
     assert "LOG" in text
     assert "- Best Bid Size:" in text
@@ -38,6 +40,8 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "- Tick Acceleration:" in text
     assert "- State:" in text
     assert "- Reason:" in text
+    assert "- Transition:" in text
+    assert "- Changed:" in text
 
 
 def test_render_shows_placeholder_not_fake_prices() -> None:
@@ -48,6 +52,8 @@ def test_render_shows_placeholder_not_fake_prices() -> None:
     assert "Tick Velocity: —" in text
     assert "Tick Acceleration: —" in text
     assert "State: UNKNOWN" in text
+    assert "Transition: NONE" in text
+    assert "Changed: NO" in text
     assert "Tick Count: 0" in text
 
 
@@ -99,6 +105,14 @@ def test_render_with_real_market_and_health_values() -> None:
             state="ACTIVE",
             reason="Tick activity increasing",
         ),
+        market_transition=MarketTransitionView(
+            current_state="ACTIVE",
+            previous_state="QUIET",
+            transition="QUIET → ACTIVE",
+            changed=True,
+            duration_seconds=18.0,
+            reason="Market state changed from QUIET to ACTIVE",
+        ),
         statistics=StatisticsView(
             tick_count=120,
             tick_rate=12.5,
@@ -111,6 +125,11 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "MARKET STATE" in text
     assert "State: ACTIVE" in text
     assert "Reason: Tick activity increasing" in text
+    assert "Current: ACTIVE" in text
+    assert "Previous: QUIET" in text
+    assert "Transition: QUIET → ACTIVE" in text
+    assert "Changed: YES" in text
+    assert "Duration: 18 s" in text
     assert "Spread: 0.25" in text
     assert "Mid Price: 20100.38" in text
     assert "Tick Velocity: 1.5000" in text

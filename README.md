@@ -12,11 +12,13 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 4 | DOM ingress + visualization | Done |
 | 5 | Physics measurements | Done |
 | 6 | Market State Engine v1 | Done |
+| 7 | Market Transition Engine v1 | Done |
 
 **Out of scope still:** momentum, decision, BUY/SELL, AI, risk
 
 Market/DOM/physics fields show `—` until enough live updates exist. No synthetic data.
 Market State is observation-only (UNKNOWN / QUIET / NORMAL / ACTIVE / TRENDING / VOLATILE).
+Market Transition retrospectively reports state changes; it does not forecast.
 
 ### Requirements
 
@@ -61,6 +63,12 @@ Observation-only classification from existing feed health, physics, and statisti
 States: `UNKNOWN`, `QUIET`, `NORMAL`, `ACTIVE`, `TRENDING`, `VOLATILE`.
 Does not emit BUY/SELL, entries, exits, risk, or confidence.
 
+### MARKET TRANSITION section
+
+Compares consecutive `MarketStateSnapshot` values and reports completed transitions,
+whether the state changed, and how long the prior/current state persisted.
+`NONE` is displayed when no change occurred.
+
 ### Test
 
 ```bash
@@ -70,5 +78,5 @@ pytest
 ### Architecture (planned)
 
 ```
-NinjaTrader (NT01/NT04) → Live Data → Physics → Market State → Momentum → Decision → Execution
+NinjaTrader (NT01/NT04) → Live Data → Physics → Market State → Market Transition → Momentum → Decision → Execution
 ```

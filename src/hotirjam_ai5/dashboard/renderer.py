@@ -53,6 +53,10 @@ def _format_duration(seconds: float) -> str:
     return f"{minutes:02d}:{secs:02d}"
 
 
+def _format_seconds(seconds: float) -> str:
+    return f"{max(0, int(seconds))} s"
+
+
 class DashboardRenderer:
     """Converts a DashboardState into the terminal layout."""
 
@@ -65,6 +69,7 @@ class DashboardRenderer:
         dom_health = state.dom_health
         physics = state.physics
         market_state = state.market_state
+        transition = state.market_transition
         events = list(state.events) if state.events else ["(none)"]
 
         lines = [
@@ -110,6 +115,12 @@ class DashboardRenderer:
             "MARKET STATE",
             f"- State: {market_state.state}",
             f"- Reason: {market_state.reason}",
+            "MARKET TRANSITION",
+            f"- Current: {transition.current_state}",
+            f"- Previous: {transition.previous_state}",
+            f"- Transition: {transition.transition}",
+            f"- Changed: {'YES' if transition.changed else 'NO'}",
+            f"- Duration: {_format_seconds(transition.duration_seconds)}",
             "STATISTICS",
             f"- Tick Count: {stats.tick_count}",
             f"- Tick Rate: {_format_rate(stats.tick_rate)}",

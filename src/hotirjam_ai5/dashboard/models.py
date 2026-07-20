@@ -147,6 +147,18 @@ class MarketStateView:
 
 
 @dataclass(frozen=True, slots=True)
+class MarketTransitionView:
+    """MARKET TRANSITION section (Sprint 7) — observation only."""
+
+    current_state: str = "UNKNOWN"
+    previous_state: str = "—"
+    transition: str = "NONE"
+    changed: bool = False
+    duration_seconds: float = 0.0
+    reason: str = "Waiting for market state"
+
+
+@dataclass(frozen=True, slots=True)
 class DashboardState:
     """Complete snapshot rendered each refresh cycle."""
 
@@ -157,5 +169,6 @@ class DashboardState:
     dom_health: DomHealthView = field(default_factory=DomHealthView)
     physics: PhysicsView = field(default_factory=PhysicsView)
     market_state: MarketStateView = field(default_factory=MarketStateView)
+    market_transition: MarketTransitionView = field(default_factory=MarketTransitionView)
     statistics: StatisticsView = field(default_factory=StatisticsView)
     events: Sequence[str] = ()
