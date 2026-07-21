@@ -280,8 +280,47 @@ class TradeDecisionView:
 
 
 @dataclass(frozen=True, slots=True)
+class MemoryBandView:
+    """One Memory observation band for MEMORY section (presentation only)."""
+
+    name: str = "FAST"
+    direction: str = "--"
+    strength: float | None = None
+    confidence: float | None = None
+    persistence: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryPanelView:
+    """MEMORY section — read-only projection of Memory Diagnostics."""
+
+    fast: MemoryBandView = field(default_factory=lambda: MemoryBandView(name="FAST"))
+    medium: MemoryBandView = field(
+        default_factory=lambda: MemoryBandView(name="MEDIUM")
+    )
+    slow: MemoryBandView = field(default_factory=lambda: MemoryBandView(name="SLOW"))
+    consensus_direction: str = "--"
+    consensus_agreement: float | None = None
+    consensus_confidence: float | None = None
+    consensus_status: str = "--"
+
+
+@dataclass(frozen=True, slots=True)
+class LastSignalView:
+    """LAST SIGNAL section — presentation only."""
+
+    direction: str = "--"
+    entry_time: str = "--"
+    exit_time: str = "--"
+    duration: str = "--"
+    result: str = "--"
+    points: float | None = None
+    memory_effect: str = "--"  # HELPED | HURT | NO_EFFECT | --
+
+
+@dataclass(frozen=True, slots=True)
 class PerformanceView:
-    """PERFORMANCE section — analytics only (Sprint 32)."""
+    """PERFORMANCE section — analytics presentation (Sprint 32/45)."""
 
     buy_signals: int = 0
     sell_signals: int = 0
@@ -289,27 +328,47 @@ class PerformanceView:
     failed_count: int = 0
     win_rate: float = 0.0
     average_points: float = 0.0
-    last_result: str = "—"
-    last_signal_decision: str = "—"
-    last_signal_utc: str = "—"
-    last_signal_new_york: str = "—"
-    last_signal_tashkent: str = "—"
+    last_result: str = "--"
+    last_signal_decision: str = "--"
+    last_signal_utc: str = "--"
+    last_signal_new_york: str = "--"
+    last_signal_tashkent: str = "--"
+    # Sprint 45 presentation fields (derived from existing analytics only).
+    signals_today: int = 0
+    average_mfe: float | None = None
+    average_mae: float | None = None
+    average_rr: float | None = None
+    profit_factor: float | None = None
+    decision_accuracy: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SystemPanelView:
+    """SYSTEM section extras (Sprint 45 presentation)."""
+
+    memory_records: int = 0
+    memory_usage_pct: float | None = None
+    decision_count: int = 0
+    append_rate: float | None = None
+    average_decision_ms: float | None = None
+    version: str = "--"
+    git_commit: str = "--"
 
 
 @dataclass(frozen=True, slots=True)
 class LiquidityView:
     """Liquidity summary for AI STATUS (presentation only)."""
 
-    shift: str = "—"
-    imbalance: str = "—"
+    shift: str = "--"
+    imbalance: str = "--"
 
 
 @dataclass(frozen=True, slots=True)
 class DisplayClockView:
     """Wall-clock times for MARKET section (presentation only)."""
 
-    new_york: str = "—"
-    tashkent: str = "—"
+    new_york: str = "--"
+    tashkent: str = "--"
 
 
 @dataclass(frozen=True, slots=True)
@@ -341,4 +400,7 @@ class DashboardState:
     performance: PerformanceView = field(default_factory=PerformanceView)
     liquidity: LiquidityView = field(default_factory=LiquidityView)
     display_clock: DisplayClockView = field(default_factory=DisplayClockView)
+    memory_panel: MemoryPanelView = field(default_factory=MemoryPanelView)
+    last_signal: LastSignalView = field(default_factory=LastSignalView)
+    system_panel: SystemPanelView = field(default_factory=SystemPanelView)
     events: Sequence[str] = ()

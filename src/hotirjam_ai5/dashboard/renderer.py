@@ -1,17 +1,22 @@
-"""Pure string renderer for the terminal dashboard (Live Dashboard v2).
+"""Pure string renderer for the Professional Trading Dashboard v2.
 
-UI/UX only — no trading logic. Default layout is trading-focused; pass
-``verbose=True`` (or ``--verbose``) for developer/pipeline details.
+Visualization only — no trading logic. Default layout is the live monitor;
+pass ``verbose=True`` for developer/pipeline details.
 """
 
 from __future__ import annotations
 
-from hotirjam_ai5.dashboard.models import DashboardState, DecisionExplainabilityView
+from hotirjam_ai5.dashboard.models import (
+    DashboardState,
+    DecisionExplainabilityView,
+    MemoryBandView,
+    MemoryPanelView,
+)
 
-SEPARATOR = "═" * 60
-SECTION = "─" * 60
-MISSING = "—"
-LABEL_WIDTH = 18
+SEPARATOR = "═" * 64
+SECTION = "─" * 64
+MISSING = "--"
+LABEL_WIDTH = 22
 
 
 def _format_price(value: float | None) -> str:
@@ -32,16 +37,34 @@ def _format_rate(value: float) -> str:
     return f"{value:.2f}/s"
 
 
-def _format_ms(value: float | None) -> str:
+def _format_pct(value: float | None, *, digits: int = 1) -> str:
     if value is None:
         return MISSING
-    return f"{value:.0f} ms"
+    return f"{value:.{digits}f}%"
+
+
+def _format_points(value: float | None) -> str:
+    if value is None:
+        return MISSING
+    return f"{value:.2f}"
+
+
+def _format_signed_points(value: float | None) -> str:
+    if value is None:
+        return MISSING
+    return f"{value:+.2f}"
 
 
 def _format_physics(value: float | None, *, digits: int = 2) -> str:
     if value is None:
         return MISSING
     return f"{value:.{digits}f}"
+
+
+def _format_ms(value: float | None) -> str:
+    if value is None:
+        return MISSING
+    return f"{value:.1f} ms"
 
 
 def _format_runtime(seconds: float) -> str:
@@ -67,13 +90,23 @@ def _emphasize_decision(decision: str) -> list[str]:
         banner = ">>>  SELL_INTERNAL  <<<"
     else:
         banner = f"Decision : {decision}"
-    pad = max(0, (60 - len(banner)) // 2)
+    pad = max(0, (64 - len(banner)) // 2)
     centered = f"{' ' * pad}{banner}"
     return ["", centered, ""]
 
 
+def _band_lines(title: str, band: MemoryBandView) -> list[str]:
+    return [
+        title,
+        _row("Direction", band.direction or MISSING),
+        _row("Strength", _format_pct(band.strength)),
+        _row("Confidence", _format_pct(band.confidence)),
+        _row("Persistence", _format_pct(band.persistence)),
+    ]
+
+
 class DashboardRenderer:
-    """Converts a DashboardState into the Live Dashboard v2 layout."""
+    """Converts a DashboardState into the Professional Trading Dashboard v2."""
 
     def __init__(self, *, verbose: bool = False) -> None:
         self._verbose = verbose
@@ -86,7 +119,7 @@ class DashboardRenderer:
         """Return the full dashboard text."""
         lines = [
             SEPARATOR,
-            "HOTIRJAM AI 5 LIVE".center(60),
+            "HOTIRJAM AI 5 LIVE".center(64),
             SEPARATOR,
             "",
             *self._market_section(state),
@@ -95,7 +128,11 @@ class DashboardRenderer:
             SECTION,
             *self._trade_decision_section(state),
             SECTION,
+            *self._memory_section(state.memory_panel),
+            SECTION,
             *self._performance_section(state),
+            SECTION,
+            *self._last_signal_section(state),
             SECTION,
             *self._system_section(state),
         ]
@@ -114,10 +151,12 @@ class DashboardRenderer:
             _row("Ask", _format_price(market.ask)),
             _row("Spread", _format_price(market.spread)),
             _row("Market Status", state.system.market_status.value),
-            _row("NY Time", clock.new_york),
-            _row("UZ Time", clock.tashkent),
+            _row("NY Time", clock.new_york if clock.new_york else MISSING),
+            _row("UZ Time", clock.tashkent if clock.tashkent else MISSING),
             _row("Feed Health", state.feed_health.feed_status.value),
             _row("DOM Health", state.dom_health.feed_status.value),
+            _row("Ticks/sec", _format_rate(state.statistics.tick_rate)),
+            _row("DOM updates/sec", _format_rate(state.dom_health.update_rate)),
         ]
 
     def _ai_status_section(self, state: DashboardState) -> list[str]:
@@ -128,11 +167,19 @@ class DashboardRenderer:
             f"v={_format_physics(physics.tick_velocity)}  "
             f"a={_format_physics(physics.tick_acceleration)}"
         )
-        liquidity_text = (
-            f"{liquidity.shift} / {liquidity.imbalance}"
-            if liquidity.shift != MISSING or liquidity.imbalance != MISSING
-            else MISSING
-        )
+        if liquidity.shift in (MISSING, "—") and liquidity.imbalance in (
+            MISSING,
+            "—",
+        ):
+            liquidity_text = MISSING
+        else:
+            shift = liquidity.shift if liquidity.shift not in ("—", "") else MISSING
+            imb = (
+                liquidity.imbalance
+                if liquidity.imbalance not in ("—", "")
+                else MISSING
+            )
+            liquidity_text = f"{shift} / {imb}"
         readiness = (
             f"BUY {trade.decision_readiness} / SELL {trade.sell_decision_readiness}"
         )
@@ -140,9 +187,9 @@ class DashboardRenderer:
             "AI STATUS",
             _row("Market State", state.market_state.state),
             _row("Behavior", state.market_behavior.behavior),
+            _row("Assessment", state.decision_assessment.assessment_state),
             _row("Physics", physics_text),
             _row("Liquidity", liquidity_text),
-            _row("Assessment", state.decision_assessment.assessment_state),
             _row("Decision Readiness", readiness),
         ]
 
@@ -154,22 +201,90 @@ class DashboardRenderer:
         return [
             "TRADE DECISION",
             *_emphasize_decision(trade.decision),
+            _row("Decision", trade.decision),
             _row("BUY Score", f"{trade.buy_score} / 100"),
-            _row("BUY Confidence", f"{trade.buy_confidence} %"),
             _row("SELL Score", f"{trade.sell_score} / 100"),
+            _row("BUY Confidence", f"{trade.buy_confidence} %"),
             _row("SELL Confidence", f"{trade.sell_confidence} %"),
+            _row("Memory Influence %", _format_pct(trade.memory_influence_pct)),
+            _row("Memory Agreement %", _format_pct(trade.memory_agreement)),
+            _row("Memory Persistence %", _format_pct(trade.memory_persistence)),
             _row("Signal Stability", stability),
-            _row("Memory Influence", f"{trade.memory_influence_pct:.1f}%"),
-            _row("Memory Agreement", f"{trade.memory_agreement:.1f}"),
-            _row("Memory Persistence", f"{trade.memory_persistence:.1f}"),
-            *self._decision_explanation_section(trade.explainability),
+        ]
+
+    def _memory_section(self, panel: MemoryPanelView) -> list[str]:
+        lines = ["MEMORY"]
+        lines.extend(_band_lines("Fast Band", panel.fast))
+        lines.extend(_band_lines("Medium Band", panel.medium))
+        lines.extend(_band_lines("Slow Band", panel.slow))
+        lines.extend(
+            [
+                "Consensus",
+                _row("Direction", panel.consensus_direction or MISSING),
+                _row("Agreement", _format_pct(panel.consensus_agreement)),
+                _row("Confidence", _format_pct(panel.consensus_confidence)),
+                _row("Status", panel.consensus_status or MISSING),
+            ]
+        )
+        return lines
+
+    def _performance_section(self, state: DashboardState) -> list[str]:
+        perf = state.performance
+        return [
+            "PERFORMANCE",
+            _row("Signals Today", _format_int(perf.signals_today)),
+            _row("BUY Signals", _format_int(perf.buy_signals)),
+            _row("SELL Signals", _format_int(perf.sell_signals)),
+            _row("Winning Signals", _format_int(perf.success_count)),
+            _row("Losing Signals", _format_int(perf.failed_count)),
+            _row("Win Rate", _format_pct(perf.win_rate)),
+            _row("Average MFE", _format_signed_points(perf.average_mfe)),
+            _row("Average MAE", _format_signed_points(perf.average_mae)),
+            _row("Average RR", _format_points(perf.average_rr)),
+            _row("Profit Factor", _format_points(perf.profit_factor)),
+            _row("Decision Accuracy", _format_pct(perf.decision_accuracy)),
+        ]
+
+    def _last_signal_section(self, state: DashboardState) -> list[str]:
+        last = state.last_signal
+        return [
+            "LAST SIGNAL",
+            _row("Direction", last.direction or MISSING),
+            _row("Entry Time", last.entry_time or MISSING),
+            _row("Exit Time", last.exit_time or MISSING),
+            _row("Duration", last.duration or MISSING),
+            _row("Result", last.result or MISSING),
+            _row("Points", _format_signed_points(last.points)),
+            _row("Memory", last.memory_effect or MISSING),
+        ]
+
+    def _system_section(self, state: DashboardState) -> list[str]:
+        stats = state.statistics
+        panel = state.system_panel
+        return [
+            "SYSTEM",
+            _row("Runtime", _format_runtime(stats.running_time_seconds)),
+            _row("Memory Records", _format_int(panel.memory_records)),
+            _row("Memory Usage", _format_pct(panel.memory_usage_pct)),
+            _row("Decision Count", _format_int(panel.decision_count)),
+            _row(
+                "Append Rate",
+                (
+                    MISSING
+                    if panel.append_rate is None
+                    else f"{panel.append_rate:.2f}/s"
+                ),
+            ),
+            _row("Average Decision Time", _format_ms(panel.average_decision_ms)),
+            _row("Version", panel.version or MISSING),
+            _row("Git Commit", panel.git_commit or MISSING),
         ]
 
     def _decision_explanation_section(
         self,
         expl: DecisionExplainabilityView,
     ) -> list[str]:
-        """Render DECISION EXPLANATION from real snapshot evidence."""
+        """Verbose-only explainability block."""
         lines = [
             "DECISION EXPLANATION",
             expl.headline,
@@ -197,43 +312,11 @@ class DashboardRenderer:
                 lines.extend(expl.sell_reason.splitlines())
 
         if expl.selection_lines:
-            for line in expl.selection_lines:
-                lines.append(line)
+            lines.extend(expl.selection_lines)
         if expl.checklist:
             lines.append("Missing")
             lines.extend(expl.checklist)
         return lines
-
-    def _performance_section(self, state: DashboardState) -> list[str]:
-        perf = state.performance
-        return [
-            "PERFORMANCE",
-            _row("BUY Signals", _format_int(perf.buy_signals)),
-            _row("SELL Signals", _format_int(perf.sell_signals)),
-            _row("Win Rate", f"{perf.win_rate:.1f}%"),
-            _row("Success", _format_int(perf.success_count)),
-            _row("Failed", _format_int(perf.failed_count)),
-            _row("Average Points", _format_physics(perf.average_points)),
-            _row("Last Result", perf.last_result),
-            _row("Last Signal", perf.last_signal_decision),
-            _row("NY Time", perf.last_signal_new_york),
-            _row("UZ Time", perf.last_signal_tashkent),
-        ]
-
-    def _system_section(self, state: DashboardState) -> list[str]:
-        stats = state.statistics
-        health = state.feed_health
-        latency = health.tick_delay_ms
-        if latency is None:
-            latency = health.last_tick_age_ms
-        return [
-            "SYSTEM",
-            _row("Tick Rate", _format_rate(stats.tick_rate)),
-            _row("DOM Rate", _format_rate(state.dom_health.update_rate)),
-            _row("Latency", _format_ms(latency)),
-            _row("Runtime", _format_runtime(stats.running_time_seconds)),
-            _row("Connection", state.system.connection_status.value),
-        ]
 
     def _verbose_section(self, state: DashboardState) -> list[str]:
         """Developer / pipeline details — hidden in default live mode."""
@@ -275,19 +358,7 @@ class DashboardRenderer:
             "TRADE DECISION DETAIL",
             _row("Reason", trade.reason),
             _row("Next", trade.next_action),
-            _row("BUY Readiness", trade.decision_readiness),
-            _row("SELL Readiness", trade.sell_decision_readiness),
-            "Explanation",
-            _row("Assessment", trade.explanation.assessment),
-            _row("Feed", trade.explanation.feed),
-            _row("State", trade.explanation.market_state),
-            _row("Behavior", trade.explanation.behavior),
-            _row("Physics", trade.explanation.physics),
-            _row("Liquidity", trade.explanation.liquidity),
-            _row("Stability", trade.explanation.signal_stability),
-            _row("Readiness", trade.explanation.readiness),
-            "Summary",
-            trade.explanation.summary,
+            *self._decision_explanation_section(trade.explainability),
             "STATISTICS",
             _row("Tick Count", _format_int(state.statistics.tick_count)),
             _row(

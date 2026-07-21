@@ -27,6 +27,7 @@ from hotirjam_ai5.dashboard.models import (
     EngineStatus,
     FeedHealthView,
     FeedStatus,
+    LastSignalView,
     LiveMarketView,
     LiquidityView,
     MarketBehaviorView,
@@ -34,14 +35,20 @@ from hotirjam_ai5.dashboard.models import (
     MarketStateView,
     MarketTransitionView,
     MarketStatus,
+    MemoryBandView,
+    MemoryPanelView,
     PerformanceView,
     PhysicsView,
     StatisticsView,
+    SystemPanelView,
     SystemView,
     TradeDecisionView,
 )
 from hotirjam_ai5.dashboard.signal_log import SignalLogWriter
 from hotirjam_ai5.dashboard.statistics import SessionStatistics
+from hotirjam_ai5.dashboard.version_info import git_commit_short, package_version
+from hotirjam_ai5.performance.models import PerformanceSnapshot, SignalRecord, SignalResult
+from hotirjam_ai5.memory.diagnostics_models import BandSummary, MemoryDiagnosticsReport
 from hotirjam_ai5.decision_assessment import DecisionAssessmentEngine
 from hotirjam_ai5.decision_evaluation import DecisionEvaluationEngine
 from hotirjam_ai5.decision_foundation import DecisionFoundationEngine
@@ -182,6 +189,8 @@ class DashboardController:
         self._market = LiveMarketView(symbol=self._symbol)
         self._dom = DomView()
         self._physics_view = PhysicsView()
+        self._decision_elapsed_ms: list[float] = []
+        self._last_signal_memory_effect: str = "--"
 
     @property
     def memory_diagnostics(self) -> MemoryDiagnostics:
@@ -356,6 +365,7 @@ class DashboardController:
         StateAdapter.record(self._memory, market_state)
         BehaviorAdapter.record(self._memory, market_behavior)
         memory_report = build_memory_diagnostics(self._memory)
+        decision_started = time.perf_counter()
         trade_decision = self._trade_decision.evaluate(
             decision_assessment,
             market_context,
@@ -363,10 +373,18 @@ class DashboardController:
             liquidity_snapshot,
             memory_diagnostics=memory_report,
         )
+        self._decision_elapsed_ms.append(
+            (time.perf_counter() - decision_started) * 1000.0
+        )
+        if len(self._decision_elapsed_ms) > 200:
+            self._decision_elapsed_ms = self._decision_elapsed_ms[-200:]
         # Decision stream append after scoring — does not feed this evaluation.
         DecisionAdapter.record(self._memory, trade_decision)
         self._statistics.record_decision(trade_decision.decision.value)
         if trade_decision.decision is TradeDecision.BUY_INTERNAL:
+            self._last_signal_memory_effect = _memory_effect_label(
+                trade_decision, side="BUY"
+            )
             self._log_buy_internal(
                 trade_decision,
                 market_context=market_context,
@@ -374,6 +392,9 @@ class DashboardController:
                 liquidity=liquidity_snapshot,
             )
         elif trade_decision.decision is TradeDecision.SELL_INTERNAL:
+            self._last_signal_memory_effect = _memory_effect_label(
+                trade_decision, side="SELL"
+            )
             self._log_sell_internal(
                 trade_decision,
                 market_context=market_context,
@@ -397,10 +418,11 @@ class DashboardController:
             timestamp=trade_decision.timestamp,
         )
         performance = self._performance.snapshot()
-        last_result = "—"
         records = self._performance.records
+        last_result = "--"
         if records:
             last_result = records[-1].result.value
+        timing_summary = self._entry_timing.summary()
         display_clock = format_multi_zone(self._wall_clock())
         if liquidity_snapshot is None:
             liquidity_view = LiquidityView()
@@ -408,6 +430,12 @@ class DashboardController:
             liquidity_view = LiquidityView(
                 shift=str(liquidity_snapshot.liquidity_shift),
                 imbalance=str(liquidity_snapshot.dom_imbalance),
+            )
+        store_diag = memory_report.store
+        avg_decision_ms = None
+        if self._decision_elapsed_ms:
+            avg_decision_ms = sum(self._decision_elapsed_ms) / len(
+                self._decision_elapsed_ms
             )
         return DashboardState(
             system=SystemView(
@@ -442,7 +470,7 @@ class DashboardController:
                 previous_state=(
                     market_transition.previous_state.value
                     if market_transition.previous_state is not None
-                    else "—"
+                    else "--"
                 ),
                 transition=market_transition.transition,
                 changed=market_transition.changed,
@@ -514,23 +542,43 @@ class DashboardController:
                 ),
                 no_trade_frequency=self._statistics.decision_frequency("NO_TRADE"),
             ),
-            performance=PerformanceView(
-                buy_signals=performance.buy_signals,
-                sell_signals=performance.sell_signals,
-                success_count=performance.success_count,
-                failed_count=performance.failed_count,
-                win_rate=performance.win_rate,
-                average_points=performance.average_points,
+            performance=_performance_view(
+                performance,
+                records=records,
                 last_result=last_result,
-                last_signal_decision=performance.last_signal_decision,
-                last_signal_utc=performance.last_signal_utc,
-                last_signal_new_york=performance.last_signal_new_york,
-                last_signal_tashkent=performance.last_signal_tashkent,
+                average_mfe=(
+                    timing_summary.average_mfe
+                    if timing_summary.signal_count > 0
+                    else None
+                ),
+                average_mae=(
+                    timing_summary.average_mae
+                    if timing_summary.signal_count > 0
+                    else None
+                ),
             ),
             liquidity=liquidity_view,
             display_clock=DisplayClockView(
                 new_york=display_clock.new_york,
                 tashkent=display_clock.tashkent,
+            ),
+            memory_panel=_memory_panel_view(memory_report),
+            last_signal=_last_signal_view(
+                records,
+                memory_effect=self._last_signal_memory_effect,
+            ),
+            system_panel=SystemPanelView(
+                memory_records=store_diag.memory_size,
+                memory_usage_pct=store_diag.ring_buffer_usage,
+                decision_count=(
+                    self._statistics.buy_internal_count
+                    + self._statistics.sell_internal_count
+                    + self._statistics.no_trade_count
+                ),
+                append_rate=store_diag.average_append_rate,
+                average_decision_ms=avg_decision_ms,
+                version=package_version(),
+                git_commit=git_commit_short(),
             ),
             events=self._event_log.latest(),
         )
@@ -668,6 +716,136 @@ def _memory_agreement(trade_decision: TradeDecisionSnapshot) -> float:
 def _memory_persistence(trade_decision: TradeDecisionSnapshot) -> float:
     mi = trade_decision.memory_influence
     return 0.0 if mi is None else mi.persistence
+
+
+def _memory_effect_label(trade_decision: TradeDecisionSnapshot, *, side: str) -> str:
+    """Presentation-only HELPED / HURT / NO_EFFECT from Memory deltas."""
+    mi = trade_decision.memory_influence
+    if mi is None or not mi.applied:
+        return "NO_EFFECT"
+    delta = mi.buy_delta if side == "BUY" else mi.sell_delta
+    if delta > 0:
+        return "HELPED"
+    if delta < 0:
+        return "HURT"
+    return "NO_EFFECT"
+
+
+def _band_view(band: BandSummary) -> MemoryBandView:
+    return MemoryBandView(
+        name=band.name.value,
+        direction=band.direction,
+        strength=band.strength,
+        confidence=band.confidence,
+        persistence=band.persistence,
+    )
+
+
+def _memory_panel_view(report: MemoryDiagnosticsReport) -> MemoryPanelView:
+    fast, medium, slow = report.bands
+    return MemoryPanelView(
+        fast=_band_view(fast),
+        medium=_band_view(medium),
+        slow=_band_view(slow),
+        consensus_direction=report.consensus.direction,
+        consensus_agreement=report.consensus.agreement,
+        consensus_confidence=report.consensus.confidence,
+        consensus_status=report.consensus.status.value,
+    )
+
+
+def _format_duration(seconds: float) -> str:
+    total = max(0, int(seconds))
+    minutes, secs = divmod(total, 60)
+    if minutes:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
+
+
+def _last_signal_view(
+    records: tuple[SignalRecord, ...],
+    *,
+    memory_effect: str,
+) -> LastSignalView:
+    if not records:
+        return LastSignalView()
+    record = records[-1]
+    direction = record.decision.replace("_INTERNAL", "")
+    entry = record.entry_time.new_york
+    if record.evaluation_time is None:
+        exit_time = "--"
+        duration = "--"
+    else:
+        exit_time = record.evaluation_time.new_york
+        duration = _format_duration(
+            record.evaluation_time.epoch_seconds - record.entry_time.epoch_seconds
+        )
+    return LastSignalView(
+        direction=direction,
+        entry_time=entry,
+        exit_time=exit_time,
+        duration=duration,
+        result=record.result.value,
+        points=record.points,
+        memory_effect=memory_effect if memory_effect else "--",
+    )
+
+
+def _performance_view(
+    performance: PerformanceSnapshot,
+    *,
+    records: tuple[SignalRecord, ...],
+    last_result: str,
+    average_mfe: float | None,
+    average_mae: float | None,
+) -> PerformanceView:
+    wins = [
+        r.points
+        for r in records
+        if r.result is SignalResult.SUCCESS and r.points is not None
+    ]
+    losses = [
+        r.points
+        for r in records
+        if r.result is SignalResult.FAILED and r.points is not None
+    ]
+    average_rr: float | None = None
+    profit_factor: float | None = None
+    if wins and losses:
+        avg_win = sum(wins) / len(wins)
+        avg_loss = abs(sum(losses) / len(losses))
+        if avg_loss > 0:
+            average_rr = avg_win / avg_loss
+        gross_loss = abs(sum(losses))
+        if gross_loss > 0:
+            profit_factor = sum(wins) / gross_loss
+    elif wins and not losses:
+        profit_factor = None
+        average_rr = None
+
+    evaluated = performance.success_count + performance.failed_count
+    decision_accuracy = performance.win_rate if evaluated else None
+    signals_today = performance.buy_signals + performance.sell_signals
+
+    return PerformanceView(
+        buy_signals=performance.buy_signals,
+        sell_signals=performance.sell_signals,
+        success_count=performance.success_count,
+        failed_count=performance.failed_count,
+        win_rate=performance.win_rate,
+        average_points=performance.average_points,
+        last_result=last_result,
+        last_signal_decision=performance.last_signal_decision,
+        last_signal_utc=performance.last_signal_utc,
+        last_signal_new_york=performance.last_signal_new_york,
+        last_signal_tashkent=performance.last_signal_tashkent,
+        signals_today=signals_today,
+        average_mfe=average_mfe,
+        average_mae=average_mae,
+        average_rr=average_rr,
+        profit_factor=profit_factor,
+        decision_accuracy=decision_accuracy,
+    )
 
 
 def _trade_explanation_view(

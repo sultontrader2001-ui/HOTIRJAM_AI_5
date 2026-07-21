@@ -108,12 +108,14 @@ def test_app_runs_limited_frames_without_fake_market_data() -> None:
     assert code == 0
     output = buffer.getvalue()
     assert "HOTIRJAM AI 5 LIVE" in output
-    assert "Price             : —" in output
-    assert "Connection        : CONNECTING" in output
+    assert "Price                 : --" in output
+    assert "Feed Health           : DISCONNECTED" in output
     assert "MARKET" in output
     assert "AI STATUS" in output
     assert "TRADE DECISION" in output
+    assert "MEMORY" in output
     assert "PERFORMANCE" in output
+    assert "LAST SIGNAL" in output
     assert "SYSTEM" in output
     assert "DECISION FOUNDATION" not in output
 
@@ -151,9 +153,8 @@ def test_app_updates_from_live_ingress(tmp_path: Path) -> None:
     code = app.run(max_frames=1)
     assert code == 0
     output = buffer.getvalue()
-    assert "Connection        : CONNECTED" in output
-    assert "Feed Health       : HEALTHY" in output
-    assert "Price             : 20110.00" in output
+    assert "Feed Health           : HEALTHY" in output
+    assert "Price                 : 20110.00" in output
     assert ">>>  " not in output or "Decision : NO_TRADE" in output
     assert "DECISION FOUNDATION" not in output
     assert "Tick received" not in output

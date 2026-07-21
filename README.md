@@ -49,6 +49,7 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 42 | Market Memory Live Audit (audit only) | Done |
 | 43 | Market Memory Diagnostics | Done |
 | 44 | Market Memory Decision Integration v1 | Done |
+| 45 | Professional Trading Dashboard v2 | Done |
 
 **Out of scope still:** tradable BUY, SELL, order execution, broker connectivity,
 positions, risk
@@ -86,6 +87,8 @@ Trade Decision or dashboard rendering.
 Market Memory Decision Integration v1 (Sprint 44): capped secondary BUY/SELL score
 adjustment from Memory Diagnostics (max boost ±5 / oppose ±3). Primary category
 thresholds unchanged. Memory never invents decisions.
+Professional Trading Dashboard v2 (Sprint 45): visualization-only LIVE monitor with
+MARKET / AI STATUS / TRADE DECISION / MEMORY / PERFORMANCE / LAST SIGNAL / SYSTEM.
 
 ### Requirements
 
