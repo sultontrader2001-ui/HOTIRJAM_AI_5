@@ -31,42 +31,31 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "SYSTEM" in text
     assert "LIVE MARKET" in text
     assert "FEED HEALTH" in text
-    assert "DOM" in text
     assert "DOM HEALTH" in text
     assert "PHYSICS" in text
-    assert "MARKET STATE" in text
-    assert "MARKET TRANSITION" in text
-    assert "MARKET BEHAVIOR" in text
-    assert "MARKET CONTEXT" in text
-    assert "DECISION FOUNDATION" in text
     assert "STATISTICS" in text
+    assert "MARKET ANALYSIS" in text
+    assert "CONTEXT" in text
+    assert "DECISION FOUNDATION" in text
     assert "LOG" in text
-    assert "- Best Bid Size:" in text
-    assert "- Tick Velocity:" in text
-    assert "- Tick Acceleration:" in text
-    assert "- State:" in text
-    assert "- Reason:" in text
-    assert "- Transition:" in text
-    assert "- Changed:" in text
-    assert "- Behavior:" in text
-    assert "- Summary:" in text
-    assert "- Ready:" in text
+    assert "State       :" in text
+    assert "Transition  :" in text
+    assert "Behavior    :" in text
+    assert "Ready :" in text
 
 
 def test_render_shows_placeholder_not_fake_prices() -> None:
     text = DashboardRenderer().render(DashboardState())
-    assert "Last Price: —" in text
-    assert "Last Tick Age: —" in text
-    assert "Best Bid Size: —" in text
-    assert "Tick Velocity: —" in text
-    assert "Tick Acceleration: —" in text
-    assert "State: UNKNOWN" in text
-    assert "Transition: NONE" in text
-    assert "Changed: NO" in text
-    assert "Behavior: UNKNOWN" in text
-    assert "Summary: Insufficient market context." in text
-    assert "Ready: NO" in text
-    assert "Reason: Waiting for market context." in text
+    assert "Price  : —" in text
+    assert "TickAge : —" in text
+    assert "Velocity : —" in text
+    assert "Accel    : —" in text
+    assert "State       : UNKNOWN" in text
+    assert "Transition  : NONE" in text
+    assert "Behavior    : UNKNOWN" in text
+    assert "Insufficient market context." in text
+    assert "Ready : NO" in text
+    assert "Waiting for market context." in text
     assert "Tick Count: 0" in text
 
 
@@ -79,18 +68,18 @@ def test_render_with_real_market_and_health_values() -> None:
         ),
         market=LiveMarketView(
             symbol="MNQ",
-            last_price=20100.5,
-            bid=20100.25,
-            ask=20100.5,
+            last_price=28762.25,
+            bid=28761.50,
+            ask=28762.25,
             volume=4.0,
         ),
         feed_health=FeedHealthView(
             feed_status=FeedStatus.HEALTHY,
             connection_quality=ConnectionQuality.GOOD,
-            last_tick_age_ms=12.0,
+            last_tick_age_ms=14.0,
             tick_delay_ms=45.0,
-            average_tick_rate=8.5,
-            peak_tick_rate=22.0,
+            average_tick_rate=37.0,
+            peak_tick_rate=40.0,
         ),
         dom=DomView(
             best_bid_size=11,
@@ -98,43 +87,43 @@ def test_render_with_real_market_and_health_values() -> None:
             total_bid_size=80,
             total_ask_size=70,
             depth_levels=10,
-            update_rate=15.0,
+            update_rate=1470.0,
             status="OK",
         ),
         dom_health=DomHealthView(
             feed_status=FeedStatus.HEALTHY,
             connection_quality=ConnectionQuality.GOOD,
-            last_update_age_ms=8.0,
-            update_rate=15.0,
-            peak_update_rate=40.0,
+            last_update_age_ms=0.0,
+            update_rate=1470.0,
+            peak_update_rate=1500.0,
         ),
         physics=PhysicsView(
-            spread=0.25,
-            mid_price=20100.375,
-            tick_velocity=1.5,
-            tick_acceleration=-0.25,
+            spread=0.75,
+            mid_price=28761.875,
+            tick_velocity=7.09,
+            tick_acceleration=32.01,
         ),
         market_state=MarketStateView(
-            state="ACTIVE",
-            reason="Tick activity increasing",
+            state="VOLATILE",
+            reason="Rapid velocity change",
         ),
         market_transition=MarketTransitionView(
-            current_state="ACTIVE",
-            previous_state="QUIET",
-            transition="QUIET → ACTIVE",
-            changed=True,
+            current_state="VOLATILE",
+            previous_state="ACTIVE",
+            transition="NONE",
+            changed=False,
             duration_seconds=18.0,
-            reason="Market state changed from QUIET to ACTIVE",
+            reason="Market state remains VOLATILE",
         ),
         market_behavior=MarketBehaviorView(
-            behavior="ACCELERATING",
-            reason="Tick velocity increasing",
+            behavior="UNSTABLE",
+            reason="Volatile market condition",
         ),
         market_context=MarketContextView(
-            summary="Trending market with accelerating behavior.",
-            state="ACTIVE",
-            behavior="ACCELERATING",
-            transition="QUIET → ACTIVE",
+            summary="Volatile market with unstable behavior.",
+            state="VOLATILE",
+            behavior="UNSTABLE",
+            transition="NONE",
         ),
         decision_foundation=DecisionFoundationView(
             ready=True,
@@ -143,36 +132,43 @@ def test_render_with_real_market_and_health_values() -> None:
         ),
         statistics=StatisticsView(
             tick_count=120,
-            tick_rate=12.5,
+            tick_rate=37.0,
             running_time_seconds=65,
         ),
         events=("Connected", "DOM connected"),
     )
     text = DashboardRenderer().render(state)
-    assert "PHYSICS" in text
-    assert "MARKET STATE" in text
-    assert "MARKET BEHAVIOR" in text
-    assert "MARKET CONTEXT" in text
-    assert "DECISION FOUNDATION" in text
-    assert "State: ACTIVE" in text
-    assert "Reason: Tick activity increasing" in text
-    assert "Current: ACTIVE" in text
-    assert "Previous: QUIET" in text
-    assert "Transition: QUIET → ACTIVE" in text
-    assert "Changed: YES" in text
-    assert "Duration: 18 s" in text
-    assert "Behavior: ACCELERATING" in text
-    assert "Reason: Tick velocity increasing" in text
-    assert "Summary: Trending market with accelerating behavior." in text
-    assert "Ready: YES" in text
-    assert "Summary: Observation layer complete." in text
-    assert "Spread: 0.25" in text
-    assert "Mid Price: 20100.38" in text
-    assert "Tick Velocity: 1.5000" in text
-    assert "Tick Acceleration: -0.2500" in text
+    assert "Status : RUNNING" in text
+    assert "Conn   : CONNECTED" in text
+    assert "Symbol : MNQ" in text
+    assert "Price  : 28762.25" in text
+    assert "Spread : 0.75" in text
+    assert "Healthy" in text
+    assert "TickAge : 14 ms" in text
+    assert "Rate    : 37/s" in text
+    assert "DOMAge  : 0 ms" in text
+    assert "Rate    : 1470/s" in text
+    assert "Velocity : 7.09" in text
+    assert "Accel    : 32.01" in text
+    assert "Tick Rate : 37/s" in text
+    assert "MARKET ANALYSIS" in text
+    assert "State       : VOLATILE" in text
+    assert "Transition  : NONE" in text
+    assert "Behavior    : UNSTABLE" in text
+    assert "CONTEXT" in text
+    assert "Volatile market with unstable behavior." in text
+    assert "Ready : YES" in text
+    assert "Observation layer complete." in text
     assert "• DOM connected" in text
 
 
 def test_empty_log_shows_none() -> None:
     text = DashboardRenderer().render(DashboardState())
     assert "• (none)" in text
+
+
+def test_two_column_headers_align() -> None:
+    text = DashboardRenderer().render(DashboardState())
+    assert "SYSTEM" in text and "LIVE MARKET" in text
+    assert "FEED HEALTH" in text and "DOM HEALTH" in text
+    assert "PHYSICS" in text and "STATISTICS" in text

@@ -50,7 +50,7 @@ python -m hotirjam_ai5 \
   --dom-file "/path/to/HOTIRJAM/mnq_dom.ndjson"
 ```
 
-Dashboard redraw uses line-diff updates when ANSI/VT is available; otherwise a Windows-safe full redraw. Display refresh is clamped to 250–500 ms (`--refresh`); tick/DOM polling stays faster (`--poll`, default 50 ms).
+Dashboard redraw uses line-diff updates when ANSI/VT is available; otherwise a Windows-safe full redraw. Display refresh is clamped to 250–500 ms (`--refresh`); tick/DOM polling stays faster (`--poll`, default 50 ms). The terminal layout is compact two-column (SYSTEM/LIVE MARKET, FEED/DOM HEALTH, PHYSICS/STATISTICS) plus MARKET ANALYSIS, CONTEXT, and DECISION FOUNDATION.
 
 ### PHYSICS section
 

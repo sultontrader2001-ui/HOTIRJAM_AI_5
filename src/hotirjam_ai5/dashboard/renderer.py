@@ -4,21 +4,14 @@ from __future__ import annotations
 
 from hotirjam_ai5.dashboard.models import DashboardState
 
-SEPARATOR = "=" * 40
+SEPARATOR = "═" * 62
 MISSING = "—"
+LEFT_WIDTH = 26
 
 
 def _format_price(value: float | None) -> str:
     if value is None:
         return MISSING
-    return f"{value:.2f}"
-
-
-def _format_volume(value: float | None) -> str:
-    if value is None:
-        return MISSING
-    if value == int(value):
-        return str(int(value))
     return f"{value:.2f}"
 
 
@@ -29,6 +22,8 @@ def _format_int(value: int | None) -> str:
 
 
 def _format_rate(value: float) -> str:
+    if value == int(value):
+        return f"{int(value)}/s"
     return f"{value:.2f}/s"
 
 
@@ -38,34 +33,38 @@ def _format_ms(value: float | None) -> str:
     return f"{value:.0f} ms"
 
 
-def _format_physics(value: float | None, *, digits: int = 4) -> str:
+def _format_physics(value: float | None, *, digits: int = 2) -> str:
     if value is None:
         return MISSING
     return f"{value:.{digits}f}"
 
 
-def _format_duration(seconds: float) -> str:
-    total = max(0, int(seconds))
-    hours, remainder = divmod(total, 3600)
-    minutes, secs = divmod(remainder, 60)
-    if hours > 0:
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-    return f"{minutes:02d}:{secs:02d}"
+def _title_case_status(value: str) -> str:
+    return value[:1].upper() + value[1:].lower() if value else MISSING
 
 
-def _format_seconds(seconds: float) -> str:
-    return f"{max(0, int(seconds))} s"
+def _pair(left: str, right: str = "") -> str:
+    return f"{left:<{LEFT_WIDTH}}{right}".rstrip()
+
+
+def _zip_columns(left_rows: list[str], right_rows: list[str]) -> list[str]:
+    height = max(len(left_rows), len(right_rows))
+    lines: list[str] = []
+    for index in range(height):
+        left = left_rows[index] if index < len(left_rows) else ""
+        right = right_rows[index] if index < len(right_rows) else ""
+        lines.append(_pair(left, right))
+    return lines
 
 
 class DashboardRenderer:
-    """Converts a DashboardState into the terminal layout."""
+    """Converts a DashboardState into the compact terminal layout."""
 
     def render(self, state: DashboardState) -> str:
         """Return the full dashboard text."""
         market = state.market
         stats = state.statistics
         health = state.feed_health
-        dom = state.dom
         dom_health = state.dom_health
         physics = state.physics
         market_state = state.market_state
@@ -75,74 +74,69 @@ class DashboardRenderer:
         foundation = state.decision_foundation
         events = list(state.events) if state.events else ["(none)"]
 
+        system_rows = [
+            "SYSTEM",
+            f"Status : {state.system.engine_status.value}",
+            f"Conn   : {state.system.connection_status.value}",
+            f"Market : {state.system.market_status.value}",
+        ]
+        market_rows = [
+            "LIVE MARKET",
+            f"Symbol : {market.symbol}",
+            f"Price  : {_format_price(market.last_price)}",
+            f"Bid    : {_format_price(market.bid)}",
+            f"Ask    : {_format_price(market.ask)}",
+            f"Spread : {_format_price(market.spread)}",
+        ]
+        feed_rows = [
+            "FEED HEALTH",
+            _title_case_status(health.feed_status.value),
+            f"Quality : {health.connection_quality.value}",
+            f"TickAge : {_format_ms(health.last_tick_age_ms)}",
+            f"Rate    : {_format_rate(health.average_tick_rate)}",
+        ]
+        dom_rows = [
+            "DOM HEALTH",
+            _title_case_status(dom_health.feed_status.value),
+            f"Quality : {dom_health.connection_quality.value}",
+            f"DOMAge  : {_format_ms(dom_health.last_update_age_ms)}",
+            f"Rate    : {_format_rate(dom_health.update_rate)}",
+        ]
+        physics_rows = [
+            "PHYSICS",
+            f"Velocity : {_format_physics(physics.tick_velocity)}",
+            f"Accel    : {_format_physics(physics.tick_acceleration)}",
+            f"Spread   : {_format_physics(physics.spread, digits=2)}",
+        ]
+        stats_rows = [
+            "STATISTICS",
+            f"Tick Rate : {_format_rate(stats.tick_rate)}",
+            f"Tick Count: {_format_int(stats.tick_count)}",
+        ]
+
+        foundation_detail = (
+            foundation.summary
+            if foundation.ready
+            else (foundation.blocking_reason or foundation.summary)
+        )
+
         lines = [
-            SEPARATOR,
             "HOTIRJAM AI 5",
             SEPARATOR,
-            "SYSTEM",
-            f"- Engine Status: {state.system.engine_status.value}",
-            f"- Connection Status: {state.system.connection_status.value}",
-            f"- Market Status: {state.system.market_status.value}",
-            "LIVE MARKET",
-            f"- Symbol: {market.symbol}",
-            f"- Last Price: {_format_price(market.last_price)}",
-            f"- Bid: {_format_price(market.bid)}",
-            f"- Ask: {_format_price(market.ask)}",
-            f"- Spread: {_format_price(market.spread)}",
-            f"- Volume: {_format_volume(market.volume)}",
-            "FEED HEALTH",
-            f"- Feed Status: {health.feed_status.value}",
-            f"- Connection Quality: {health.connection_quality.value}",
-            f"- Last Tick Age: {_format_ms(health.last_tick_age_ms)}",
-            f"- Tick Delay: {_format_ms(health.tick_delay_ms)}",
-            f"- Average Tick Rate: {_format_rate(health.average_tick_rate)}",
-            f"- Peak Tick Rate: {_format_rate(health.peak_tick_rate)}",
-            "DOM",
-            f"- Best Bid Size: {_format_int(dom.best_bid_size)}",
-            f"- Best Ask Size: {_format_int(dom.best_ask_size)}",
-            f"- Total Bid Size: {_format_int(dom.total_bid_size)}",
-            f"- Total Ask Size: {_format_int(dom.total_ask_size)}",
-            f"- Depth Levels: {_format_int(dom.depth_levels)}",
-            f"- DOM Update Rate: {_format_rate(dom.update_rate)}",
-            "DOM HEALTH",
-            f"- Feed Status: {dom_health.feed_status.value}",
-            f"- Connection Quality: {dom_health.connection_quality.value}",
-            f"- Last Update Age: {_format_ms(dom_health.last_update_age_ms)}",
-            f"- Update Rate: {_format_rate(dom_health.update_rate)}",
-            f"- Peak Update Rate: {_format_rate(dom_health.peak_update_rate)}",
-            "PHYSICS",
-            f"- Spread: {_format_physics(physics.spread, digits=2)}",
-            f"- Mid Price: {_format_physics(physics.mid_price, digits=2)}",
-            f"- Tick Velocity: {_format_physics(physics.tick_velocity)}",
-            f"- Tick Acceleration: {_format_physics(physics.tick_acceleration)}",
-            "MARKET STATE",
-            f"- State: {market_state.state}",
-            f"- Reason: {market_state.reason}",
-            "MARKET TRANSITION",
-            f"- Current: {transition.current_state}",
-            f"- Previous: {transition.previous_state}",
-            f"- Transition: {transition.transition}",
-            f"- Changed: {'YES' if transition.changed else 'NO'}",
-            f"- Duration: {_format_seconds(transition.duration_seconds)}",
-            "MARKET BEHAVIOR",
-            f"- Behavior: {behavior.behavior}",
-            f"- Reason: {behavior.reason}",
-            "MARKET CONTEXT",
-            f"- Summary: {context.summary}",
+            *_zip_columns(system_rows, market_rows),
+            *_zip_columns(feed_rows, dom_rows),
+            *_zip_columns(physics_rows, stats_rows),
+            "MARKET ANALYSIS",
+            f"State       : {market_state.state}",
+            f"Transition  : {transition.transition}",
+            f"Behavior    : {behavior.behavior}",
+            "CONTEXT",
+            context.summary,
             "DECISION FOUNDATION",
-            f"- Ready: {'YES' if foundation.ready else 'NO'}",
-            *(
-                [f"- Summary: {foundation.summary}"]
-                if foundation.ready
-                else [f"- Reason: {foundation.blocking_reason or foundation.summary}"]
-            ),
-            "STATISTICS",
-            f"- Tick Count: {stats.tick_count}",
-            f"- Tick Rate: {_format_rate(stats.tick_rate)}",
-            f"- Running Time: {_format_duration(stats.running_time_seconds)}",
+            f"Ready : {'YES' if foundation.ready else 'NO'}",
+            foundation_detail,
             "LOG",
-            "- Last Events:",
         ]
         for event in events:
-            lines.append(f"  • {event}")
+            lines.append(f"• {event}")
         return "\n".join(lines)
