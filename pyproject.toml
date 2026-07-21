@@ -17,6 +17,7 @@ dev = ["pytest>=8.0"]
 
 [project.scripts]
 hotirjam-ai5 = "hotirjam_ai5.dashboard.app:main"
+hotirjam-ai5-live-validator = "hotirjam_ai5.live_validator.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
