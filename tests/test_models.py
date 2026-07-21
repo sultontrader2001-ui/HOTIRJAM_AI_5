@@ -45,6 +45,7 @@ def test_default_state_has_no_fake_prices() -> None:
     assert state.decision_evaluation.evaluation_allowed is False
     assert state.decision_assessment.assessment_state == "REVIEW"
     assert state.decision_assessment.assessment_ready is False
+    assert state.trade_decision.decision == "NO_TRADE"
     assert state.statistics == StatisticsView()
     assert state.events == ()
 

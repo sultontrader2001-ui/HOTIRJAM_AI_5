@@ -215,6 +215,15 @@ class DecisionAssessmentView:
 
 
 @dataclass(frozen=True, slots=True)
+class TradeDecisionView:
+    """TRADE DECISION section (Sprint 15) — skeleton only."""
+
+    decision: str = "NO_TRADE"
+    reason: str = "Waiting for review completion."
+    next_action: str = "Execution Engine"
+
+
+@dataclass(frozen=True, slots=True)
 class DashboardState:
     """Complete snapshot rendered each refresh cycle."""
 
@@ -238,5 +247,6 @@ class DashboardState:
     decision_assessment: DecisionAssessmentView = field(
         default_factory=DecisionAssessmentView
     )
+    trade_decision: TradeDecisionView = field(default_factory=TradeDecisionView)
     statistics: StatisticsView = field(default_factory=StatisticsView)
     events: Sequence[str] = ()

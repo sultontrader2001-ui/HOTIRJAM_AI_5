@@ -33,6 +33,7 @@ from hotirjam_ai5.dashboard.models import (
     PhysicsView,
     StatisticsView,
     SystemView,
+    TradeDecisionView,
 )
 from hotirjam_ai5.dashboard.statistics import SessionStatistics
 from hotirjam_ai5.decision_assessment import DecisionAssessmentEngine
@@ -54,6 +55,7 @@ from hotirjam_ai5.market_state import (
 from hotirjam_ai5.market_transition import MarketTransitionEngine
 from hotirjam_ai5.physics.engine import PhysicsEngine
 from hotirjam_ai5.physics.measurements import PhysicsSnapshot
+from hotirjam_ai5.trade_decision import TradeDecisionEngine
 
 # Backward-compatible alias used by CLI / older call sites.
 DEFAULT_STALE_SECONDS = DEFAULT_DISCONNECT_SECONDS
@@ -84,6 +86,7 @@ class DashboardController:
         decision_intent: DecisionIntentEngine | None = None,
         decision_evaluation: DecisionEvaluationEngine | None = None,
         decision_assessment: DecisionAssessmentEngine | None = None,
+        trade_decision: TradeDecisionEngine | None = None,
         stale_seconds: float = DEFAULT_DISCONNECT_SECONDS,
         stall_seconds: float = DEFAULT_STALL_SECONDS,
         clock: Callable[[], float] | None = None,
@@ -128,6 +131,9 @@ class DashboardController:
         self._decision_assessment = (
             decision_assessment
             or DecisionAssessmentEngine(clock=wall_clock or time.time)
+        )
+        self._trade_decision = trade_decision or TradeDecisionEngine(
+            clock=wall_clock or time.time
         )
         self._previous_market_state: MarketStateSnapshot | None = None
         self._engine_status = EngineStatus.STARTING
@@ -283,6 +289,7 @@ class DashboardController:
         decision_intent = self._decision_intent.evaluate(decision_foundation)
         decision_evaluation = self._decision_evaluation.evaluate(decision_intent)
         decision_assessment = self._decision_assessment.evaluate(decision_evaluation)
+        trade_decision = self._trade_decision.evaluate(decision_assessment)
         return DashboardState(
             system=SystemView(
                 engine_status=self._engine_status,
@@ -354,6 +361,11 @@ class DashboardController:
                 assessment_ready=decision_assessment.assessment_ready,
                 reason=decision_assessment.reason,
                 next_stage=decision_assessment.next_stage,
+            ),
+            trade_decision=TradeDecisionView(
+                decision=trade_decision.decision.value,
+                reason=trade_decision.reason,
+                next_action=trade_decision.next_action,
             ),
             statistics=StatisticsView(
                 tick_count=tick_count,

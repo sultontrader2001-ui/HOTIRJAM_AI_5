@@ -24,6 +24,7 @@ from hotirjam_ai5.dashboard.models import (
     PhysicsView,
     StatisticsView,
     SystemView,
+    TradeDecisionView,
 )
 from hotirjam_ai5.dashboard.renderer import DashboardRenderer
 
@@ -43,6 +44,7 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "DECISION INTENT" in text
     assert "DECISION EVALUATION" in text
     assert "DECISION ASSESSMENT" in text
+    assert "TRADE DECISION" in text
     assert "LOG" in text
     assert "State       :" in text
     assert "Transition  :" in text
@@ -50,6 +52,7 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "Ready :" in text
     assert "Intent :" in text
     assert "Allowed :" in text
+    assert "Decision:" in text
 
 
 def test_render_shows_placeholder_not_fake_prices() -> None:
@@ -74,6 +77,9 @@ def test_render_shows_placeholder_not_fake_prices() -> None:
     assert "State : REVIEW" in text
     assert "Reason: Evaluation complete, awaiting final decision." in text
     assert "Next  : Decision Assessment Engine" in text
+    assert "Decision: NO_TRADE" in text
+    assert "Reason  : Waiting for review completion." in text
+    assert "Next    : Execution Engine" in text
     assert "Tick Count: 0" in text
 
 
@@ -165,6 +171,11 @@ def test_render_with_real_market_and_health_values() -> None:
             reason="Evaluation completed successfully.",
             next_stage="Trade Decision Engine",
         ),
+        trade_decision=TradeDecisionView(
+            decision="NO_TRADE",
+            reason="Trade logic not implemented yet.",
+            next_action="Execution Engine",
+        ),
         statistics=StatisticsView(
             tick_count=120,
             tick_rate=37.0,
@@ -207,6 +218,10 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "State : READY" in text
     assert "Reason: Evaluation completed successfully." in text
     assert "Next  : Trade Decision Engine" in text
+    assert "TRADE DECISION" in text
+    assert "Decision: NO_TRADE" in text
+    assert "Reason  : Trade logic not implemented yet." in text
+    assert "Next    : Execution Engine" in text
     assert "• DOM connected" in text
 
 

@@ -19,8 +19,9 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 12 | Decision Intent Engine v1 | Done |
 | 13 | Decision Evaluation Engine v1 | Done |
 | 14 | Decision Assessment Engine v1 | Done |
+| 15 | Trade Decision Engine v1 (Skeleton) | Done |
 
-**Out of scope still:** Trade Decision Engine, BUY/SELL, AI, risk
+**Out of scope still:** BUY/SELL trade logic, order execution, broker connectivity, risk
 
 Market/DOM/physics fields show `—` until enough live updates exist. No synthetic data.
 Market State is observation-only (UNKNOWN / QUIET / NORMAL / ACTIVE / TRENDING / VOLATILE).
@@ -31,6 +32,7 @@ Decision Foundation only checks whether observation context is complete enough f
 Decision Intent maps foundation readiness to WAIT / OBSERVE / EVALUATE workflow steps only.
 Decision Evaluation maps intent to IDLE / WAITING / EVALUATING lifecycle states only.
 Decision Assessment maps evaluation status to BLOCKED / REVIEW / READY only.
+Trade Decision v1 always returns `NO_TRADE` (public interface only).
 
 ### Requirements
 
@@ -116,6 +118,11 @@ Does not inspect lower layers or produce trading outputs.
 Final evaluation standardization over `DecisionEvaluationSnapshot` only.
 Maps `WAITING` to `BLOCKED`, `IDLE` to `REVIEW`, and `EVALUATING` to `READY`.
 Does not emit BUY/SELL, orders, risk, probability, or confidence.
+
+### TRADE DECISION section
+
+Architecture skeleton over `DecisionAssessmentSnapshot` only.
+Always emits `NO_TRADE` in v1. Does not place orders, connect to a broker, or size positions.
 
 ### Test
 

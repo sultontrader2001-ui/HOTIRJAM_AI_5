@@ -75,6 +75,7 @@ class DashboardRenderer:
         intent = state.decision_intent
         evaluation = state.decision_evaluation
         assessment = state.decision_assessment
+        trade = state.trade_decision
         events = list(state.events) if state.events else ["(none)"]
 
         system_rows = [
@@ -152,6 +153,10 @@ class DashboardRenderer:
             f"Ready : {'YES' if assessment.assessment_ready else 'NO'}",
             f"Reason: {assessment.reason}",
             f"Next  : {assessment.next_stage}",
+            "TRADE DECISION",
+            f"Decision: {trade.decision}",
+            f"Reason  : {trade.reason}",
+            f"Next    : {trade.next_action}",
             "LOG",
         ]
         for event in events:
