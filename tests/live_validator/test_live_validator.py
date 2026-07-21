@@ -388,3 +388,135 @@ def test_empty_frame_decision_disabled() -> None:
     frame = ArchitecturePipeline.empty_frame(timestamp=0.0)
     assert frame.decision == "DISABLED"
     assert frame.current_price is None
+
+
+# ---------------------------------------------------------------- H-6.1 view toggle
+
+
+class _FakeKeyboard:
+    """Scripted keyboard: each poll pass consumes the next batch of keys."""
+
+    def __init__(self, batches: list[str]) -> None:
+        self._batches = list(batches)
+        self._pending: list[str] = list(self._batches.pop(0)) if self._batches else []
+        self.enabled = 0
+        self.disabled = 0
+
+    def enable(self) -> None:
+        self.enabled += 1
+
+    def disable(self) -> None:
+        self.disabled += 1
+
+    def poll_key(self) -> str | None:
+        if self._pending:
+            return self._pending.pop(0)
+        # Batch exhausted: report "no key" now; refill for the next poll pass.
+        if self._batches:
+            self._pending = list(self._batches.pop(0))
+        return None
+
+
+def _app_with_keys(batches: list[str]) -> LiveValidatorApp:
+    return LiveValidatorApp(
+        controller=LiveValidatorController(),
+        poll_seconds=0.01,
+        refresh_seconds=0.01,
+        sleep_fn=lambda _s: None,
+        keyboard=_FakeKeyboard(batches),  # type: ignore[arg-type]
+    )
+
+
+def test_developer_view_toggle_repeats_forever() -> None:
+    app = _app_with_keys([])
+    assert app.developer_mode is False
+    for _ in range(3):
+        assert app.toggle_developer_mode() is True
+        assert app.developer_mode is True
+        assert app.toggle_developer_mode() is False
+        assert app.developer_mode is False
+
+
+def test_escape_returns_to_dashboard() -> None:
+    app = _app_with_keys([])
+    app.toggle_developer_mode()
+    assert app.developer_mode is True
+    assert app.exit_developer_mode() is True
+    assert app.developer_mode is False
+    # ESC on the Dashboard is a no-op, never a trap.
+    assert app.exit_developer_mode() is False
+    assert app.developer_mode is False
+
+
+def test_keyboard_d_toggles_and_escape_exits() -> None:
+    app = _app_with_keys(["dd", "D", "\x1b"])
+    assert app._poll_keyboard_toggle() is True
+    assert app.developer_mode is False  # d then d in one drain: on then off
+    assert app._poll_keyboard_toggle() is True
+    assert app.developer_mode is True  # D
+    assert app._poll_keyboard_toggle() is True
+    assert app.developer_mode is False  # ESC
+    assert app._poll_keyboard_toggle() is False  # no keys pending
+
+
+def test_toggle_preserves_engine_state_and_feed() -> None:
+    class FakeIngress:
+        def __init__(self) -> None:
+            self._ts = 0.0
+
+        def poll(self) -> tuple[LiveTick, ...]:
+            self._ts += 1.0
+            return (_tick(100.0 + self._ts * 0.25, ts=self._ts),)
+
+    controller = LiveValidatorController()
+    keyboard = _FakeKeyboard(["", "d", "", "d", "", "d"])
+    app = LiveValidatorApp(
+        controller=controller,
+        ingress=FakeIngress(),  # type: ignore[arg-type]
+        poll_seconds=0.01,
+        refresh_seconds=0.01,
+        sleep_fn=lambda _s: None,
+        keyboard=keyboard,  # type: ignore[arg-type]
+    )
+    code = app.run(max_frames=6)
+    assert code == 0
+    # Feed never interrupted: every loop iteration accepted its tick.
+    assert app.feed_status() in {"LIVE", "STALE"}
+    assert controller.evaluations >= 6
+    assert keyboard.enabled == 1
+    assert keyboard.disabled == 1
+    # Same runtime throughout: ended back where the toggles left it.
+    assert app.developer_mode is True
+
+
+def test_view_change_triggers_immediate_render() -> None:
+    keyboard = _FakeKeyboard(["", "d"])
+    renders: list[bool] = []
+
+    class SpyDisplay:
+        uses_ansi = False
+
+        def prepare(self) -> None:
+            pass
+
+        def shutdown(self) -> None:
+            pass
+
+        def terminal_width(self) -> int:
+            return 80
+
+        def render_frame(self, text: str) -> None:
+            renders.append("DEVELOPER VIEW" in text)
+
+    # Clock frozen: only the first frame and the toggle frame may render.
+    app = LiveValidatorApp(
+        controller=LiveValidatorController(),
+        display=SpyDisplay(),  # type: ignore[arg-type]
+        poll_seconds=0.01,
+        refresh_seconds=1000.0,
+        sleep_fn=lambda _s: None,
+        clock=lambda: 100.0,
+        keyboard=keyboard,  # type: ignore[arg-type]
+    )
+    app.run(max_frames=2)
+    assert renders == [False, True]

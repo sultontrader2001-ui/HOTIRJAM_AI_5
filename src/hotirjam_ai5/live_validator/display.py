@@ -119,7 +119,7 @@ def render_developer_view(
             "Execution Engine  DISABLED",
             "Observation Mode  No Orders",
             "",
-            "Press D — Certification Dashboard",
+            "Press D or ESC — Certification Dashboard",
         ]
     )
     return "\n".join(lines)

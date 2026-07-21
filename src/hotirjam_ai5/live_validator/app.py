@@ -43,6 +43,7 @@ class LiveValidatorApp:
         clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], float] = time.time,
         stale_seconds: float = DEFAULT_STALE_SECONDS,
+        keyboard: KeyboardInput | None = None,
     ) -> None:
         if poll_seconds <= 0:
             raise ValueError("poll_seconds must be positive")
@@ -60,7 +61,7 @@ class LiveValidatorApp:
         self._developer_mode = False
         self._last_tick_wall: float | None = None
         self._ticks_seen = 0
-        self._keyboard = KeyboardInput()
+        self._keyboard = keyboard or KeyboardInput()
         # Presentation-only feed telemetry for the certification dashboard.
         # Never feeds any engine.
         self._last_bid: float | None = None
@@ -80,6 +81,13 @@ class LiveValidatorApp:
         """Flip Trader ↔ Developer view. Returns new mode."""
         self._developer_mode = not self._developer_mode
         return self._developer_mode
+
+    def exit_developer_mode(self) -> bool:
+        """Return to the Certification Dashboard. Returns True if view changed."""
+        if not self._developer_mode:
+            return False
+        self._developer_mode = False
+        return True
 
     def feed_status(self) -> str:
         """Presentation-only feed health from last accepted tick age."""
@@ -161,11 +169,27 @@ class LiveValidatorApp:
         self._display.render_frame(text)
         return text
 
-    def _poll_keyboard_toggle(self) -> None:
-        """Non-blocking D / d toggle (cross-platform)."""
-        ch = self._keyboard.poll_key()
-        if ch in {"d", "D"}:
-            self.toggle_developer_mode()
+    _ESCAPE = "\x1b"
+    _MAX_KEYS_PER_POLL = 32
+
+    def _poll_keyboard_toggle(self) -> bool:
+        """Drain pending keys: D toggles the view, ESC returns to Dashboard.
+
+        Non-blocking and cross-platform. Returns True when the view changed,
+        so the caller can redraw immediately instead of waiting for the next
+        refresh tick.
+        """
+        changed = False
+        for _ in range(self._MAX_KEYS_PER_POLL):
+            ch = self._keyboard.poll_key()
+            if ch is None:
+                break
+            if ch in {"d", "D"}:
+                self.toggle_developer_mode()
+                changed = True
+            elif ch == self._ESCAPE:
+                changed = self.exit_developer_mode() or changed
+        return changed
 
     def run(self, *, max_frames: int | None = None) -> int:
         """Poll continuously; redraw on refresh cadence. Returns 0 on exit."""
@@ -178,10 +202,11 @@ class LiveValidatorApp:
         try:
             while max_frames is None or frames < max_frames:
                 self.poll_once()
-                self._poll_keyboard_toggle()
+                view_changed = self._poll_keyboard_toggle()
                 now = self._clock()
                 should_render = (
-                    last_render_at is None
+                    view_changed
+                    or last_render_at is None
                     or (now - last_render_at) >= self._refresh_seconds
                 )
                 if should_render:
