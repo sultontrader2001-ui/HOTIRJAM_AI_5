@@ -125,19 +125,35 @@ def test_controller_on_tick_updates_and_never_enables_decision(tmp_path: Path) -
     assert "break_capability" in payload
 
 
-def test_display_includes_required_sections() -> None:
-    frame = Pipeline.empty_frame(timestamp=1.0)
+def test_display_trader_view_sections() -> None:
+    frame = Pipeline.empty_frame(timestamp=1_700_000_000.0)
     text = render_validator_frame(frame)
+    assert "HOTIRJAM AI 5" in text
+    assert "LIVE ANALYSIS" in text
     assert "Current Price" in text
+    assert "Feed Status" in text
     assert "OBJECTIVE" in text
+    assert "MARKET MOMENTUM" in text
+    assert "BREAK ANALYSIS" in text
+    assert "AI THINKING" in text
+    assert "Decision Engine   DISABLED" in text
+    assert "Execution Engine  DISABLED" in text
+    assert "Observation Mode  No Orders" in text
+    # Developer noise must stay hidden in default trader view.
+    assert "Impulse/Mom/Cndl" not in text
+    assert "Pressure/Decay" not in text
+    assert "Pressure/Resist" not in text
+
+
+def test_display_developer_view_toggle() -> None:
+    frame = Pipeline.empty_frame(timestamp=1_700_000_000.0)
+    text = render_validator_frame(frame, developer_mode=True)
+    assert "DEVELOPER VIEW" in text
     assert "INITIATIVE" in text
     assert "RESPONSE" in text
     assert "CONTINUATION" in text
     assert "BREAK CAPABILITY" in text
-    assert "Decision          DISABLED" in text
-    assert "Decision Engine: DISABLED" in text
-    assert "Execution Engine: DISABLED" in text
-    assert "No BUY" in text
+    assert "Decision Engine   DISABLED" in text
 
 
 def test_app_poll_and_render_without_decision(tmp_path: Path) -> None:
