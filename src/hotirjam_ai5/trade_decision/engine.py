@@ -9,7 +9,7 @@ from hotirjam_ai5.decision_assessment import DecisionAssessmentSnapshot
 from hotirjam_ai5.trade_decision.models import TradeDecision, TradeDecisionSnapshot
 from hotirjam_ai5.trade_decision.policy import (
     NEXT_ACTION,
-    REVIEW_REASON,
+    PENDING_REASON,
     apply_trade_decision_policy,
 )
 
@@ -18,7 +18,7 @@ class TradeDecisionEngine:
     """Orchestrates trade decision evaluation via the internal policy.
 
     Consumes only DecisionAssessmentSnapshot.
-    Always returns NO_TRADE in v1. Never places orders or connects to a broker.
+    Always returns NO_TRADE. Never places orders or connects to a broker.
     """
 
     def __init__(self, *, clock: Callable[[], float] | None = None) -> None:
@@ -26,7 +26,7 @@ class TradeDecisionEngine:
         self._latest = TradeDecisionSnapshot(
             timestamp=self._clock(),
             decision=TradeDecision.NO_TRADE,
-            reason=REVIEW_REASON,
+            reason=PENDING_REASON,
             next_action=NEXT_ACTION,
         )
 

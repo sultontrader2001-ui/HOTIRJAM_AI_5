@@ -1,4 +1,4 @@
-"""Unit tests for Trade Decision Engine + Policy v2 (Sprint 17)."""
+"""Unit tests for Trade Decision Policy + Authorization (Sprint 18)."""
 
 from __future__ import annotations
 
@@ -7,16 +7,18 @@ from hotirjam_ai5.decision_assessment import (
     DecisionAssessmentState,
 )
 from hotirjam_ai5.trade_decision import (
+    TradeAuthorization,
     TradeDecision,
     TradeDecisionEngine,
     apply_trade_decision_policy,
     evaluate_trade_decision,
+    resolve_trade_authorization,
 )
 from hotirjam_ai5.trade_decision.policy import (
-    BLOCKED_REASON,
+    DENIED_REASON,
+    GRANTED_REASON,
     NEXT_ACTION,
-    READY_REASON,
-    REVIEW_REASON,
+    PENDING_REASON,
 )
 
 
@@ -30,51 +32,58 @@ def _assessment(state: DecisionAssessmentState) -> DecisionAssessmentSnapshot:
     )
 
 
-def test_rule_blocked_no_trade() -> None:
-    snap = apply_trade_decision_policy(
-        _assessment(DecisionAssessmentState.BLOCKED),
-        timestamp=1.0,
-    )
+def test_authorization_denied() -> None:
+    assessment = _assessment(DecisionAssessmentState.BLOCKED)
+    assert resolve_trade_authorization(assessment) is TradeAuthorization.DENIED
+    snap = apply_trade_decision_policy(assessment, timestamp=1.0)
     assert snap.decision is TradeDecision.NO_TRADE
-    assert snap.reason == BLOCKED_REASON
-    assert snap.reason == "Decision assessment blocked."
+    assert snap.reason == DENIED_REASON
+    assert snap.reason == "Trading policy not authorized."
     assert snap.next_action == NEXT_ACTION
 
 
-def test_rule_review_no_trade() -> None:
-    snap = apply_trade_decision_policy(
-        _assessment(DecisionAssessmentState.REVIEW),
-        timestamp=2.0,
-    )
+def test_authorization_pending() -> None:
+    assessment = _assessment(DecisionAssessmentState.REVIEW)
+    assert resolve_trade_authorization(assessment) is TradeAuthorization.PENDING
+    snap = apply_trade_decision_policy(assessment, timestamp=2.0)
     assert snap.decision is TradeDecision.NO_TRADE
-    assert snap.reason == REVIEW_REASON
-    assert snap.reason == "Decision assessment still under review."
+    assert snap.reason == PENDING_REASON
+    assert snap.reason == "Trading authorization pending."
     assert snap.next_action == NEXT_ACTION
 
 
-def test_rule_ready_no_trade() -> None:
-    snap = apply_trade_decision_policy(
-        _assessment(DecisionAssessmentState.READY),
-        timestamp=3.0,
-    )
+def test_authorization_granted() -> None:
+    assessment = _assessment(DecisionAssessmentState.READY)
+    assert resolve_trade_authorization(assessment) is TradeAuthorization.GRANTED
+    snap = apply_trade_decision_policy(assessment, timestamp=3.0)
     assert snap.decision is TradeDecision.NO_TRADE
-    assert snap.reason == READY_REASON
-    assert snap.reason == "Trading policy not yet authorized."
+    assert snap.reason == GRANTED_REASON
+    assert snap.reason == "Trading authorized. Awaiting first strategy."
     assert snap.next_action == NEXT_ACTION
     assert snap.timestamp == 3.0
 
 
-def test_reason_mapping_is_operational() -> None:
-    reasons = {
-        DecisionAssessmentState.BLOCKED: "Decision assessment blocked.",
-        DecisionAssessmentState.REVIEW: "Decision assessment still under review.",
-        DecisionAssessmentState.READY: "Trading policy not yet authorized.",
+def test_authorization_reason_mapping() -> None:
+    expected = {
+        DecisionAssessmentState.BLOCKED: (
+            TradeAuthorization.DENIED,
+            "Trading policy not authorized.",
+        ),
+        DecisionAssessmentState.REVIEW: (
+            TradeAuthorization.PENDING,
+            "Trading authorization pending.",
+        ),
+        DecisionAssessmentState.READY: (
+            TradeAuthorization.GRANTED,
+            "Trading authorized. Awaiting first strategy.",
+        ),
     }
-    for state, expected in reasons.items():
-        snap = apply_trade_decision_policy(_assessment(state), timestamp=4.0)
-        assert snap.reason == expected
-        assert "not implemented" not in snap.reason.lower()
-        assert "placeholder" not in snap.reason.lower()
+    for state, (authorization, reason) in expected.items():
+        assessment = _assessment(state)
+        assert resolve_trade_authorization(assessment) is authorization
+        snap = apply_trade_decision_policy(assessment, timestamp=4.0)
+        assert snap.decision is TradeDecision.NO_TRADE
+        assert snap.reason == reason
 
 
 def test_engine_delegates_to_policy() -> None:
@@ -83,7 +92,7 @@ def test_engine_delegates_to_policy() -> None:
     via_policy = apply_trade_decision_policy(assessment, timestamp=7.0)
     assert via_engine == via_policy
     assert via_engine.decision is TradeDecision.NO_TRADE
-    assert via_engine.reason == READY_REASON
+    assert via_engine.reason == GRANTED_REASON
 
 
 def test_engine_evaluate_and_snapshot() -> None:
@@ -91,7 +100,7 @@ def test_engine_evaluate_and_snapshot() -> None:
     engine = TradeDecisionEngine(clock=clock)
     snap = engine.evaluate(_assessment(DecisionAssessmentState.READY))
     assert snap.decision is TradeDecision.NO_TRADE
-    assert snap.reason == READY_REASON
+    assert snap.reason == GRANTED_REASON
     assert snap.timestamp == 11.0
     assert engine.snapshot() is snap
 
