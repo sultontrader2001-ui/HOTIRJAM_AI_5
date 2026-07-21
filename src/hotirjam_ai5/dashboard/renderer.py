@@ -72,6 +72,7 @@ class DashboardRenderer:
         transition = state.market_transition
         behavior = state.market_behavior
         context = state.market_context
+        foundation = state.decision_foundation
         events = list(state.events) if state.events else ["(none)"]
 
         lines = [
@@ -128,6 +129,13 @@ class DashboardRenderer:
             f"- Reason: {behavior.reason}",
             "MARKET CONTEXT",
             f"- Summary: {context.summary}",
+            "DECISION FOUNDATION",
+            f"- Ready: {'YES' if foundation.ready else 'NO'}",
+            *(
+                [f"- Summary: {foundation.summary}"]
+                if foundation.ready
+                else [f"- Reason: {foundation.blocking_reason or foundation.summary}"]
+            ),
             "STATISTICS",
             f"- Tick Count: {stats.tick_count}",
             f"- Tick Rate: {_format_rate(stats.tick_rate)}",

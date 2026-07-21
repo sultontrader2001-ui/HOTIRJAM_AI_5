@@ -177,6 +177,15 @@ class MarketContextView:
 
 
 @dataclass(frozen=True, slots=True)
+class DecisionFoundationView:
+    """DECISION FOUNDATION section (Sprint 10) — readiness gate only."""
+
+    ready: bool = False
+    summary: str = "Waiting for market context."
+    blocking_reason: str = "Waiting for market context."
+
+
+@dataclass(frozen=True, slots=True)
 class DashboardState:
     """Complete snapshot rendered each refresh cycle."""
 
@@ -190,5 +199,8 @@ class DashboardState:
     market_transition: MarketTransitionView = field(default_factory=MarketTransitionView)
     market_behavior: MarketBehaviorView = field(default_factory=MarketBehaviorView)
     market_context: MarketContextView = field(default_factory=MarketContextView)
+    decision_foundation: DecisionFoundationView = field(
+        default_factory=DecisionFoundationView
+    )
     statistics: StatisticsView = field(default_factory=StatisticsView)
     events: Sequence[str] = ()
