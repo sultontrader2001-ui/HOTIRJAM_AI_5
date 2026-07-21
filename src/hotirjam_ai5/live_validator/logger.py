@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import asdict, is_dataclass
 from enum import Enum
 from pathlib import Path
@@ -42,9 +43,18 @@ class SnapshotLogger:
         return self._count
 
     def log(self, frame: ValidatorFrame) -> None:
-        payload = _jsonable(frame)
-        line = json.dumps(payload, separators=(",", ":"), sort_keys=True)
-        with self._path.open("a", encoding="utf-8") as handle:
-            handle.write(line)
-            handle.write("\n")
-        self._count += 1
+        _t0 = time.perf_counter()
+        try:
+            payload = _jsonable(frame)
+            line = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+            with self._path.open("a", encoding="utf-8") as handle:
+                handle.write(line)
+                handle.write("\n")
+            self._count += 1
+        finally:
+            try:
+                from hotirjam_ai5.live_validator.loop_timing import add_logging_ms
+
+                add_logging_ms((time.perf_counter() - _t0) * 1000.0)
+            except Exception:
+                pass

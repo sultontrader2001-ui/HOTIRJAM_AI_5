@@ -125,43 +125,54 @@ class InitiativeEngine:
         return self._previous_state
 
     def checkpoint(self, path: Path | None = None) -> None:
-        target = path or self._checkpoint_path
-        if target is None:
-            raise ValueError("checkpoint path is required")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "checkpoint_version": CHECKPOINT_VERSION,
-            "previous_state": self._previous_state.value,
-            "latest": {
-                "buyer_initiative": self._latest.buyer_initiative,
-                "seller_initiative": self._latest.seller_initiative,
-                "dominant_side": self._latest.dominant_side.value,
-                "initiative_state": self._latest.initiative_state.value,
-                "confidence": self._latest.confidence,
-                "evidence": {
-                    "force": self._latest.evidence.force,
-                    "motion": self._latest.evidence.motion,
-                    "pressure": self._latest.evidence.pressure,
-                    "liquidity": self._latest.evidence.liquidity,
-                    "energy": self._latest.evidence.energy,
-                    "context": self._latest.evidence.context,
-                },
-                "reasons": list(self._latest.reasons),
-                "timestamp": self._latest.timestamp,
-            },
-        }
-        fd, temporary_name = tempfile.mkstemp(
-            prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
-        )
+        _t0 = time.perf_counter()
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary_name, target)
+            target = path or self._checkpoint_path
+            if target is None:
+                raise ValueError("checkpoint path is required")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "checkpoint_version": CHECKPOINT_VERSION,
+                "previous_state": self._previous_state.value,
+                "latest": {
+                    "buyer_initiative": self._latest.buyer_initiative,
+                    "seller_initiative": self._latest.seller_initiative,
+                    "dominant_side": self._latest.dominant_side.value,
+                    "initiative_state": self._latest.initiative_state.value,
+                    "confidence": self._latest.confidence,
+                    "evidence": {
+                        "force": self._latest.evidence.force,
+                        "motion": self._latest.evidence.motion,
+                        "pressure": self._latest.evidence.pressure,
+                        "liquidity": self._latest.evidence.liquidity,
+                        "energy": self._latest.evidence.energy,
+                        "context": self._latest.evidence.context,
+                    },
+                    "reasons": list(self._latest.reasons),
+                    "timestamp": self._latest.timestamp,
+                },
+            }
+            fd, temporary_name = tempfile.mkstemp(
+                prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary_name, target)
+            finally:
+                if os.path.exists(temporary_name):
+                    os.unlink(temporary_name)
         finally:
-            if os.path.exists(temporary_name):
-                os.unlink(temporary_name)
+            try:
+                from hotirjam_ai5.live_validator.loop_timing import (
+                    add_initiative_checkpoint_ms,
+                )
+
+                add_initiative_checkpoint_ms((time.perf_counter() - _t0) * 1000.0)
+            except Exception:
+                pass
 
     def restore(self, path: Path | None = None) -> None:
         from hotirjam_ai5.initiative.initiative_models import (

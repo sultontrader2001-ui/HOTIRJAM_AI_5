@@ -20,6 +20,16 @@ from hotirjam_ai5.live_validator.display import render_validator_frame
 from hotirjam_ai5.live_validator.idc import idc_page_for_key, render_idc
 from hotirjam_ai5.live_validator.keyboard_input import KeyboardInput
 from hotirjam_ai5.live_validator.logger import SnapshotLogger
+from hotirjam_ai5.live_validator.loop_timing import (
+    LoopTimingSnapshot,
+    add_keyboard_ms,
+    add_poll_ms,
+    add_render_ms,
+    add_sleep_ms,
+    begin_loop_sample,
+    finish_loop_sample,
+    latest_loop_timing,
+)
 from hotirjam_ai5.live_validator.pipeline import ArchitecturePipeline
 from hotirjam_ai5.live_validator.presentation_mode import IdcPage, PresentationMode
 
@@ -141,6 +151,14 @@ class LiveValidatorApp:
     @property
     def audit_log(self) -> AuditLog:
         return self._audit
+
+    @property
+    def loop_timing(self) -> LoopTimingSnapshot | None:
+        """Read-only latest main-loop timing sample (H-6.6.4). Never displayed here."""
+        try:
+            return latest_loop_timing()
+        except Exception:
+            return None
 
     def poll_once(self) -> int:
         """Pull new ticks into the controller. Returns accepted tick count."""
@@ -271,8 +289,25 @@ class LiveValidatorApp:
         self._keyboard.enable()
         try:
             while max_frames is None or frames < max_frames:
+                try:
+                    begin_loop_sample()
+                except Exception:
+                    pass
+
+                _t0 = time.perf_counter()
                 self.poll_once()
+                try:
+                    add_poll_ms((time.perf_counter() - _t0) * 1000.0)
+                except Exception:
+                    pass
+
+                _t0 = time.perf_counter()
                 view_changed = self._poll_keyboard_toggle()
+                try:
+                    add_keyboard_ms((time.perf_counter() - _t0) * 1000.0)
+                except Exception:
+                    pass
+
                 now = self._clock()
                 should_render = (
                     view_changed
@@ -280,10 +315,26 @@ class LiveValidatorApp:
                     or (now - last_render_at) >= self._refresh_seconds
                 )
                 if should_render:
+                    _t0 = time.perf_counter()
                     self.render_once()
+                    try:
+                        add_render_ms((time.perf_counter() - _t0) * 1000.0)
+                    except Exception:
+                        pass
                     last_render_at = now
                     frames += 1
+
+                _t0 = time.perf_counter()
                 self._sleep(self._poll_seconds)
+                try:
+                    add_sleep_ms((time.perf_counter() - _t0) * 1000.0)
+                except Exception:
+                    pass
+
+                try:
+                    finish_loop_sample()
+                except Exception:
+                    pass
         except KeyboardInterrupt:
             pass
         finally:

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
@@ -244,32 +245,43 @@ class PersistentStructuralHierarchy:
 
     def checkpoint(self, path: Path | None = None) -> None:
         """Atomically persist registry, graph, lifecycle, and transition journal."""
-        target = path or self._checkpoint_path
-        if target is None:
-            raise ValueError("checkpoint path is required")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "checkpoint_version": CHECKPOINT_VERSION,
-            "hierarchy_version": self._version,
-            "next_swing_id": self._next_swing_id,
-            "records": [self._record_payload(r) for r in self.snapshot().records],
-            "frontiers": {
-                side.value: list(ids) for side, ids in self._frontiers.items()
-            },
-            "journal": [self._transition_payload(t) for t in self._journal],
-        }
-        fd, temporary_name = tempfile.mkstemp(
-            prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
-        )
+        _t0 = time.perf_counter()
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary_name, target)
+            target = path or self._checkpoint_path
+            if target is None:
+                raise ValueError("checkpoint path is required")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "checkpoint_version": CHECKPOINT_VERSION,
+                "hierarchy_version": self._version,
+                "next_swing_id": self._next_swing_id,
+                "records": [self._record_payload(r) for r in self.snapshot().records],
+                "frontiers": {
+                    side.value: list(ids) for side, ids in self._frontiers.items()
+                },
+                "journal": [self._transition_payload(t) for t in self._journal],
+            }
+            fd, temporary_name = tempfile.mkstemp(
+                prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary_name, target)
+            finally:
+                if os.path.exists(temporary_name):
+                    os.unlink(temporary_name)
         finally:
-            if os.path.exists(temporary_name):
-                os.unlink(temporary_name)
+            try:
+                from hotirjam_ai5.live_validator.loop_timing import (
+                    add_hierarchy_checkpoint_ms,
+                )
+
+                add_hierarchy_checkpoint_ms((time.perf_counter() - _t0) * 1000.0)
+            except Exception:
+                pass
 
     def restore(self, path: Path | None = None) -> None:
         """Restore an exact hierarchy checkpoint without rebuilding history."""
