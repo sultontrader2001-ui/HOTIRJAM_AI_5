@@ -70,6 +70,7 @@ class DashboardRenderer:
         physics = state.physics
         market_state = state.market_state
         transition = state.market_transition
+        behavior = state.market_behavior
         events = list(state.events) if state.events else ["(none)"]
 
         lines = [
@@ -121,6 +122,9 @@ class DashboardRenderer:
             f"- Transition: {transition.transition}",
             f"- Changed: {'YES' if transition.changed else 'NO'}",
             f"- Duration: {_format_seconds(transition.duration_seconds)}",
+            "MARKET BEHAVIOR",
+            f"- Behavior: {behavior.behavior}",
+            f"- Reason: {behavior.reason}",
             "STATISTICS",
             f"- Tick Count: {stats.tick_count}",
             f"- Tick Rate: {_format_rate(stats.tick_rate)}",

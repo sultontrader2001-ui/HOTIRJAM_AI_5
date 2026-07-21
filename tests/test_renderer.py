@@ -12,6 +12,7 @@ from hotirjam_ai5.dashboard.models import (
     FeedHealthView,
     FeedStatus,
     LiveMarketView,
+    MarketBehaviorView,
     MarketStateView,
     MarketTransitionView,
     MarketStatus,
@@ -33,6 +34,7 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "PHYSICS" in text
     assert "MARKET STATE" in text
     assert "MARKET TRANSITION" in text
+    assert "MARKET BEHAVIOR" in text
     assert "STATISTICS" in text
     assert "LOG" in text
     assert "- Best Bid Size:" in text
@@ -42,6 +44,7 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "- Reason:" in text
     assert "- Transition:" in text
     assert "- Changed:" in text
+    assert "- Behavior:" in text
 
 
 def test_render_shows_placeholder_not_fake_prices() -> None:
@@ -54,6 +57,7 @@ def test_render_shows_placeholder_not_fake_prices() -> None:
     assert "State: UNKNOWN" in text
     assert "Transition: NONE" in text
     assert "Changed: NO" in text
+    assert "Behavior: UNKNOWN" in text
     assert "Tick Count: 0" in text
 
 
@@ -113,6 +117,10 @@ def test_render_with_real_market_and_health_values() -> None:
             duration_seconds=18.0,
             reason="Market state changed from QUIET to ACTIVE",
         ),
+        market_behavior=MarketBehaviorView(
+            behavior="ACCELERATING",
+            reason="Tick velocity increasing",
+        ),
         statistics=StatisticsView(
             tick_count=120,
             tick_rate=12.5,
@@ -123,6 +131,7 @@ def test_render_with_real_market_and_health_values() -> None:
     text = DashboardRenderer().render(state)
     assert "PHYSICS" in text
     assert "MARKET STATE" in text
+    assert "MARKET BEHAVIOR" in text
     assert "State: ACTIVE" in text
     assert "Reason: Tick activity increasing" in text
     assert "Current: ACTIVE" in text
@@ -130,6 +139,8 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "Transition: QUIET → ACTIVE" in text
     assert "Changed: YES" in text
     assert "Duration: 18 s" in text
+    assert "Behavior: ACCELERATING" in text
+    assert "Reason: Tick velocity increasing" in text
     assert "Spread: 0.25" in text
     assert "Mid Price: 20100.38" in text
     assert "Tick Velocity: 1.5000" in text

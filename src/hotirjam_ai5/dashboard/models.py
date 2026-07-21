@@ -159,6 +159,14 @@ class MarketTransitionView:
 
 
 @dataclass(frozen=True, slots=True)
+class MarketBehaviorView:
+    """MARKET BEHAVIOR section (Sprint 8) — observation only."""
+
+    behavior: str = "UNKNOWN"
+    reason: str = "Waiting for market observations"
+
+
+@dataclass(frozen=True, slots=True)
 class DashboardState:
     """Complete snapshot rendered each refresh cycle."""
 
@@ -170,5 +178,6 @@ class DashboardState:
     physics: PhysicsView = field(default_factory=PhysicsView)
     market_state: MarketStateView = field(default_factory=MarketStateView)
     market_transition: MarketTransitionView = field(default_factory=MarketTransitionView)
+    market_behavior: MarketBehaviorView = field(default_factory=MarketBehaviorView)
     statistics: StatisticsView = field(default_factory=StatisticsView)
     events: Sequence[str] = ()
