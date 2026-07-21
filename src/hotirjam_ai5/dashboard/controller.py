@@ -292,6 +292,7 @@ class DashboardController:
         trade_decision = self._trade_decision.evaluate(
             decision_assessment,
             market_context,
+            physics_snapshot,
         )
         return DashboardState(
             system=SystemView(

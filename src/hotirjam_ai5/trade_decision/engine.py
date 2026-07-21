@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 from hotirjam_ai5.decision_assessment import DecisionAssessmentSnapshot
 from hotirjam_ai5.market_context import MarketContextSnapshot
+from hotirjam_ai5.physics.measurements import PhysicsSnapshot
 from hotirjam_ai5.trade_decision.models import TradeDecision, TradeDecisionSnapshot
 from hotirjam_ai5.trade_decision.policy import (
     NEXT_ACTION,
@@ -18,9 +19,8 @@ from hotirjam_ai5.trade_decision.policy import (
 class TradeDecisionEngine:
     """Orchestrates trade decision evaluation via the internal policy.
 
-    Consumes DecisionAssessmentSnapshot and MarketContextSnapshot only.
-    Uses structured MarketContext fields (state, behavior, feed_status).
-    Always returns NO_TRADE in Sprint 21. Never places orders or connects to a broker.
+    Consumes DecisionAssessmentSnapshot, MarketContextSnapshot, and PhysicsSnapshot.
+    Always returns NO_TRADE in Sprint 22. Never places orders or connects to a broker.
     """
 
     def __init__(self, *, clock: Callable[[], float] | None = None) -> None:
@@ -36,11 +36,13 @@ class TradeDecisionEngine:
         self,
         assessment: DecisionAssessmentSnapshot,
         context: MarketContextSnapshot | None = None,
+        physics: PhysicsSnapshot | None = None,
     ) -> TradeDecisionSnapshot:
         """Delegate decision logic to the internal policy."""
         self._latest = evaluate_trade_decision(
             assessment,
             context,
+            physics,
             timestamp=self._clock(),
         )
         return self._latest
@@ -53,8 +55,14 @@ class TradeDecisionEngine:
 def evaluate_trade_decision(
     assessment: DecisionAssessmentSnapshot,
     context: MarketContextSnapshot | None = None,
+    physics: PhysicsSnapshot | None = None,
     *,
     timestamp: float,
 ) -> TradeDecisionSnapshot:
     """Orchestration entry point that delegates to Decision Policy."""
-    return apply_trade_decision_policy(assessment, context, timestamp=timestamp)
+    return apply_trade_decision_policy(
+        assessment,
+        context,
+        physics,
+        timestamp=timestamp,
+    )

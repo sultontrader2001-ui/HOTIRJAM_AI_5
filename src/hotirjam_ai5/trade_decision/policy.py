@@ -1,8 +1,9 @@
-"""Trade Decision Policy — Structured BUY Strategy v1.
+"""Trade Decision Policy — BUY Strategy Phase 3 (Physics Filter).
 
-BUY is internally eligible when assessment is READY and structured
-MarketContext fields match the Phase-2 strategy. Summary text is never inspected.
-Sprint 21 still emits NO_TRADE only. SELL remains unavailable.
+BUY is internally eligible when assessment is READY, structured MarketContext
+fields match, and Physics velocity/acceleration are both positive.
+Summary text is never inspected. Sprint 22 still emits NO_TRADE only.
+SELL remains unavailable.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from hotirjam_ai5.decision_assessment import (
     DecisionAssessmentState,
 )
 from hotirjam_ai5.market_context import MarketContextSnapshot
+from hotirjam_ai5.physics.measurements import PhysicsSnapshot
 from hotirjam_ai5.trade_decision.models import TradeDecision, TradeDecisionSnapshot
 
 
@@ -50,52 +52,63 @@ def resolve_trade_authorization(
     return TradeAuthorization.GRANTED
 
 
-def matches_buy_strategy(context: MarketContextSnapshot | None) -> bool:
-    """Return True when structured MarketContext fields match BUY Phase 2.
+def matches_buy_strategy(
+    context: MarketContextSnapshot | None,
+    physics: PhysicsSnapshot | None = None,
+) -> bool:
+    """Return True when context + physics match BUY Phase 3.
 
-    Uses context.state, context.behavior, and context.feed_status only.
-    Never inspects summary text.
+    Uses context.state, context.behavior, context.feed_status, and
+    physics.tick_velocity / tick_acceleration. Never inspects summary text.
     """
-    if context is None:
+    if context is None or physics is None:
+        return False
+    velocity = physics.tick_velocity
+    acceleration = physics.tick_acceleration
+    if velocity is None or acceleration is None:
         return False
     return (
         context.feed_status == _HEALTHY_FEED
         and context.state in _ELIGIBLE_STATES
         and context.behavior in _ELIGIBLE_BEHAVIORS
+        and velocity > 0
+        and acceleration > 0
     )
 
 
 def is_buy_eligible(
     assessment: DecisionAssessmentSnapshot,
     context: MarketContextSnapshot | None = None,
+    physics: PhysicsSnapshot | None = None,
 ) -> bool:
-    """BUY eligible when assessment is READY and structured strategy matches.
+    """BUY eligible when assessment is READY and Phase-3 strategy matches.
 
-    Eligibility does not emit BUY in Sprint 21.
+    Eligibility does not emit BUY in Sprint 22.
     """
     return (
         assessment.assessment_state is DecisionAssessmentState.READY
         and resolve_trade_authorization(assessment) is TradeAuthorization.GRANTED
-        and matches_buy_strategy(context)
+        and matches_buy_strategy(context, physics)
     )
 
 
 def apply_trade_decision_policy(
     assessment: DecisionAssessmentSnapshot,
     context: MarketContextSnapshot | None = None,
+    physics: PhysicsSnapshot | None = None,
     *,
     timestamp: float,
 ) -> TradeDecisionSnapshot:
-    """Apply structured BUY Phase-2 strategy; emit NO_TRADE only.
+    """Apply BUY Phase-3 strategy with physics filter; emit NO_TRADE only.
 
     Even when strategy matches, output remains NO_TRADE (Awaiting release).
     """
     if assessment.assessment_state is not DecisionAssessmentState.READY:
         reason = NOT_AUTHORIZED_REASON
-    elif not matches_buy_strategy(context):
+    elif not matches_buy_strategy(context, physics):
         reason = STRATEGY_NOT_SATISFIED_REASON
     else:
-        assert is_buy_eligible(assessment, context)
+        assert is_buy_eligible(assessment, context, physics)
         reason = BUY_STRATEGY_VALIDATED_REASON
 
     return TradeDecisionSnapshot(
