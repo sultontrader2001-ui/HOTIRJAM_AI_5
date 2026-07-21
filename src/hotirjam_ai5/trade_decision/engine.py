@@ -33,6 +33,7 @@ class TradeDecisionEngine:
             reason=PENDING_REASON,
             next_action=NEXT_ACTION,
             buy_score=0,
+            buy_confidence=0,
         )
 
     def evaluate(

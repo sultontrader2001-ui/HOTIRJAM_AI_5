@@ -1,4 +1,4 @@
-"""Unit tests for Trade Decision Policy — BUY Scoring Framework (Sprint 24)."""
+"""Unit tests for Trade Decision Policy — BUY Score + Confidence (Sprint 25)."""
 
 from __future__ import annotations
 
@@ -13,11 +13,18 @@ from hotirjam_ai5.trade_decision import (
     TradeDecision,
     TradeDecisionEngine,
     apply_trade_decision_policy,
+    compute_buy_confidence,
     compute_buy_score,
     evaluate_trade_decision,
     is_buy_eligible,
 )
 from hotirjam_ai5.trade_decision.policy import (
+    CONF_ASSESSMENT_RELIABILITY,
+    CONF_FEED_RELIABILITY,
+    CONF_LIQUIDITY_RELIABILITY,
+    CONF_MARKET_STABILITY,
+    CONF_PHYSICS_STABILITY,
+    CONF_TOTAL,
     NEXT_ACTION,
     POINTS_ASSESSMENT,
     POINTS_BEHAVIOR,
@@ -91,28 +98,46 @@ def _liquidity(
     )
 
 
-def test_full_score_is_100_but_still_no_trade() -> None:
+def test_full_score_and_confidence_still_no_trade() -> None:
     assessment = _assessment(DecisionAssessmentState.READY)
-    breakdown = compute_buy_score(
-        assessment, _context(), _physics(), _liquidity()
-    )
-    assert breakdown.assessment == POINTS_ASSESSMENT
-    assert breakdown.feed_health == POINTS_FEED_HEALTH
-    assert breakdown.market_state == POINTS_MARKET_STATE
-    assert breakdown.behavior == POINTS_BEHAVIOR
-    assert breakdown.physics == POINTS_PHYSICS
-    assert breakdown.liquidity == POINTS_LIQUIDITY
-    assert breakdown.total == POINTS_TOTAL
-    assert is_buy_eligible(assessment, _context(), _physics(), _liquidity()) is True
+    context = _context()
+    physics = _physics()
+    liquidity = _liquidity()
+
+    score = compute_buy_score(assessment, context, physics, liquidity)
+    confidence = compute_buy_confidence(assessment, context, physics, liquidity)
+    assert score.total == POINTS_TOTAL
+    assert confidence.total == CONF_TOTAL
+    assert is_buy_eligible(assessment, context, physics, liquidity) is True
 
     snap = apply_trade_decision_policy(
-        assessment, _context(), _physics(), _liquidity(), timestamp=1.0
+        assessment, context, physics, liquidity, timestamp=1.0
     )
     assert snap.decision is TradeDecision.NO_TRADE
     assert snap.decision is not TradeDecision.BUY
     assert snap.buy_score == 100
+    assert snap.buy_confidence == 100
     assert snap.reason == "BUY score: 100/100. Awaiting release."
     assert snap.next_action == NEXT_ACTION
+
+
+def test_score_and_confidence_are_independent() -> None:
+    """Score can award state/behavior separately; confidence combines them."""
+    assessment = _assessment(DecisionAssessmentState.READY)
+    # State eligible, behavior not — score gets state points, confidence market=0.
+    context = _context(state="ACTIVE", behavior="UNSTABLE", feed_status="HEALTHY")
+    score = compute_buy_score(assessment, context, None, None)
+    confidence = compute_buy_confidence(assessment, context, None, None)
+    assert score.assessment == POINTS_ASSESSMENT
+    assert score.feed_health == POINTS_FEED_HEALTH
+    assert score.market_state == POINTS_MARKET_STATE
+    assert score.behavior == 0
+    assert score.total == POINTS_ASSESSMENT + POINTS_FEED_HEALTH + POINTS_MARKET_STATE
+    assert confidence.assessment_reliability == CONF_ASSESSMENT_RELIABILITY
+    assert confidence.feed_reliability == CONF_FEED_RELIABILITY
+    assert confidence.market_stability == 0
+    assert confidence.total == CONF_ASSESSMENT_RELIABILITY + CONF_FEED_RELIABILITY
+    assert score.total != confidence.total
 
 
 def test_assessment_category_points() -> None:
@@ -126,6 +151,45 @@ def test_assessment_category_points() -> None:
     assert ready.total == POINTS_ASSESSMENT
     assert blocked.assessment == 0
     assert blocked.total == 0
+
+
+def test_confidence_category_points() -> None:
+    assessment = _assessment(DecisionAssessmentState.READY)
+    full = compute_buy_confidence(
+        assessment, _context(), _physics(), _liquidity()
+    )
+    assert full.assessment_reliability == CONF_ASSESSMENT_RELIABILITY
+    assert full.feed_reliability == CONF_FEED_RELIABILITY
+    assert full.physics_stability == CONF_PHYSICS_STABILITY
+    assert full.liquidity_reliability == CONF_LIQUIDITY_RELIABILITY
+    assert full.market_stability == CONF_MARKET_STABILITY
+    assert full.total == CONF_TOTAL
+
+
+def test_confidence_boundaries() -> None:
+    zero = compute_buy_confidence(
+        _assessment(DecisionAssessmentState.BLOCKED), None, None, None
+    )
+    assert zero.total == 0
+    assert 0 <= zero.total <= CONF_TOTAL
+
+    full = compute_buy_confidence(
+        _assessment(DecisionAssessmentState.READY),
+        _context(),
+        _physics(),
+        _liquidity(),
+    )
+    assert full.total == CONF_TOTAL
+    assert 0 <= full.total <= CONF_TOTAL
+
+    partial = compute_buy_confidence(
+        _assessment(DecisionAssessmentState.READY),
+        _context(feed_status="DEGRADED", state="VOLATILE", behavior="UNSTABLE"),
+        _physics(velocity=-1.0),
+        _liquidity(liquidity_shift=LiquidityBias.SELL.value),
+    )
+    assert partial.total == CONF_ASSESSMENT_RELIABILITY
+    assert 0 <= partial.total <= CONF_TOTAL
 
 
 def test_feed_health_category_points() -> None:
@@ -214,6 +278,10 @@ def test_partial_score_example_65() -> None:
         assessment, context, None, None, timestamp=2.0
     )
     assert snap.buy_score == 65
+    # Assessment 25 + Feed 20 + Market stability 15 = 60 confidence
+    assert snap.buy_confidence == (
+        CONF_ASSESSMENT_RELIABILITY + CONF_FEED_RELIABILITY + CONF_MARKET_STABILITY
+    )
     assert snap.decision is TradeDecision.NO_TRADE
     assert snap.reason == format_buy_score_reason(65)
 
@@ -240,6 +308,8 @@ def test_buy_never_emitted_across_scores() -> None:
         )
         assert snap.decision is TradeDecision.NO_TRADE
         assert snap.decision is not TradeDecision.BUY
+        assert 0 <= snap.buy_score <= 100
+        assert 0 <= snap.buy_confidence <= 100
         assert "Awaiting release." in snap.reason
 
 
@@ -262,6 +332,7 @@ def test_engine_delegates_to_policy() -> None:
     )
     assert via_engine == via_policy
     assert via_engine.buy_score == 100
+    assert via_engine.buy_confidence == 100
     assert via_engine.decision is TradeDecision.NO_TRADE
 
 
@@ -275,6 +346,7 @@ def test_engine_evaluate_and_snapshot() -> None:
         _liquidity(),
     )
     assert snap.buy_score == 100
+    assert snap.buy_confidence == 100
     assert snap.decision is TradeDecision.NO_TRADE
     assert snap.timestamp == 11.0
     assert engine.snapshot() is snap

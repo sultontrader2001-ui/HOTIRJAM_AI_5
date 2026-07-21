@@ -1,7 +1,8 @@
-"""Trade Decision Policy — BUY Strategy Scoring Framework.
+"""Trade Decision Policy — BUY Score + BUY Confidence Framework.
 
-Computes a structured buy_score (0–100) from assessment, MarketContext,
-Physics, and Liquidity. Always emits NO_TRADE. SELL remains unavailable.
+buy_score measures setup quality.
+buy_confidence measures decision reliability.
+They are computed independently. Always emits NO_TRADE. SELL remains unavailable.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from hotirjam_ai5.liquidity import LiquidityBias, LiquiditySnapshot
 from hotirjam_ai5.market_context import MarketContextSnapshot
 from hotirjam_ai5.physics.measurements import PhysicsSnapshot
 from hotirjam_ai5.trade_decision.models import (
+    BuyConfidenceBreakdown,
     BuyScoreBreakdown,
     TradeDecision,
     TradeDecisionSnapshot,
@@ -31,6 +33,7 @@ class TradeAuthorization(StrEnum):
     GRANTED = "GRANTED"
 
 
+# --- BUY Score weights (setup quality) ---
 POINTS_ASSESSMENT: Final[int] = 20
 POINTS_FEED_HEALTH: Final[int] = 15
 POINTS_MARKET_STATE: Final[int] = 15
@@ -38,6 +41,14 @@ POINTS_BEHAVIOR: Final[int] = 15
 POINTS_PHYSICS: Final[int] = 20
 POINTS_LIQUIDITY: Final[int] = 15
 POINTS_TOTAL: Final[int] = 100
+
+# --- BUY Confidence weights (decision reliability) ---
+CONF_ASSESSMENT_RELIABILITY: Final[int] = 25
+CONF_FEED_RELIABILITY: Final[int] = 20
+CONF_PHYSICS_STABILITY: Final[int] = 20
+CONF_LIQUIDITY_RELIABILITY: Final[int] = 20
+CONF_MARKET_STABILITY: Final[int] = 15
+CONF_TOTAL: Final[int] = 100
 
 NEXT_ACTION = "Execution Engine"
 
@@ -72,7 +83,7 @@ def compute_buy_score(
     physics: PhysicsSnapshot | None = None,
     liquidity: LiquiditySnapshot | None = None,
 ) -> BuyScoreBreakdown:
-    """Score each BUY category independently (binary full points or zero)."""
+    """Score each BUY setup-quality category (binary full points or zero)."""
     assessment_pts = (
         POINTS_ASSESSMENT
         if assessment.assessment_state is DecisionAssessmentState.READY
@@ -120,6 +131,63 @@ def compute_buy_score(
     )
 
 
+def compute_buy_confidence(
+    assessment: DecisionAssessmentSnapshot,
+    context: MarketContextSnapshot | None = None,
+    physics: PhysicsSnapshot | None = None,
+    liquidity: LiquiditySnapshot | None = None,
+) -> BuyConfidenceBreakdown:
+    """Compute decision reliability independently from buy_score.
+
+    Never calls compute_buy_score. Uses confidence-specific weights/categories.
+    """
+    assessment_pts = (
+        CONF_ASSESSMENT_RELIABILITY
+        if assessment.assessment_state is DecisionAssessmentState.READY
+        else 0
+    )
+
+    feed_pts = 0
+    market_pts = 0
+    if context is not None:
+        if context.feed_status == _HEALTHY_FEED:
+            feed_pts = CONF_FEED_RELIABILITY
+        # Market stability is a single confidence category (state + behavior).
+        if (
+            context.state in _ELIGIBLE_STATES
+            and context.behavior in _ELIGIBLE_BEHAVIORS
+        ):
+            market_pts = CONF_MARKET_STABILITY
+
+    physics_pts = 0
+    if physics is not None:
+        velocity = physics.tick_velocity
+        acceleration = physics.tick_acceleration
+        if (
+            velocity is not None
+            and acceleration is not None
+            and velocity > 0
+            and acceleration > 0
+        ):
+            physics_pts = CONF_PHYSICS_STABILITY
+
+    liquidity_pts = 0
+    if liquidity is not None:
+        if (
+            liquidity.liquidity_shift == _BUY_BIAS
+            and liquidity.dom_imbalance == _BUY_BIAS
+        ):
+            liquidity_pts = CONF_LIQUIDITY_RELIABILITY
+
+    return BuyConfidenceBreakdown(
+        assessment_reliability=assessment_pts,
+        feed_reliability=feed_pts,
+        physics_stability=physics_pts,
+        liquidity_reliability=liquidity_pts,
+        market_stability=market_pts,
+    )
+
+
 def matches_buy_strategy(
     context: MarketContextSnapshot | None,
     physics: PhysicsSnapshot | None = None,
@@ -164,13 +232,16 @@ def apply_trade_decision_policy(
     *,
     timestamp: float,
 ) -> TradeDecisionSnapshot:
-    """Compute buy_score and emit NO_TRADE with score reason."""
-    breakdown = compute_buy_score(assessment, context, physics, liquidity)
-    score = breakdown.total
+    """Compute buy_score and buy_confidence; emit NO_TRADE only."""
+    score = compute_buy_score(assessment, context, physics, liquidity).total
+    confidence = compute_buy_confidence(
+        assessment, context, physics, liquidity
+    ).total
     return TradeDecisionSnapshot(
         timestamp=timestamp,
         decision=TradeDecision.NO_TRADE,
         reason=format_buy_score_reason(score),
         next_action=NEXT_ACTION,
         buy_score=score,
+        buy_confidence=confidence,
     )

@@ -5,6 +5,7 @@ from hotirjam_ai5.trade_decision.engine import (
     evaluate_trade_decision,
 )
 from hotirjam_ai5.trade_decision.models import (
+    BuyConfidenceBreakdown,
     BuyScoreBreakdown,
     TradeDecision,
     TradeDecisionSnapshot,
@@ -12,6 +13,7 @@ from hotirjam_ai5.trade_decision.models import (
 from hotirjam_ai5.trade_decision.policy import (
     TradeAuthorization,
     apply_trade_decision_policy,
+    compute_buy_confidence,
     compute_buy_score,
     format_buy_score_reason,
     is_buy_eligible,
@@ -20,12 +22,14 @@ from hotirjam_ai5.trade_decision.policy import (
 )
 
 __all__ = [
+    "BuyConfidenceBreakdown",
     "BuyScoreBreakdown",
     "TradeAuthorization",
     "TradeDecision",
     "TradeDecisionEngine",
     "TradeDecisionSnapshot",
     "apply_trade_decision_policy",
+    "compute_buy_confidence",
     "compute_buy_score",
     "evaluate_trade_decision",
     "format_buy_score_reason",

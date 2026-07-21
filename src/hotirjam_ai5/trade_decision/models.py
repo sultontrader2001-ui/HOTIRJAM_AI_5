@@ -1,7 +1,7 @@
 """Trade decision models.
 
 Trade Decision Engine output values. SELL remains unavailable.
-BUY exists for future emission; scoring does not emit BUY yet.
+BUY exists for future emission; score/confidence do not emit BUY yet.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ class TradeDecision(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class BuyScoreBreakdown:
-    """Per-category BUY score contributions (max 100)."""
+    """Per-category BUY score contributions (setup quality, max 100)."""
 
     assessment: int
     feed_health: int
@@ -41,6 +41,27 @@ class BuyScoreBreakdown:
 
 
 @dataclass(frozen=True, slots=True)
+class BuyConfidenceBreakdown:
+    """Per-category BUY confidence contributions (decision reliability, max 100)."""
+
+    assessment_reliability: int
+    feed_reliability: int
+    physics_stability: int
+    liquidity_reliability: int
+    market_stability: int
+
+    @property
+    def total(self) -> int:
+        return (
+            self.assessment_reliability
+            + self.feed_reliability
+            + self.physics_stability
+            + self.liquidity_reliability
+            + self.market_stability
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class TradeDecisionSnapshot:
     """Trade decision derived from assessment, context, physics, and liquidity."""
 
@@ -49,3 +70,4 @@ class TradeDecisionSnapshot:
     reason: str
     next_action: str
     buy_score: int = 0
+    buy_confidence: int = 0

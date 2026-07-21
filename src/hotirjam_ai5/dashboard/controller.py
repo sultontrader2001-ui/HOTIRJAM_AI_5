@@ -370,6 +370,7 @@ class DashboardController:
             trade_decision=TradeDecisionView(
                 decision=trade_decision.decision.value,
                 buy_score=trade_decision.buy_score,
+                buy_confidence=trade_decision.buy_confidence,
                 reason=trade_decision.reason,
                 next_action=trade_decision.next_action,
             ),
