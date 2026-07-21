@@ -225,7 +225,8 @@ class DecisionExplanationView:
     physics: str = "UNKNOWN"
     liquidity: str = "UNKNOWN"
     signal_stability: str = "UNKNOWN"
-    summary: str = "Market conditions do not satisfy BUY requirements."
+    readiness: str = "UNKNOWN"
+    summary: str = "Decision Readiness is UNKNOWN."
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,7 +237,8 @@ class TradeDecisionView:
     buy_score: int = 0
     buy_confidence: int = 0
     signal_stability: str = "UNSTABLE"
-    reason: str = "Market conditions do not satisfy BUY requirements."
+    decision_readiness: str = "UNKNOWN"
+    reason: str = "Decision Readiness is UNKNOWN."
     next_action: str = "Execution Engine"
     explanation: DecisionExplanationView = field(
         default_factory=DecisionExplanationView

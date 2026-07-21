@@ -32,6 +32,14 @@ class SignalStability(StrEnum):
     UNSTABLE = "UNSTABLE"
 
 
+class DecisionReadiness(StrEnum):
+    """Final readiness of the BUY pipeline for signal activation."""
+
+    READY = "READY"
+    NOT_READY = "NOT_READY"
+    UNKNOWN = "UNKNOWN"
+
+
 @dataclass(frozen=True, slots=True)
 class BuyScoreBreakdown:
     """Per-category BUY score contributions (setup quality, max 100)."""
@@ -87,6 +95,7 @@ class DecisionExplanation:
     physics: ExplanationStatus
     liquidity: ExplanationStatus
     signal_stability: ExplanationStatus
+    readiness: ExplanationStatus
     summary: str
 
 
@@ -101,4 +110,5 @@ class TradeDecisionSnapshot:
     buy_score: int = 0
     buy_confidence: int = 0
     signal_stability: SignalStability = SignalStability.UNSTABLE
+    decision_readiness: DecisionReadiness = DecisionReadiness.UNKNOWN
     decision_explanation: DecisionExplanation | None = None

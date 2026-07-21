@@ -24,6 +24,7 @@ from hotirjam_ai5.trade_decision.models import (
     BuyConfidenceBreakdown,
     BuyScoreBreakdown,
     DecisionExplanation,
+    DecisionReadiness,
     ExplanationStatus,
     SignalStability,
     TradeDecision,
@@ -61,9 +62,17 @@ SIGNAL_STABILITY_WINDOW: Final[int] = 3
 SIGNAL_MIN_BUY_SCORE: Final[int] = 80
 SIGNAL_MIN_BUY_CONFIDENCE: Final[int] = 85
 
+# --- Decision Readiness (final activation gate) ---
+READINESS_MIN_BUY_SCORE: Final[int] = 80
+READINESS_MIN_BUY_CONFIDENCE: Final[int] = 85
+
 NEXT_ACTION = "Execution Engine"
 DEFAULT_FAIL_SUMMARY = "Market conditions do not satisfy BUY requirements."
-SATISFIED_SUMMARY = "BUY requirements are satisfied. Awaiting release."
+SATISFIED_SUMMARY = (
+    "BUY requirements are satisfied and Decision Readiness is READY. Awaiting release."
+)
+READINESS_NOT_READY_SUMMARY = "Decision Readiness is NOT_READY."
+READINESS_UNKNOWN_SUMMARY = "Decision Readiness is UNKNOWN."
 
 _ELIGIBLE_STATES: Final[frozenset[str]] = frozenset({"ACTIVE", "TRENDING"})
 _ELIGIBLE_BEHAVIORS: Final[frozenset[str]] = frozenset({"STABLE", "ACCELERATING"})
@@ -86,7 +95,8 @@ def empty_decision_explanation() -> DecisionExplanation:
         physics=ExplanationStatus.UNKNOWN,
         liquidity=ExplanationStatus.UNKNOWN,
         signal_stability=ExplanationStatus.UNKNOWN,
-        summary=DEFAULT_FAIL_SUMMARY,
+        readiness=ExplanationStatus.UNKNOWN,
+        summary=READINESS_UNKNOWN_SUMMARY,
     )
 
 
@@ -126,6 +136,60 @@ def signal_stability_explanation_status(
         return ExplanationStatus.UNKNOWN
     if stability is SignalStability.STABLE:
         return ExplanationStatus.PASS
+    return ExplanationStatus.FAIL
+
+
+def resolve_decision_readiness(
+    *,
+    buy_score: int,
+    buy_confidence: int,
+    signal_stability: SignalStability,
+    assessment: DecisionAssessmentSnapshot,
+    context: MarketContextSnapshot | None,
+    liquidity: LiquiditySnapshot | None,
+    signal_stability_status: ExplanationStatus,
+) -> DecisionReadiness:
+    """Resolve final BUY pipeline readiness for signal activation.
+
+    UNKNOWN when feed or liquidity inputs are unavailable, or stability
+    has not yet accumulated a full confirmation window.
+    """
+    if (
+        context is None
+        or liquidity is None
+        or signal_stability_status is ExplanationStatus.UNKNOWN
+    ):
+        return DecisionReadiness.UNKNOWN
+
+    feed_pass = context.feed_status == _HEALTHY_FEED
+    liquidity_pass = (
+        liquidity.liquidity_shift == _BUY_BIAS
+        and liquidity.dom_imbalance == _BUY_BIAS
+    )
+    assessment_ready = (
+        assessment.assessment_state is DecisionAssessmentState.READY
+    )
+
+    if (
+        buy_score >= READINESS_MIN_BUY_SCORE
+        and buy_confidence >= READINESS_MIN_BUY_CONFIDENCE
+        and signal_stability is SignalStability.STABLE
+        and assessment_ready
+        and feed_pass
+        and liquidity_pass
+    ):
+        return DecisionReadiness.READY
+    return DecisionReadiness.NOT_READY
+
+
+def decision_readiness_explanation_status(
+    readiness: DecisionReadiness,
+) -> ExplanationStatus:
+    """Map decision readiness to explanation PASS/FAIL/UNKNOWN."""
+    if readiness is DecisionReadiness.READY:
+        return ExplanationStatus.PASS
+    if readiness is DecisionReadiness.UNKNOWN:
+        return ExplanationStatus.UNKNOWN
     return ExplanationStatus.FAIL
 
 
@@ -261,6 +325,7 @@ def build_decision_explanation(
     liquidity: LiquiditySnapshot | None = None,
     *,
     signal_stability_status: ExplanationStatus = ExplanationStatus.UNKNOWN,
+    readiness_status: ExplanationStatus = ExplanationStatus.UNKNOWN,
 ) -> DecisionExplanation:
     """Build PASS/FAIL/UNKNOWN explanation for the current decision."""
     assessment_status = _status_from_bool(
@@ -302,6 +367,7 @@ def build_decision_explanation(
         physics_status=physics_status,
         liquidity_status=liquidity_status,
         signal_stability_status=signal_stability_status,
+        readiness_status=readiness_status,
         context=context,
     )
     return DecisionExplanation(
@@ -312,6 +378,7 @@ def build_decision_explanation(
         physics=physics_status,
         liquidity=liquidity_status,
         signal_stability=signal_stability_status,
+        readiness=readiness_status,
         summary=summary,
     )
 
@@ -325,6 +392,7 @@ def _build_explanation_summary(
     physics_status: ExplanationStatus,
     liquidity_status: ExplanationStatus,
     signal_stability_status: ExplanationStatus,
+    readiness_status: ExplanationStatus,
     context: MarketContextSnapshot | None,
 ) -> str:
     """Produce a concise sentence explaining the decision."""
@@ -336,14 +404,23 @@ def _build_explanation_summary(
         physics_status,
         liquidity_status,
         signal_stability_status,
+        readiness_status,
     )
     if all(status is ExplanationStatus.PASS for status in statuses):
         return SATISFIED_SUMMARY
 
-    if signal_stability_status is ExplanationStatus.FAIL:
-        return "BUY signal is not yet stable across consecutive evaluations."
+    if readiness_status is ExplanationStatus.UNKNOWN:
+        return READINESS_UNKNOWN_SUMMARY
 
-    # Named combo matching the sprint example.
+    if readiness_status is ExplanationStatus.FAIL:
+        if signal_stability_status is ExplanationStatus.FAIL:
+            return (
+                "BUY signal is not yet stable across consecutive evaluations. "
+                + READINESS_NOT_READY_SUMMARY
+            )
+        return READINESS_NOT_READY_SUMMARY
+
+    # Named combo matching earlier sprint examples.
     if (
         context is not None
         and context.state == "VOLATILE"
@@ -369,6 +446,7 @@ def _build_explanation_summary(
             physics_status,
             liquidity_status,
             signal_stability_status,
+            readiness_status,
         )
     ):
         return "Assessment is not READY for trade decision."
@@ -421,7 +499,7 @@ def apply_trade_decision_policy(
     timestamp: float,
     signal_history: Sequence[tuple[int, int]] = (),
 ) -> TradeDecisionSnapshot:
-    """Compute score, confidence, stability, and explanation; emit NO_TRADE only."""
+    """Compute score, confidence, stability, readiness, and explanation."""
     score = compute_buy_score(assessment, context, physics, liquidity).total
     confidence = compute_buy_confidence(
         assessment, context, physics, liquidity
@@ -432,12 +510,23 @@ def apply_trade_decision_policy(
         stability,
         history_length=len(history),
     )
+    readiness = resolve_decision_readiness(
+        buy_score=score,
+        buy_confidence=confidence,
+        signal_stability=stability,
+        assessment=assessment,
+        context=context,
+        liquidity=liquidity,
+        signal_stability_status=stability_status,
+    )
+    readiness_status = decision_readiness_explanation_status(readiness)
     explanation = build_decision_explanation(
         assessment,
         context,
         physics,
         liquidity,
         signal_stability_status=stability_status,
+        readiness_status=readiness_status,
     )
     return TradeDecisionSnapshot(
         timestamp=timestamp,
@@ -447,5 +536,6 @@ def apply_trade_decision_policy(
         buy_score=score,
         buy_confidence=confidence,
         signal_stability=stability,
+        decision_readiness=readiness,
         decision_explanation=explanation,
     )

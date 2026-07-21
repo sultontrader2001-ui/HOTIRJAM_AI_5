@@ -11,6 +11,7 @@ from hotirjam_ai5.liquidity import LiquiditySnapshot
 from hotirjam_ai5.market_context import MarketContextSnapshot
 from hotirjam_ai5.physics.measurements import PhysicsSnapshot
 from hotirjam_ai5.trade_decision.models import (
+    DecisionReadiness,
     SignalStability,
     TradeDecision,
     TradeDecisionSnapshot,
@@ -44,6 +45,7 @@ class TradeDecisionEngine:
             buy_score=0,
             buy_confidence=0,
             signal_stability=SignalStability.UNSTABLE,
+            decision_readiness=DecisionReadiness.UNKNOWN,
             decision_explanation=explanation,
         )
 

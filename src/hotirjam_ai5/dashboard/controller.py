@@ -386,6 +386,7 @@ class DashboardController:
                 buy_score=trade_decision.buy_score,
                 buy_confidence=trade_decision.buy_confidence,
                 signal_stability=trade_decision.signal_stability.value,
+                decision_readiness=trade_decision.decision_readiness.value,
                 reason=trade_decision.reason,
                 next_action=trade_decision.next_action,
                 explanation=_trade_explanation_view(trade_decision),
@@ -441,5 +442,6 @@ def _trade_explanation_view(
         physics=explanation.physics.value,
         liquidity=explanation.liquidity.value,
         signal_stability=explanation.signal_stability.value,
+        readiness=explanation.readiness.value,
         summary=explanation.summary,
     )

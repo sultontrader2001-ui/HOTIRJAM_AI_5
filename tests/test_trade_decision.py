@@ -312,8 +312,13 @@ def test_explanation_all_pass() -> None:
     assert expl.physics is ExplanationStatus.PASS
     assert expl.liquidity is ExplanationStatus.PASS
     assert expl.signal_stability is ExplanationStatus.PASS
+    assert expl.readiness is ExplanationStatus.PASS
     assert snap.signal_stability.value == "STABLE"
-    assert expl.summary == "BUY requirements are satisfied. Awaiting release."
+    assert snap.decision_readiness.value == "READY"
+    assert expl.summary == (
+        "BUY requirements are satisfied and Decision Readiness is READY. "
+        "Awaiting release."
+    )
     assert snap.decision is TradeDecision.NO_TRADE
 
 
@@ -333,7 +338,9 @@ def test_explanation_pass_fail_unknown_combo() -> None:
     assert expl.behavior is ExplanationStatus.FAIL
     assert expl.physics is ExplanationStatus.UNKNOWN
     assert expl.liquidity is ExplanationStatus.UNKNOWN
-    assert expl.summary == "Market is volatile and physics confirmation is missing."
+    assert expl.readiness is ExplanationStatus.UNKNOWN
+    assert snap.decision_readiness.value == "UNKNOWN"
+    assert expl.summary == "Decision Readiness is UNKNOWN."
 
 
 def test_explanation_unknown_when_inputs_missing() -> None:
@@ -346,23 +353,82 @@ def test_explanation_unknown_when_inputs_missing() -> None:
     assert expl.behavior is ExplanationStatus.UNKNOWN
     assert expl.physics is ExplanationStatus.UNKNOWN
     assert expl.liquidity is ExplanationStatus.UNKNOWN
-    assert expl.summary == "Assessment is not READY for trade decision."
+    assert expl.readiness is ExplanationStatus.UNKNOWN
+    assert expl.summary == "Decision Readiness is UNKNOWN."
 
 
 def test_explanation_default_fail_summary() -> None:
-    expl = build_decision_explanation(
+    history = ((90, 90), (91, 91))
+    snap = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.READY),
         _context(state="QUIET", behavior="UNSTABLE", feed_status="DEGRADED"),
         _physics(velocity=-1.0),
         _liquidity(liquidity_shift=LiquidityBias.SELL.value),
+        timestamp=7.0,
+        signal_history=history,
     )
+    expl = snap.decision_explanation
+    assert expl is not None
     assert expl.assessment is ExplanationStatus.PASS
     assert expl.feed is ExplanationStatus.FAIL
     assert expl.market_state is ExplanationStatus.FAIL
     assert expl.behavior is ExplanationStatus.FAIL
     assert expl.physics is ExplanationStatus.FAIL
     assert expl.liquidity is ExplanationStatus.FAIL
-    assert expl.summary == "Market conditions do not satisfy BUY requirements."
+    assert snap.decision_readiness.value == "NOT_READY"
+    assert expl.readiness is ExplanationStatus.FAIL
+    assert "Decision Readiness is NOT_READY." in expl.summary
+
+
+def test_decision_readiness_ready_path() -> None:
+    history = ((88, 92), (90, 90))
+    snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _context(),
+        _physics(),
+        _liquidity(),
+        timestamp=30.0,
+        signal_history=history,
+    )
+    assert snap.buy_score >= 80
+    assert snap.buy_confidence >= 85
+    assert snap.signal_stability.value == "STABLE"
+    assert snap.decision_readiness.value == "READY"
+    assert snap.decision_explanation is not None
+    assert snap.decision_explanation.readiness is ExplanationStatus.PASS
+    assert snap.decision is TradeDecision.NO_TRADE
+
+
+def test_decision_readiness_not_ready_path() -> None:
+    history = ((90, 90), (91, 91))
+    snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _context(feed_status="DEGRADED"),
+        _physics(),
+        _liquidity(),
+        timestamp=31.0,
+        signal_history=history,
+    )
+    # Degraded feed lowers confidence below readiness threshold.
+    assert snap.decision_readiness.value == "NOT_READY"
+    assert snap.decision_explanation is not None
+    assert snap.decision_explanation.readiness is ExplanationStatus.FAIL
+    assert snap.decision is TradeDecision.NO_TRADE
+
+
+def test_decision_readiness_unknown_path() -> None:
+    snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _context(),
+        _physics(),
+        None,
+        timestamp=32.0,
+        signal_history=((95, 95), (96, 96)),
+    )
+    assert snap.decision_readiness.value == "UNKNOWN"
+    assert snap.decision_explanation is not None
+    assert snap.decision_explanation.readiness is ExplanationStatus.UNKNOWN
+    assert snap.decision_explanation.summary == "Decision Readiness is UNKNOWN."
 
 
 def test_buy_never_emitted_across_scores() -> None:
