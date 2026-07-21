@@ -8,6 +8,7 @@ from hotirjam_ai5.trade_decision.models import TradeDecision, TradeDecisionSnaps
 from hotirjam_ai5.trade_decision.policy import (
     TradeAuthorization,
     apply_trade_decision_policy,
+    is_buy_eligible,
     resolve_trade_authorization,
 )
 
@@ -18,5 +19,6 @@ __all__ = [
     "TradeDecisionSnapshot",
     "apply_trade_decision_policy",
     "evaluate_trade_decision",
+    "is_buy_eligible",
     "resolve_trade_authorization",
 ]

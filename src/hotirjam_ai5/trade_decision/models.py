@@ -1,6 +1,7 @@
-"""Trade decision models (Sprint 15).
+"""Trade decision models.
 
-Architecture skeleton only — never executes trades or places orders.
+Trade Decision Engine output values. SELL remains unavailable.
+BUY exists for future emission; Sprint 19 does not emit BUY yet.
 """
 
 from __future__ import annotations
@@ -10,9 +11,10 @@ from enum import StrEnum
 
 
 class TradeDecision(StrEnum):
-    """Trade decision output. BUY/SELL are intentionally absent in v1."""
+    """Trade decision output. SELL is intentionally unavailable."""
 
     NO_TRADE = "NO_TRADE"
+    BUY = "BUY"
 
 
 @dataclass(frozen=True, slots=True)

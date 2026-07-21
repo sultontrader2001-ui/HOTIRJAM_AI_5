@@ -1,4 +1,4 @@
-"""Unit tests for Trade Decision Policy + Authorization (Sprint 18)."""
+"""Unit tests for Trade Decision Policy — First BUY Rule framework (Sprint 19)."""
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ from hotirjam_ai5.trade_decision import (
     TradeDecisionEngine,
     apply_trade_decision_policy,
     evaluate_trade_decision,
+    is_buy_eligible,
     resolve_trade_authorization,
 )
 from hotirjam_ai5.trade_decision.policy import (
-    DENIED_REASON,
-    GRANTED_REASON,
+    BUY_FRAMEWORK_REASON,
     NEXT_ACTION,
-    PENDING_REASON,
+    NOT_AUTHORIZED_REASON,
 )
 
 
@@ -32,58 +32,43 @@ def _assessment(state: DecisionAssessmentState) -> DecisionAssessmentSnapshot:
     )
 
 
-def test_authorization_denied() -> None:
-    assessment = _assessment(DecisionAssessmentState.BLOCKED)
-    assert resolve_trade_authorization(assessment) is TradeAuthorization.DENIED
-    snap = apply_trade_decision_policy(assessment, timestamp=1.0)
-    assert snap.decision is TradeDecision.NO_TRADE
-    assert snap.reason == DENIED_REASON
-    assert snap.reason == "Trading policy not authorized."
-    assert snap.next_action == NEXT_ACTION
+def test_not_ready_returns_no_trade() -> None:
+    for state in (DecisionAssessmentState.BLOCKED, DecisionAssessmentState.REVIEW):
+        snap = apply_trade_decision_policy(_assessment(state), timestamp=1.0)
+        assert snap.decision is TradeDecision.NO_TRADE
+        assert snap.reason == NOT_AUTHORIZED_REASON
+        assert snap.reason == "Trading not authorized."
+        assert is_buy_eligible(_assessment(state)) is False
+        assert snap.next_action == NEXT_ACTION
 
 
-def test_authorization_pending() -> None:
-    assessment = _assessment(DecisionAssessmentState.REVIEW)
-    assert resolve_trade_authorization(assessment) is TradeAuthorization.PENDING
-    snap = apply_trade_decision_policy(assessment, timestamp=2.0)
-    assert snap.decision is TradeDecision.NO_TRADE
-    assert snap.reason == PENDING_REASON
-    assert snap.reason == "Trading authorization pending."
-    assert snap.next_action == NEXT_ACTION
-
-
-def test_authorization_granted() -> None:
+def test_ready_buy_path_initialized_but_no_trade_emitted() -> None:
     assessment = _assessment(DecisionAssessmentState.READY)
     assert resolve_trade_authorization(assessment) is TradeAuthorization.GRANTED
-    snap = apply_trade_decision_policy(assessment, timestamp=3.0)
+    assert is_buy_eligible(assessment) is True
+
+    snap = apply_trade_decision_policy(assessment, timestamp=2.0)
     assert snap.decision is TradeDecision.NO_TRADE
-    assert snap.reason == GRANTED_REASON
-    assert snap.reason == "Trading authorized. Awaiting first strategy."
+    assert snap.decision is not TradeDecision.BUY
+    assert snap.reason == BUY_FRAMEWORK_REASON
+    assert snap.reason == "BUY rule framework initialized."
     assert snap.next_action == NEXT_ACTION
-    assert snap.timestamp == 3.0
+    assert snap.timestamp == 2.0
 
 
-def test_authorization_reason_mapping() -> None:
-    expected = {
-        DecisionAssessmentState.BLOCKED: (
-            TradeAuthorization.DENIED,
-            "Trading policy not authorized.",
-        ),
-        DecisionAssessmentState.REVIEW: (
-            TradeAuthorization.PENDING,
-            "Trading authorization pending.",
-        ),
-        DecisionAssessmentState.READY: (
-            TradeAuthorization.GRANTED,
-            "Trading authorized. Awaiting first strategy.",
-        ),
-    }
-    for state, (authorization, reason) in expected.items():
-        assessment = _assessment(state)
-        assert resolve_trade_authorization(assessment) is authorization
-        snap = apply_trade_decision_policy(assessment, timestamp=4.0)
+def test_buy_exists_in_enum_but_is_not_emitted() -> None:
+    assert TradeDecision.BUY.value == "BUY"
+    for state in DecisionAssessmentState:
+        snap = apply_trade_decision_policy(_assessment(state), timestamp=3.0)
         assert snap.decision is TradeDecision.NO_TRADE
-        assert snap.reason == reason
+        assert snap.decision is not TradeDecision.BUY
+
+
+def test_sell_remains_unavailable() -> None:
+    values = {item.value for item in TradeDecision}
+    assert "SELL" not in values
+    assert "LONG" not in values
+    assert "SHORT" not in values
 
 
 def test_engine_delegates_to_policy() -> None:
@@ -92,7 +77,7 @@ def test_engine_delegates_to_policy() -> None:
     via_policy = apply_trade_decision_policy(assessment, timestamp=7.0)
     assert via_engine == via_policy
     assert via_engine.decision is TradeDecision.NO_TRADE
-    assert via_engine.reason == GRANTED_REASON
+    assert via_engine.reason == BUY_FRAMEWORK_REASON
 
 
 def test_engine_evaluate_and_snapshot() -> None:
@@ -100,38 +85,15 @@ def test_engine_evaluate_and_snapshot() -> None:
     engine = TradeDecisionEngine(clock=clock)
     snap = engine.evaluate(_assessment(DecisionAssessmentState.READY))
     assert snap.decision is TradeDecision.NO_TRADE
-    assert snap.reason == GRANTED_REASON
+    assert snap.reason == BUY_FRAMEWORK_REASON
     assert snap.timestamp == 11.0
     assert engine.snapshot() is snap
 
 
-def test_buy_sell_long_short_are_not_implemented() -> None:
-    values = {item.value for item in TradeDecision}
-    assert values == {"NO_TRADE"}
-    assert "BUY" not in values
-    assert "SELL" not in values
-    assert "LONG" not in values
-    assert "SHORT" not in values
-
-
-def test_output_never_contains_prohibited_words() -> None:
-    banned = (
-        "buy",
-        "sell",
-        "long",
-        "short",
-        "order",
-        "broker",
-        "position",
-        "risk",
-        "probability",
-        "confidence",
-        "stop loss",
-        "take profit",
-        "not implemented",
-    )
+def test_output_never_emits_trading_actions() -> None:
     for state in DecisionAssessmentState:
         snap = apply_trade_decision_policy(_assessment(state), timestamp=1.0)
-        text = f"{snap.decision.value} {snap.reason} {snap.next_action}".lower()
-        for word in banned:
-            assert word not in text
+        assert snap.decision is TradeDecision.NO_TRADE
+        lowered = f"{snap.decision.value} {snap.next_action}".lower()
+        for word in ("sell", "order", "broker", "position", "risk", "probability", "confidence"):
+            assert word not in lowered

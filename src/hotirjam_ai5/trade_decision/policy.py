@@ -1,8 +1,7 @@
-"""Trade Decision Policy v2 + Trade Authorization v1.
+"""Trade Decision Policy + Authorization + First BUY Rule framework.
 
-Internal authorization stage lives here — not a separate engine.
-BUY and SELL are intentionally not implemented.
-NO_TRADE remains a deliberate operational outcome.
+BUY path exists internally when assessment is READY, but Sprint 19 still
+emits NO_TRADE only. SELL remains unavailable.
 """
 
 from __future__ import annotations
@@ -24,13 +23,12 @@ class TradeAuthorization(StrEnum):
     GRANTED = "GRANTED"
 
 
-DENIED_REASON = "Trading policy not authorized."
-PENDING_REASON = "Trading authorization pending."
-GRANTED_REASON = "Trading authorized. Awaiting first strategy."
+NOT_AUTHORIZED_REASON = "Trading not authorized."
+BUY_FRAMEWORK_REASON = "BUY rule framework initialized."
 NEXT_ACTION = "Execution Engine"
 
-# Backward-compatible aliases for orchestrator defaults.
-REVIEW_REASON = PENDING_REASON
+# Orchestrator default (assessment not READY → pending authorization).
+PENDING_REASON = NOT_AUTHORIZED_REASON
 
 
 def resolve_trade_authorization(
@@ -44,12 +42,15 @@ def resolve_trade_authorization(
     return TradeAuthorization.GRANTED
 
 
-def _reason_for_authorization(authorization: TradeAuthorization) -> str:
-    if authorization is TradeAuthorization.DENIED:
-        return DENIED_REASON
-    if authorization is TradeAuthorization.PENDING:
-        return PENDING_REASON
-    return GRANTED_REASON
+def is_buy_eligible(assessment: DecisionAssessmentSnapshot) -> bool:
+    """Return True when the BUY path is technically eligible (assessment READY).
+
+    Eligibility does not emit BUY in Sprint 19.
+    """
+    return (
+        resolve_trade_authorization(assessment) is TradeAuthorization.GRANTED
+        and assessment.assessment_state is DecisionAssessmentState.READY
+    )
 
 
 def apply_trade_decision_policy(
@@ -57,17 +58,22 @@ def apply_trade_decision_policy(
     *,
     timestamp: float,
 ) -> TradeDecisionSnapshot:
-    """Apply authorization, then emit intentional NO_TRADE with operational reason.
+    """Apply authorization and BUY framework rules; emit NO_TRADE only.
 
-    Authorization:
-      BLOCKED → DENIED  → Trading policy not authorized.
-      REVIEW  → PENDING → Trading authorization pending.
-      READY   → GRANTED → Trading authorized. Awaiting first strategy.
+    Rule A: Assessment != READY → NO_TRADE (Trading not authorized.)
+    Rule B: Assessment == READY → BUY eligible internally, still NO_TRADE
+            (BUY rule framework initialized.)
     """
-    authorization = resolve_trade_authorization(assessment)
+    if assessment.assessment_state is not DecisionAssessmentState.READY:
+        reason = NOT_AUTHORIZED_REASON
+    else:
+        # BUY path is initialized / eligible, but BUY is not emitted yet.
+        _ = is_buy_eligible(assessment)
+        reason = BUY_FRAMEWORK_REASON
+
     return TradeDecisionSnapshot(
         timestamp=timestamp,
         decision=TradeDecision.NO_TRADE,
-        reason=_reason_for_authorization(authorization),
+        reason=reason,
         next_action=NEXT_ACTION,
     )
