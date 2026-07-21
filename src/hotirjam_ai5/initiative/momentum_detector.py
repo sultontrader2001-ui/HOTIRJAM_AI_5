@@ -64,9 +64,9 @@ def detect_momentum(
     score = min(100.0, (speed / 2.0) * 50.0 + (accel_mag / 2.0) * 50.0)
 
     if late_vel > 0.05:
-        direction = ImpulseSide.BUY
+        direction = ImpulseSide.BUYER
     elif late_vel < -0.05:
-        direction = ImpulseSide.SELL
+        direction = ImpulseSide.SELLER
     else:
         direction = ImpulseSide.NONE
 

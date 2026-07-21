@@ -276,6 +276,9 @@ def main(argv: list[str] | None = None) -> int:
             hierarchy_checkpoint_path=log_path.with_name(
                 f"{args.symbol.lower()}_structural_hierarchy.json"
             ),
+            initiative_checkpoint_path=log_path.with_name(
+                f"{args.symbol.lower()}_initiative_lifecycle.json"
+            ),
         ),
         bar_builder=TickBarBuilder(bar_seconds=args.bar_seconds),
         swing_confirmer=SwingConfirmer(),

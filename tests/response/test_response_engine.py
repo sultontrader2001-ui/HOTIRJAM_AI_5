@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from hotirjam_ai5.initiative import (
+    InitiativeEvidence,
     InitiativeSide,
     InitiativeSnapshot,
     InitiativeState,
@@ -30,17 +31,38 @@ def _c(o: float, h: float, l: float, c: float, *, volume: float = 100.0) -> Ohlc
 
 def _initiative(
     side: InitiativeSide = InitiativeSide.BUYER,
-    *,
     score: float = 70.0,
+    *,
+    state: InitiativeState | None = None,
 ) -> InitiativeSnapshot:
+    if state is None:
+        if score >= 70:
+            state = InitiativeState.DOMINANT
+        elif score >= 35:
+            state = InitiativeState.EMERGING
+        elif score > 0:
+            state = InitiativeState.WEAKENING
+        else:
+            state = InitiativeState.NONE
+    buyer = (
+        score
+        if side is InitiativeSide.BUYER
+        else (0.0 if side is InitiativeSide.NONE else max(0.0, score - 30.0))
+    )
+    seller = (
+        score
+        if side is InitiativeSide.SELLER
+        else (0.0 if side is InitiativeSide.NONE else max(0.0, score - 30.0))
+    )
+    if side is InitiativeSide.NONE:
+        buyer = seller = 0.0
     return InitiativeSnapshot(
-        initiative_side=side,
-        impulse_score=score,
-        momentum_score=score,
-        candle_strength_score=score,
-        initiative_score=score,
-        state=InitiativeState.STRONG if score >= 70 else InitiativeState.MEDIUM,
+        buyer_initiative=buyer,
+        seller_initiative=seller,
+        dominant_side=side,
+        initiative_state=state,
         confidence=80.0,
+        evidence=InitiativeEvidence(score, score, score, score, score, 0.0),
         reasons=("test initiative",),
         timestamp=1.0,
     )

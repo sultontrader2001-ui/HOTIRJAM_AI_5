@@ -1,113 +1,151 @@
-"""IN04 — Initiative Scorer.
-
-Combines Impulse, Momentum, and Candle Strength into one initiative view.
-Does not check breakouts. Does not emit trade decisions.
-"""
+"""Assemble InitiativeSnapshot from evidence and lifecycle state."""
 
 from __future__ import annotations
 
 from hotirjam_ai5.initiative.initiative_models import (
-    CandleStrengthResult,
-    ImpulseResult,
-    ImpulseSide,
+    InitiativeEvidence,
     InitiativeSide,
     InitiativeState,
-    MomentumResult,
 )
 from hotirjam_ai5.initiative.initiative_snapshot import InitiativeSnapshot
-from hotirjam_ai5.objective import ObjectiveSnapshot
+
+# Intensity floors / bands for auction-control observation.
+_MIN_ACTIVITY = 12.0
+_EMERGING_MIN = 18.0
+_DOMINANT_MIN = 55.0
+_SEPARATION_MIN = 8.0
 
 
-def _side_from_impulse(side: ImpulseSide) -> InitiativeSide:
-    if side is ImpulseSide.BUY:
+def select_dominant_side(buyer: float, seller: float) -> InitiativeSide:
+    """Choose Dominant Side from intensities only. Never uses Objective."""
+    lead = max(buyer, seller)
+    if lead < _MIN_ACTIVITY:
+        return InitiativeSide.NONE
+    if buyer >= seller + _SEPARATION_MIN and buyer >= _EMERGING_MIN:
         return InitiativeSide.BUYER
-    if side is ImpulseSide.SELL:
+    if seller >= buyer + _SEPARATION_MIN and seller >= _EMERGING_MIN:
         return InitiativeSide.SELLER
     return InitiativeSide.NONE
 
 
-def _state_from_score(score: float) -> InitiativeState:
-    if score < 35.0:
-        return InitiativeState.WEAK
-    if score < 70.0:
-        return InitiativeState.MEDIUM
-    return InitiativeState.STRONG
+def dominant_intensity(side: InitiativeSide, buyer: float, seller: float) -> float:
+    if side is InitiativeSide.BUYER:
+        return buyer
+    if side is InitiativeSide.SELLER:
+        return seller
+    return max(buyer, seller)
 
 
-def _agreement(
-    impulse: ImpulseResult,
-    momentum: MomentumResult,
-    candles: CandleStrengthResult,
-) -> float:
-    """0–100 confidence from component agreement."""
-    sides = [impulse.side, momentum.direction, candles.direction]
-    active = [s for s in sides if s is not ImpulseSide.NONE]
-    if not active:
-        return 0.0
-    buy = sum(1 for s in active if s is ImpulseSide.BUY)
-    sell = sum(1 for s in active if s is ImpulseSide.SELL)
-    majority = max(buy, sell)
-    return (majority / len(active)) * 100.0
-
-
-def score_initiative(
+def advance_lifecycle(
+    previous: InitiativeState,
     *,
-    impulse: ImpulseResult,
-    momentum: MomentumResult,
-    candles: CandleStrengthResult,
-    objectives: ObjectiveSnapshot,
+    side: InitiativeSide,
+    intensity: float,
+    buyer: float,
+    seller: float,
+) -> InitiativeState:
+    """Exact H-5 lifecycle transitions from market-control evidence."""
+    separation = abs(buyer - seller)
+    has_control = side is not InitiativeSide.NONE
+    strong = has_control and intensity >= _DOMINANT_MIN and separation >= _SEPARATION_MIN
+    emerging = has_control and intensity >= _EMERGING_MIN
+    fading = has_control and intensity < _DOMINANT_MIN
+
+    if previous is InitiativeState.EXPIRED:
+        if strong:
+            return InitiativeState.DOMINANT
+        if emerging:
+            return InitiativeState.EMERGING
+        return InitiativeState.NONE
+
+    if not has_control:
+        if previous in {
+            InitiativeState.EMERGING,
+            InitiativeState.DOMINANT,
+            InitiativeState.WEAKENING,
+        }:
+            return InitiativeState.EXPIRED
+        return InitiativeState.NONE
+
+    if previous is InitiativeState.NONE:
+        return InitiativeState.DOMINANT if strong else InitiativeState.EMERGING
+
+    if previous is InitiativeState.EMERGING:
+        if strong:
+            return InitiativeState.DOMINANT
+        if emerging:
+            return InitiativeState.EMERGING
+        return InitiativeState.EXPIRED
+
+    if previous is InitiativeState.DOMINANT:
+        if strong:
+            return InitiativeState.DOMINANT
+        if fading:
+            return InitiativeState.WEAKENING
+        return InitiativeState.EXPIRED
+
+    if previous is InitiativeState.WEAKENING:
+        if strong:
+            return InitiativeState.DOMINANT
+        if emerging:
+            return InitiativeState.WEAKENING
+        return InitiativeState.EXPIRED
+
+    return InitiativeState.NONE
+
+
+def confidence_from_evidence(
+    *,
+    evidence: InitiativeEvidence,
+    side: InitiativeSide,
+    buyer: float,
+    seller: float,
+) -> float:
+    """Confidence from evidence quality. Context may raise it; never chooses side."""
+    if side is InitiativeSide.NONE and max(buyer, seller) < _MIN_ACTIVITY:
+        base = max(0.0, evidence.energy * 0.25)
+        return min(100.0, base + evidence.context * 0.5)
+
+    channels = (
+        evidence.force,
+        evidence.motion,
+        evidence.pressure,
+        evidence.liquidity,
+        evidence.energy,
+    )
+    active = [value for value in channels if value >= 15.0]
+    agreement = (len(active) / len(channels)) * 70.0
+    separation = min(30.0, abs(buyer - seller))
+    confidence = agreement + separation * 0.5 + evidence.context * 0.4
+    return max(0.0, min(100.0, confidence))
+
+
+def assemble_snapshot(
+    *,
+    buyer: float,
+    seller: float,
+    side: InitiativeSide,
+    state: InitiativeState,
+    evidence: InitiativeEvidence,
+    reasons: tuple[str, ...],
     timestamp: float,
 ) -> InitiativeSnapshot:
-    """Produce InitiativeSnapshot from the three detectors."""
-    reasons: list[str] = []
-    reasons.extend(impulse.reasons)
-    reasons.extend(momentum.reasons)
-    reasons.extend(candles.reasons)
-
-    initiative_score = (
-        0.40 * impulse.score
-        + 0.35 * momentum.score
-        + 0.25 * candles.score
+    confidence = confidence_from_evidence(
+        evidence=evidence, side=side, buyer=buyer, seller=seller
     )
-    initiative_score = max(0.0, min(100.0, initiative_score))
-
-    # Side: impulse leads; if NONE, fall back to momentum then candles.
-    if impulse.side is not ImpulseSide.NONE:
-        side = _side_from_impulse(impulse.side)
-        reasons.append(f"Side from impulse ({impulse.side.value})")
-    elif momentum.direction is not ImpulseSide.NONE and momentum.score >= 30.0:
-        side = _side_from_impulse(momentum.direction)
-        reasons.append(f"Side from momentum ({momentum.direction.value})")
-    elif candles.direction is not ImpulseSide.NONE and candles.score >= 50.0:
-        side = _side_from_impulse(candles.direction)
-        reasons.append(f"Side from candle strength ({candles.direction.value})")
-    else:
-        side = InitiativeSide.NONE
-        reasons.append("No clear initiative side")
-
-    # Flat / weak: force NONE when score is negligible.
-    if initiative_score < 15.0:
-        side = InitiativeSide.NONE
-        reasons.append("Initiative score below minimum")
-
-    confidence = _agreement(impulse, momentum, candles)
-    # Mild objective context boost when battlefield is known (not breakout logic).
-    if objectives.is_complete and side is not InitiativeSide.NONE:
-        confidence = min(100.0, confidence + 5.0)
-        reasons.append("Objectives present — confidence reinforced")
-
-    state = _state_from_score(initiative_score)
-    if side is InitiativeSide.NONE:
-        state = InitiativeState.WEAK
-
+    ordered = list(reasons)
+    ordered.append(f"Buyer initiative {buyer:.1f}")
+    ordered.append(f"Seller initiative {seller:.1f}")
+    ordered.append(f"Dominant side {side.value}")
+    ordered.append(f"Initiative state {state.value}")
+    ordered.extend(evidence.summary_lines())
     return InitiativeSnapshot(
-        initiative_side=side,
-        impulse_score=impulse.score,
-        momentum_score=momentum.score,
-        candle_strength_score=candles.score,
-        initiative_score=initiative_score,
-        state=state,
+        buyer_initiative=buyer,
+        seller_initiative=seller,
+        dominant_side=side,
+        initiative_state=state,
         confidence=confidence,
-        reasons=tuple(reasons),
+        evidence=evidence,
+        reasons=tuple(ordered),
         timestamp=timestamp,
     )

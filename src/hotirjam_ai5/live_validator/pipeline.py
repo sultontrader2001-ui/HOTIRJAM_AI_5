@@ -18,10 +18,10 @@ from hotirjam_ai5.continuation import (
     evaluate_continuation,
 )
 from hotirjam_ai5.initiative import (
+    InitiativeEngine,
     InitiativeInputs,
     InitiativeSnapshot,
     OhlcCandle,
-    evaluate_initiative,
 )
 from hotirjam_ai5.live_validator.models import ValidatorFrame
 from hotirjam_ai5.objective import (
@@ -54,6 +54,8 @@ class ArchitecturePipeline:
         symbol: str = "MNQ",
         hierarchy_checkpoint_path: Path | None = None,
         structural_hierarchy: PersistentStructuralHierarchy | None = None,
+        initiative_checkpoint_path: Path | None = None,
+        initiative_engine: InitiativeEngine | None = None,
     ) -> None:
         if tick_size <= 0.0:
             raise ValueError("tick_size must be positive")
@@ -63,6 +65,9 @@ class ArchitecturePipeline:
         self._structural_hierarchy = structural_hierarchy or PersistentStructuralHierarchy(
             checkpoint_path=hierarchy_checkpoint_path
         )
+        self._initiative_engine = initiative_engine or InitiativeEngine(
+            checkpoint_path=initiative_checkpoint_path
+        )
 
     @property
     def tick_size(self) -> float:
@@ -71,6 +76,10 @@ class ArchitecturePipeline:
     @property
     def structural_hierarchy(self) -> PersistentStructuralHierarchy:
         return self._structural_hierarchy
+
+    @property
+    def initiative_engine(self) -> InitiativeEngine:
+        return self._initiative_engine
 
     def audit_objectives(
         self, inputs: ObjectiveDiagnosticsInputs
@@ -99,12 +108,12 @@ class ArchitecturePipeline:
                     timestamp=timestamp,
                 )
             )
-        initiative = evaluate_initiative(
+        initiative = self._initiative_engine.evaluate(
             InitiativeInputs(
-                objectives=objective,
                 candles=candles,
                 tick_size=self._tick_size,
                 timestamp=timestamp,
+                objectives=objective,
             )
         )
         response = evaluate_response(

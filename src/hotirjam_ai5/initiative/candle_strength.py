@@ -60,10 +60,10 @@ def analyze_candle_strength(candles: Sequence[OhlcCandle]) -> CandleStrengthResu
     bullish = sum(1 for c in window if c.close > c.open)
     bearish = sum(1 for c in window if c.close < c.open)
     if bullish > bearish:
-        direction = ImpulseSide.BUY
+        direction = ImpulseSide.BUYER
         consistency = bullish / n
     elif bearish > bullish:
-        direction = ImpulseSide.SELL
+        direction = ImpulseSide.SELLER
         consistency = bearish / n
     else:
         direction = ImpulseSide.NONE

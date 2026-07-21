@@ -51,12 +51,15 @@ def aggregate_break_evidence(
         adjust -= 8.0
         reasons.append("Weak continuation reduces break capability")
 
-    if initiative.state is InitiativeState.STRONG:
+    if initiative.state is InitiativeState.DOMINANT:
         adjust += 5.0
-        reasons.append("Strong initiative supports break capability")
-    elif initiative.state is InitiativeState.WEAK:
+        reasons.append("Dominant initiative supports break capability")
+    elif initiative.state in {InitiativeState.NONE, InitiativeState.EXPIRED}:
         adjust -= 5.0
-        reasons.append("Weak initiative reduces break capability")
+        reasons.append("Absent initiative reduces break capability")
+    elif initiative.state is InitiativeState.WEAKENING:
+        adjust -= 2.0
+        reasons.append("Weakening initiative mildly reduces break capability")
 
     if response.initiative_preserved:
         adjust += 4.0

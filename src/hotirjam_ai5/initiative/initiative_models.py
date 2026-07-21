@@ -9,10 +9,10 @@ from hotirjam_ai5.objective import ObjectiveSnapshot
 
 
 class ImpulseSide(StrEnum):
-    """Directional impulse label (NOT a trade decision)."""
+    """Internal directional impulse label for detectors (not a trade decision)."""
 
-    BUY = "BUY"
-    SELL = "SELL"
+    BUYER = "BUYER"
+    SELLER = "SELLER"
     NONE = "NONE"
 
 
@@ -25,7 +25,7 @@ class MomentumState(StrEnum):
 
 
 class InitiativeSide(StrEnum):
-    """Which side currently holds initiative (NOT a trade decision)."""
+    """Auction-control dominant side. Never a trade instruction."""
 
     BUYER = "BUYER"
     SELLER = "SELLER"
@@ -33,11 +33,13 @@ class InitiativeSide(StrEnum):
 
 
 class InitiativeState(StrEnum):
-    """Overall initiative intensity."""
+    """H-5 Initiative lifecycle."""
 
-    WEAK = "WEAK"
-    MEDIUM = "MEDIUM"
-    STRONG = "STRONG"
+    NONE = "NONE"
+    EMERGING = "EMERGING"
+    DOMINANT = "DOMINANT"
+    WEAKENING = "WEAKENING"
+    EXPIRED = "EXPIRED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,17 +56,20 @@ class OhlcCandle:
 
 @dataclass(frozen=True, slots=True)
 class InitiativeInputs:
-    """Read-only inputs for one Initiative Engine evaluation."""
+    """Read-only inputs for one Initiative Engine evaluation.
 
-    objectives: ObjectiveSnapshot
+    ``objectives`` is optional context only. It must never choose Dominant Side.
+    """
+
     candles: tuple[OhlcCandle, ...]
     tick_size: float
     timestamp: float
+    objectives: ObjectiveSnapshot | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class ImpulseResult:
-    """IN01 output."""
+    """Force / impulse channel."""
 
     side: ImpulseSide
     score: float  # 0-100
@@ -73,7 +78,7 @@ class ImpulseResult:
 
 @dataclass(frozen=True, slots=True)
 class MomentumResult:
-    """IN02 output."""
+    """Motion / momentum channel."""
 
     score: float  # 0-100
     state: MomentumState
@@ -83,8 +88,30 @@ class MomentumResult:
 
 @dataclass(frozen=True, slots=True)
 class CandleStrengthResult:
-    """IN03 output."""
+    """Pressure / candle-body channel."""
 
     score: float  # 0-100
     direction: ImpulseSide
     reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class InitiativeEvidence:
+    """Structured independent evidence channels (0–100 each)."""
+
+    force: float
+    motion: float
+    pressure: float
+    liquidity: float
+    energy: float
+    context: float
+
+    def summary_lines(self) -> tuple[str, ...]:
+        return (
+            f"Force {self.force:.1f}",
+            f"Motion {self.motion:.1f}",
+            f"Pressure {self.pressure:.1f}",
+            f"Liquidity {self.liquidity:.1f}",
+            f"Energy {self.energy:.1f}",
+            f"Context {self.context:.1f}",
+        )

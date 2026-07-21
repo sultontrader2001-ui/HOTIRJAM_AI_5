@@ -18,6 +18,7 @@ from hotirjam_ai5.continuation import (
     ContinuationState,
 )
 from hotirjam_ai5.initiative import (
+    InitiativeEvidence,
     InitiativeSide,
     InitiativeSnapshot,
     InitiativeState,
@@ -50,26 +51,39 @@ def _objectives(
 
 def _initiative(
     side: InitiativeSide = InitiativeSide.BUYER,
+    score: float = 70.0,
     *,
-    score: float = 80.0,
     state: InitiativeState | None = None,
 ) -> InitiativeSnapshot:
     if state is None:
         if score >= 70:
-            state = InitiativeState.STRONG
+            state = InitiativeState.DOMINANT
         elif score >= 35:
-            state = InitiativeState.MEDIUM
+            state = InitiativeState.EMERGING
+        elif score > 0:
+            state = InitiativeState.WEAKENING
         else:
-            state = InitiativeState.WEAK
+            state = InitiativeState.NONE
+    buyer = (
+        score
+        if side is InitiativeSide.BUYER
+        else (0.0 if side is InitiativeSide.NONE else max(0.0, score - 30.0))
+    )
+    seller = (
+        score
+        if side is InitiativeSide.SELLER
+        else (0.0 if side is InitiativeSide.NONE else max(0.0, score - 30.0))
+    )
+    if side is InitiativeSide.NONE:
+        buyer = seller = 0.0
     return InitiativeSnapshot(
-        initiative_side=side,
-        impulse_score=score,
-        momentum_score=score,
-        candle_strength_score=score,
-        initiative_score=score,
-        state=state,
-        confidence=70.0,
-        reasons=("test",),
+        buyer_initiative=buyer,
+        seller_initiative=seller,
+        dominant_side=side,
+        initiative_state=state,
+        confidence=80.0,
+        evidence=InitiativeEvidence(score, score, score, score, score, 0.0),
+        reasons=("test initiative",),
         timestamp=1.0,
     )
 
@@ -188,7 +202,7 @@ def test_high_breakout_probability() -> None:
     snap = evaluate_break_capability(
         _inputs(
             objectives=_objectives(high_dist=4.0, high_str=25.0),
-            initiative=_initiative(score=90.0, state=InitiativeState.STRONG),
+            initiative=_initiative(score=90.0, state=InitiativeState.DOMINANT),
             response=_response(preserved=True, state=ResponseState.FAILED),
             continuation=_continuation(
                 score=90.0,
@@ -209,7 +223,7 @@ def test_low_breakout_probability() -> None:
     snap = evaluate_break_capability(
         _inputs(
             objectives=_objectives(high_dist=35.0, high_str=90.0),
-            initiative=_initiative(score=25.0, state=InitiativeState.WEAK),
+            initiative=_initiative(score=25.0, state=InitiativeState.NONE),
             response=_response(preserved=False, state=ResponseState.STRONG, strength=80.0),
             continuation=_continuation(
                 score=20.0,
@@ -241,7 +255,7 @@ def test_strong_initiative_but_failed_response_context() -> None:
     snap = evaluate_break_capability(
         _inputs(
             objectives=_objectives(high_dist=10.0, high_str=45.0),
-            initiative=_initiative(score=85.0, state=InitiativeState.STRONG),
+            initiative=_initiative(score=85.0, state=InitiativeState.DOMINANT),
             response=_response(preserved=True, state=ResponseState.FAILED),
             continuation=_continuation(score=75.0, pressure=75.0, decay=20.0),
         )
@@ -249,7 +263,7 @@ def test_strong_initiative_but_failed_response_context() -> None:
     challenged = evaluate_break_capability(
         _inputs(
             objectives=_objectives(high_dist=10.0, high_str=45.0),
-            initiative=_initiative(score=85.0, state=InitiativeState.STRONG),
+            initiative=_initiative(score=85.0, state=InitiativeState.DOMINANT),
             response=_response(preserved=False, state=ResponseState.STRONG, strength=80.0),
             continuation=_continuation(score=75.0, pressure=75.0, decay=20.0),
         )
@@ -260,7 +274,7 @@ def test_strong_initiative_but_failed_response_context() -> None:
 def test_weak_initiative() -> None:
     snap = evaluate_break_capability(
         _inputs(
-            initiative=_initiative(score=20.0, state=InitiativeState.WEAK),
+            initiative=_initiative(score=20.0, state=InitiativeState.NONE),
             continuation=_continuation(
                 score=25.0,
                 pressure=25.0,

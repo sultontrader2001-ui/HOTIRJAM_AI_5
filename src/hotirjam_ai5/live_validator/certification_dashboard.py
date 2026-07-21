@@ -19,7 +19,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from hotirjam_ai5.initiative import InitiativeSide
 from hotirjam_ai5.live_validator.models import ValidatorFrame
 
 _NA = "N/A"
@@ -297,12 +296,8 @@ def render_certification_dashboard(
     runtime = _fmt_uptime(uptime_seconds, use_color=use_color)
     session = _fmt_text(frame.symbol, use_color=use_color)
 
-    buyer: float | None = None
-    seller: float | None = None
-    if ini.initiative_side is InitiativeSide.BUYER:
-        buyer = ini.initiative_score
-    elif ini.initiative_side is InitiativeSide.SELLER:
-        seller = ini.initiative_score
+    buyer = ini.buyer_initiative if ini.buyer_initiative > 0.0 else None
+    seller = ini.seller_initiative if ini.seller_initiative > 0.0 else None
 
     market_panel = _panel(
         "MARKET",
@@ -345,7 +340,7 @@ def render_certification_dashboard(
         [
             ("Buyer", _fmt(buyer, digits=1, use_color=use_color)),
             ("Seller", _fmt(seller, digits=1, use_color=use_color)),
-            ("Dominant Side", _fmt_text(ini.initiative_side.value, use_color=use_color)),
+            ("Dominant Side", _fmt_text(ini.dominant_side.value, use_color=use_color)),
             ("Confidence", _fmt(ini.confidence, digits=1, use_color=use_color)),
         ],
         inner=inner,

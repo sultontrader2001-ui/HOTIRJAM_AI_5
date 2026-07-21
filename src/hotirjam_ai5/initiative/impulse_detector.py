@@ -70,12 +70,12 @@ def detect_impulse(
     if net_ticks > 0 and bullish >= bearish:
         reasons.append(f"Upward impulse {abs_net:.1f} ticks")
         reasons.append(f"Bullish bodies {bullish}/{len(window)}")
-        return ImpulseResult(ImpulseSide.BUY, score, tuple(reasons))
+        return ImpulseResult(ImpulseSide.BUYER, score, tuple(reasons))
 
     if net_ticks < 0 and bearish >= bullish:
         reasons.append(f"Downward impulse {abs_net:.1f} ticks")
         reasons.append(f"Bearish bodies {bearish}/{len(window)}")
-        return ImpulseResult(ImpulseSide.SELL, score, tuple(reasons))
+        return ImpulseResult(ImpulseSide.SELLER, score, tuple(reasons))
 
     reasons.append("Displacement and body majority disagree")
     # Weak conflicting impulse — half score, no side.

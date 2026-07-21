@@ -84,10 +84,12 @@ def render_developer_view(
             "==============================",
             "INITIATIVE",
             "==============================",
-            f"Side {ini.initiative_side.value}  score={_fmt(ini.initiative_score)}  "
-            f"state={ini.state.value}  conf={_fmt(ini.confidence)}",
-            f"Impulse/Mom/Cndl {_fmt(ini.impulse_score)} / {_fmt(ini.momentum_score)} / "
-            f"{_fmt(ini.candle_strength_score)}",
+            f"Initiative State {ini.initiative_state.value}",
+            f"Dominant Side    {ini.dominant_side.value}",
+            f"Buyer Initiative {_fmt(ini.buyer_initiative)}",
+            f"Seller Initiative {_fmt(ini.seller_initiative)}",
+            f"Confidence       {_fmt(ini.confidence)}",
+            f"Evidence Summary {' | '.join(ini.evidence.summary_lines())}",
             f"Reasons {reasons(ini.reasons)}",
             "==============================",
             "RESPONSE",
