@@ -1,24 +1,21 @@
-"""Trade Decision Engine — architecture skeleton only."""
+"""Trade Decision Engine — orchestrator over internal Decision Policy."""
 
 from __future__ import annotations
 
 import time
 from collections.abc import Callable
 
-from hotirjam_ai5.decision_assessment import (
-    DecisionAssessmentSnapshot,
-    DecisionAssessmentState,
-)
+from hotirjam_ai5.decision_assessment import DecisionAssessmentSnapshot
 from hotirjam_ai5.trade_decision.models import TradeDecision, TradeDecisionSnapshot
-
-BLOCKED_REASON = "Assessment blocked."
-REVIEW_REASON = "Waiting for review completion."
-READY_REASON = "Trade logic not implemented yet."
-NEXT_ACTION = "Execution Engine"
+from hotirjam_ai5.trade_decision.policy import (
+    NEXT_ACTION,
+    REVIEW_REASON,
+    apply_trade_decision_policy,
+)
 
 
 class TradeDecisionEngine:
-    """Maps Decision Assessment to a trade decision skeleton.
+    """Orchestrates trade decision evaluation via the internal policy.
 
     Consumes only DecisionAssessmentSnapshot.
     Always returns NO_TRADE in v1. Never places orders or connects to a broker.
@@ -37,7 +34,7 @@ class TradeDecisionEngine:
         self,
         assessment: DecisionAssessmentSnapshot,
     ) -> TradeDecisionSnapshot:
-        """Derive the trade decision skeleton from assessment only."""
+        """Delegate decision logic to the internal policy."""
         self._latest = evaluate_trade_decision(assessment, timestamp=self._clock())
         return self._latest
 
@@ -51,17 +48,5 @@ def evaluate_trade_decision(
     *,
     timestamp: float,
 ) -> TradeDecisionSnapshot:
-    """Pure mapping from DecisionAssessmentSnapshot. Always NO_TRADE in v1."""
-    if assessment.assessment_state is DecisionAssessmentState.BLOCKED:
-        reason = BLOCKED_REASON
-    elif assessment.assessment_state is DecisionAssessmentState.REVIEW:
-        reason = REVIEW_REASON
-    else:
-        reason = READY_REASON
-
-    return TradeDecisionSnapshot(
-        timestamp=timestamp,
-        decision=TradeDecision.NO_TRADE,
-        reason=reason,
-        next_action=NEXT_ACTION,
-    )
+    """Orchestration entry point that delegates to Decision Policy."""
+    return apply_trade_decision_policy(assessment, timestamp=timestamp)

@@ -216,10 +216,10 @@ class DecisionAssessmentView:
 
 @dataclass(frozen=True, slots=True)
 class TradeDecisionView:
-    """TRADE DECISION section (Sprint 15) — skeleton only."""
+    """TRADE DECISION section (Sprint 15+) — skeleton + policy only."""
 
     decision: str = "NO_TRADE"
-    reason: str = "Waiting for review completion."
+    reason: str = "Review incomplete."
     next_action: str = "Execution Engine"
 
 

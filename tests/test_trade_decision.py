@@ -1,4 +1,4 @@
-"""Unit tests for Trade Decision Engine (Sprint 15) — skeleton only."""
+"""Unit tests for Trade Decision Engine + Policy (Sprint 16)."""
 
 from __future__ import annotations
 
@@ -9,9 +9,10 @@ from hotirjam_ai5.decision_assessment import (
 from hotirjam_ai5.trade_decision import (
     TradeDecision,
     TradeDecisionEngine,
+    apply_trade_decision_policy,
     evaluate_trade_decision,
 )
-from hotirjam_ai5.trade_decision.engine import (
+from hotirjam_ai5.trade_decision.policy import (
     BLOCKED_REASON,
     NEXT_ACTION,
     READY_REASON,
@@ -29,8 +30,8 @@ def _assessment(state: DecisionAssessmentState) -> DecisionAssessmentSnapshot:
     )
 
 
-def test_blocked_maps_to_no_trade() -> None:
-    snap = evaluate_trade_decision(
+def test_policy_blocked_maps_to_no_trade() -> None:
+    snap = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.BLOCKED),
         timestamp=1.0,
     )
@@ -39,8 +40,8 @@ def test_blocked_maps_to_no_trade() -> None:
     assert snap.next_action == NEXT_ACTION
 
 
-def test_review_maps_to_no_trade() -> None:
-    snap = evaluate_trade_decision(
+def test_policy_review_maps_to_no_trade() -> None:
+    snap = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.REVIEW),
         timestamp=2.0,
     )
@@ -49,8 +50,8 @@ def test_review_maps_to_no_trade() -> None:
     assert snap.next_action == NEXT_ACTION
 
 
-def test_ready_maps_to_no_trade() -> None:
-    snap = evaluate_trade_decision(
+def test_policy_ready_maps_to_no_trade() -> None:
+    snap = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.READY),
         timestamp=3.0,
     )
@@ -60,22 +61,31 @@ def test_ready_maps_to_no_trade() -> None:
     assert snap.timestamp == 3.0
 
 
-def test_reason_generation() -> None:
-    blocked = evaluate_trade_decision(
+def test_policy_reason_generation() -> None:
+    blocked = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.BLOCKED),
         timestamp=4.0,
     )
-    review = evaluate_trade_decision(
+    review = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.REVIEW),
         timestamp=5.0,
     )
-    ready = evaluate_trade_decision(
+    ready = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.READY),
         timestamp=6.0,
     )
     assert blocked.reason == "Assessment blocked."
-    assert review.reason == "Waiting for review completion."
-    assert ready.reason == "Trade logic not implemented yet."
+    assert review.reason == "Review incomplete."
+    assert ready.reason == "Waiting for first trading policy."
+
+
+def test_engine_delegates_to_policy() -> None:
+    assessment = _assessment(DecisionAssessmentState.READY)
+    via_engine = evaluate_trade_decision(assessment, timestamp=7.0)
+    via_policy = apply_trade_decision_policy(assessment, timestamp=7.0)
+    assert via_engine == via_policy
+    assert via_engine.decision is TradeDecision.NO_TRADE
+    assert via_engine.reason == READY_REASON
 
 
 def test_engine_evaluate_and_snapshot() -> None:
@@ -83,6 +93,7 @@ def test_engine_evaluate_and_snapshot() -> None:
     engine = TradeDecisionEngine(clock=clock)
     snap = engine.evaluate(_assessment(DecisionAssessmentState.READY))
     assert snap.decision is TradeDecision.NO_TRADE
+    assert snap.reason == READY_REASON
     assert snap.timestamp == 11.0
     assert engine.snapshot() is snap
 
@@ -112,7 +123,7 @@ def test_output_never_contains_prohibited_words() -> None:
         "take profit",
     )
     for state in DecisionAssessmentState:
-        snap = evaluate_trade_decision(_assessment(state), timestamp=1.0)
+        snap = apply_trade_decision_policy(_assessment(state), timestamp=1.0)
         text = f"{snap.decision.value} {snap.reason} {snap.next_action}".lower()
         for word in banned:
             assert word not in text
