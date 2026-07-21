@@ -39,3 +39,5 @@ class MarketContextSnapshot:
     # Sprint 35 — signed directions (UP/DOWN/NEUTRAL and BUY/SELL/NEUTRAL).
     state_direction: str = "NEUTRAL"
     behavior_direction: str = "NEUTRAL"
+    # Sprint 38 — feed latency evidence for explainability (ms).
+    tick_delay_ms: float | None = None

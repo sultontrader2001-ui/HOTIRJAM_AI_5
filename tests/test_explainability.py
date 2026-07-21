@@ -1,6 +1,8 @@
-"""Tests for Decision Explainability (Sprint 36) — real score exposure only."""
+"""Tests for Decision Explainability v2 (Sprint 38) — real evidence only."""
 
 from __future__ import annotations
+
+import pytest
 
 from hotirjam_ai5.decision_assessment import (
     DecisionAssessmentSnapshot,
@@ -13,9 +15,14 @@ from hotirjam_ai5.trade_decision import (
     TradeDecision,
     apply_trade_decision_policy,
     build_decision_explainability,
+    capture_score_evidence,
 )
 from hotirjam_ai5.trade_decision.explainability import contributions_from_breakdown
-from hotirjam_ai5.trade_decision.models import BuyScoreBreakdown
+from hotirjam_ai5.trade_decision.models import (
+    BuyScoreBreakdown,
+    DecisionReadiness,
+    SignalStability,
+)
 
 
 def _assessment(state: DecisionAssessmentState) -> DecisionAssessmentSnapshot:
@@ -35,6 +42,7 @@ def _context(
     feed_status: str = "HEALTHY",
     state_direction: str = "UP",
     behavior_direction: str = "BUY",
+    tick_delay_ms: float | None = 19.0,
 ) -> MarketContextSnapshot:
     return MarketContextSnapshot(
         timestamp=100.0,
@@ -54,6 +62,7 @@ def _context(
         summary="fixture",
         state_direction=state_direction,
         behavior_direction=behavior_direction,
+        tick_delay_ms=tick_delay_ms,
     )
 
 
@@ -88,105 +97,92 @@ def _liquidity(
     )
 
 
-def test_buy_explanation_breakdown_matches_real_score() -> None:
+def test_buy_explanation_shows_real_physics_and_liquidity() -> None:
     history = ((95, 95), (96, 96))
     snap = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.READY),
         _context(),
-        _physics(),
+        _physics(velocity=242.73, acceleration=18.52),
         _liquidity(),
         timestamp=1.0,
         signal_history=history,
     )
     assert snap.decision is TradeDecision.BUY_INTERNAL
-    assert snap.explainability is not None
-    expl = snap.explainability
-    assert expl.headline == "BUY selected because"
-    assert expl.buy_total == snap.buy_score == 100
-    assert expl.sell_total == snap.sell_score
-    labels = {line.label: line.points for line in expl.buy_contributions}
-    assert labels == {
-        "Assessment": 20,
-        "Feed": 15,
-        "Market State": 15,
-        "Behavior": 15,
-        "Physics": 20,
-        "Liquidity": 15,
-    }
-    assert sum(labels.values()) == expl.buy_total
-    assert "Physics confirmed BUY" in expl.selection_lines
-    assert "Liquidity confirmed BUY" in expl.selection_lines
-    assert "BUY score 100" in expl.selection_lines
-    assert any(line.startswith("BUY confidence ") for line in expl.selection_lines)
-    assert any(line.startswith("SELL score ") for line in expl.selection_lines)
-    assert expl.checklist == ()
-
-
-def test_sell_explanation_breakdown_matches_real_score() -> None:
-    history = ((95, 95), (96, 96))
-    snap = apply_trade_decision_policy(
-        _assessment(DecisionAssessmentState.READY),
-        _sell_context(),
-        _physics(velocity=-1.0, acceleration=-0.2),
-        _liquidity(
-            liquidity_shift=LiquidityBias.SELL.value,
-            dom_imbalance=LiquidityBias.SELL.value,
-        ),
-        timestamp=2.0,
-        sell_signal_history=history,
-    )
-    assert snap.decision is TradeDecision.SELL_INTERNAL
     expl = snap.explainability
     assert expl is not None
-    assert expl.headline == "SELL selected because"
-    assert expl.sell_total == snap.sell_score == 100
-    sell_labels = {line.label: line.points for line in expl.sell_contributions}
-    assert sell_labels["Physics"] == 20
-    assert sell_labels["Liquidity"] == 15
-    assert sum(sell_labels.values()) == expl.sell_total
-    assert "Physics confirmed SELL" in expl.selection_lines
-    assert "Liquidity confirmed SELL" in expl.selection_lines
-    assert expl.buy_total == snap.buy_score
-    assert expl.buy_total < expl.sell_total
+    assert expl.evidence is not None
+    assert expl.evidence.tick_velocity == pytest.approx(242.73)
+    assert expl.evidence.tick_acceleration == pytest.approx(18.52)
+    detail = "\n".join(expl.buy_detail_lines)
+    assert "Velocity           +242.73 ✓" in detail
+    assert "Acceleration       +18.52 ✓" in detail
+    assert "Direction          BUY" in detail
+    assert "Score              +20" in detail
+    assert "Liquidity Shift    BUY" in detail
+    assert "DOM Imbalance      BUY" in detail
+    assert "Direction Confirmed YES" in detail
+    assert "Latency" in detail and "19 ms" in detail
+    assert "BUY confirmed by" in expl.buy_reason
+    assert "Physics" in expl.buy_reason
+    assert "Assessment" not in expl.buy_reason
+    assert expl.buy_total == 100
 
 
-def test_no_trade_explanation_shows_missing_requirements() -> None:
+def test_sell_physics_fails_on_buy_side_detail() -> None:
+    snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _context(),
+        _physics(velocity=-1.81, acceleration=-19.42),
+        _liquidity(liquidity_shift="BUY", dom_imbalance="SELL"),
+        timestamp=2.0,
+    )
+    expl = snap.explainability
+    assert expl is not None
+    buy_detail = "\n".join(expl.buy_detail_lines)
+    assert "Velocity           -1.81 ✗" in buy_detail
+    assert "Acceleration       -19.42 ✗" in buy_detail
+    assert "Direction          NONE" in buy_detail
+    assert "Score              +0" in buy_detail
+    assert "Direction Confirmed NO" in buy_detail
+
+
+def test_market_state_and_behavior_show_direction() -> None:
+    snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _context(state="TRENDING", behavior="ACCELERATING"),
+        _physics(),
+        _liquidity(),
+        timestamp=3.0,
+    )
+    expl = snap.explainability
+    assert expl is not None
+    detail = expl.buy_detail_lines
+    assert "State" in detail
+    assert "TRENDING" in detail
+    assert "Direction" in detail
+    assert "UP" in detail
+    assert "Behavior" in detail
+    assert "ACCELERATING" in detail
+    assert "BUY" in detail
+    # Score lines use the real contribution values.
+    assert "+15" in detail
+
+
+def test_no_trade_missing_checklist() -> None:
     snap = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.READY),
         _context(),
         _physics(),
         _liquidity(),
-        timestamp=3.0,
-    )
-    assert snap.decision is TradeDecision.NO_TRADE
-    expl = snap.explainability
-    assert expl is not None
-    assert expl.headline == "NO TRADE"
-    assert expl.buy_total == snap.buy_score == 100
-    assert expl.selection_lines == ()
-    assert any("Stability not reached" in item for item in expl.checklist)
-    assert any("BUY Decision Readiness" in item for item in expl.checklist)
-    # Score/confidence already meet thresholds; checklist must reflect real values.
-    assert any("BUY score ≥ 80" in item for item in expl.checklist)
-    assert any("BUY confidence ≥ 85" in item for item in expl.checklist)
-
-
-def test_no_trade_partial_score_checklist() -> None:
-    snap = apply_trade_decision_policy(
-        _assessment(DecisionAssessmentState.READY),
-        _context(state="QUIET", behavior="UNSTABLE"),
-        None,
-        None,
         timestamp=4.0,
     )
     assert snap.decision is TradeDecision.NO_TRADE
     expl = snap.explainability
     assert expl is not None
-    assert expl.buy_total == snap.buy_score
-    assert expl.buy_total < 80
-    assert any("BUY score < 80" in item for item in expl.checklist)
-    assert any("Physics confirmed" in item and item.startswith("✗") for item in expl.checklist)
-    assert any("Liquidity confirmed" in item and item.startswith("✗") for item in expl.checklist)
+    assert expl.headline == "NO TRADE"
+    assert "✗ Stability" in expl.checklist
+    assert "✓ Feed" in expl.checklist
+    assert "✓ Assessment" in expl.checklist
 
 
 def test_contributions_never_reinvent_totals() -> None:
@@ -203,10 +199,10 @@ def test_contributions_never_reinvent_totals() -> None:
 
 
 def test_explainability_rejects_mismatched_totals() -> None:
-    from hotirjam_ai5.trade_decision.models import DecisionReadiness, SignalStability
-    import pytest
-
     breakdown = BuyScoreBreakdown(20, 15, 0, 0, 0, 0)
+    evidence = capture_score_evidence(
+        _assessment(DecisionAssessmentState.BLOCKED), None, None, None
+    )
     with pytest.raises(ValueError, match="buy_breakdown.total"):
         build_decision_explainability(
             decision=TradeDecision.NO_TRADE,
@@ -220,4 +216,27 @@ def test_explainability_rejects_mismatched_totals() -> None:
             buy_readiness=DecisionReadiness.UNKNOWN,
             sell_readiness=DecisionReadiness.UNKNOWN,
             decision_explanation=None,
+            evidence=evidence,
         )
+
+
+def test_sell_internal_detail_confirms_sell_physics() -> None:
+    history = ((95, 95), (96, 96))
+    snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _sell_context(),
+        _physics(velocity=-2.5, acceleration=-1.0),
+        _liquidity(
+            liquidity_shift=LiquidityBias.SELL.value,
+            dom_imbalance=LiquidityBias.SELL.value,
+        ),
+        timestamp=5.0,
+        sell_signal_history=history,
+    )
+    assert snap.decision is TradeDecision.SELL_INTERNAL
+    expl = snap.explainability
+    assert expl is not None
+    detail = "\n".join(expl.sell_detail_lines)
+    assert "Direction          SELL" in detail
+    assert "Direction Confirmed YES" in detail
+    assert "SELL confirmed by" in expl.sell_reason

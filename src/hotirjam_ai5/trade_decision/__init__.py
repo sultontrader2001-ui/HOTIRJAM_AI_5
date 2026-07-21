@@ -10,7 +10,9 @@ from hotirjam_ai5.trade_decision.models import (
     DecisionExplainability,
     DecisionExplanation,
     DecisionReadiness,
+    DecisionScoreEvidence,
     ExplanationStatus,
+    MemoryScoreInfluence,
     ScoreContributionLine,
     SellConfidenceBreakdown,
     SellScoreBreakdown,
@@ -20,8 +22,16 @@ from hotirjam_ai5.trade_decision.models import (
 )
 from hotirjam_ai5.trade_decision.explainability import (
     build_decision_explainability,
+    capture_score_evidence,
     contributions_from_breakdown,
     empty_score_breakdown,
+)
+from hotirjam_ai5.trade_decision.memory_influence import (
+    MEMORY_MAX_BOOST,
+    MEMORY_MAX_OPPOSE,
+    MEMORY_MIN_AGREEMENT,
+    apply_memory_score_influence,
+    compute_memory_deltas,
 )
 from hotirjam_ai5.trade_decision.policy import (
     TradeAuthorization,
@@ -45,12 +55,17 @@ from hotirjam_ai5.trade_decision.policy import (
 )
 
 __all__ = [
+    "MEMORY_MAX_BOOST",
+    "MEMORY_MAX_OPPOSE",
+    "MEMORY_MIN_AGREEMENT",
     "BuyConfidenceBreakdown",
     "BuyScoreBreakdown",
     "DecisionExplainability",
     "DecisionExplanation",
     "DecisionReadiness",
+    "DecisionScoreEvidence",
     "ExplanationStatus",
+    "MemoryScoreInfluence",
     "ScoreContributionLine",
     "SellConfidenceBreakdown",
     "SellScoreBreakdown",
@@ -59,11 +74,14 @@ __all__ = [
     "TradeDecision",
     "TradeDecisionEngine",
     "TradeDecisionSnapshot",
+    "apply_memory_score_influence",
     "apply_trade_decision_policy",
     "build_decision_explainability",
     "build_decision_explanation",
+    "capture_score_evidence",
     "compute_buy_confidence",
     "compute_buy_score",
+    "compute_memory_deltas",
     "compute_sell_confidence",
     "compute_sell_score",
     "contributions_from_breakdown",

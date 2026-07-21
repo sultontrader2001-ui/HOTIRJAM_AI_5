@@ -6,9 +6,13 @@ import time
 from collections import deque
 from collections.abc import Callable
 
-from hotirjam_ai5.decision_assessment import DecisionAssessmentSnapshot
+from hotirjam_ai5.decision_assessment import (
+    DecisionAssessmentSnapshot,
+    DecisionAssessmentState,
+)
 from hotirjam_ai5.liquidity import LiquiditySnapshot
 from hotirjam_ai5.market_context import MarketContextSnapshot
+from hotirjam_ai5.memory.diagnostics_models import MemoryDiagnosticsReport
 from hotirjam_ai5.physics.measurements import PhysicsSnapshot
 from hotirjam_ai5.trade_decision.models import (
     DecisionReadiness,
@@ -24,6 +28,7 @@ from hotirjam_ai5.trade_decision.policy import (
 )
 from hotirjam_ai5.trade_decision.explainability import (
     build_decision_explainability,
+    capture_score_evidence,
     empty_score_breakdown,
 )
 
@@ -46,8 +51,17 @@ class TradeDecisionEngine:
         )
         explanation = empty_decision_explanation()
         zero = empty_score_breakdown()
+        init_ts = self._clock()
+        empty_assessment = DecisionAssessmentSnapshot(
+            timestamp=init_ts,
+            assessment_state=DecisionAssessmentState.REVIEW,
+            assessment_ready=False,
+            reason="Waiting for evaluation.",
+            next_stage="Decision Assessment Engine",
+        )
+        evidence = capture_score_evidence(empty_assessment, None, None, None)
         self._latest = TradeDecisionSnapshot(
-            timestamp=self._clock(),
+            timestamp=init_ts,
             decision=TradeDecision.NO_TRADE,
             reason=explanation.summary,
             next_action=NEXT_ACTION,
@@ -74,7 +88,9 @@ class TradeDecisionEngine:
                 buy_readiness=DecisionReadiness.UNKNOWN,
                 sell_readiness=DecisionReadiness.UNKNOWN,
                 decision_explanation=explanation,
+                evidence=evidence,
             ),
+            memory_influence=None,
         )
 
     def evaluate(
@@ -83,6 +99,7 @@ class TradeDecisionEngine:
         context: MarketContextSnapshot | None = None,
         physics: PhysicsSnapshot | None = None,
         liquidity: LiquiditySnapshot | None = None,
+        memory_diagnostics: MemoryDiagnosticsReport | None = None,
     ) -> TradeDecisionSnapshot:
         """Delegate decision logic to the internal policy with rolling history."""
         prior_buy = tuple(self._buy_signal_history)
@@ -95,6 +112,7 @@ class TradeDecisionEngine:
             timestamp=self._clock(),
             signal_history=prior_buy,
             sell_signal_history=prior_sell,
+            memory_diagnostics=memory_diagnostics,
         )
         self._buy_signal_history.append(
             (self._latest.buy_score, self._latest.buy_confidence)
@@ -118,6 +136,7 @@ def evaluate_trade_decision(
     timestamp: float,
     signal_history: tuple[tuple[int, int], ...] = (),
     sell_signal_history: tuple[tuple[int, int], ...] = (),
+    memory_diagnostics: MemoryDiagnosticsReport | None = None,
 ) -> TradeDecisionSnapshot:
     """Orchestration entry point that delegates to Decision Policy."""
     return apply_trade_decision_policy(
@@ -128,4 +147,5 @@ def evaluate_trade_decision(
         timestamp=timestamp,
         signal_history=signal_history,
         sell_signal_history=sell_signal_history,
+        memory_diagnostics=memory_diagnostics,
     )

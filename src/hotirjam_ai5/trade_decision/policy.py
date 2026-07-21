@@ -18,8 +18,13 @@ from hotirjam_ai5.decision_assessment import (
 from hotirjam_ai5.liquidity import LiquidityBias, LiquiditySnapshot
 from hotirjam_ai5.market_context import MarketContextSnapshot
 from hotirjam_ai5.physics.measurements import PhysicsSnapshot
+from hotirjam_ai5.memory.diagnostics_models import MemoryDiagnosticsReport
 from hotirjam_ai5.trade_decision.explainability import (
     build_decision_explainability,
+    capture_score_evidence,
+)
+from hotirjam_ai5.trade_decision.memory_influence import (
+    apply_memory_score_influence,
 )
 from hotirjam_ai5.trade_decision.models import (
     BuyConfidenceBreakdown,
@@ -681,13 +686,33 @@ def apply_trade_decision_policy(
     timestamp: float,
     signal_history: Sequence[tuple[int, int]] = (),
     sell_signal_history: Sequence[tuple[int, int]] = (),
+    memory_diagnostics: MemoryDiagnosticsReport | None = None,
 ) -> TradeDecisionSnapshot:
-    """Compute BUY and SELL pipelines; emit observation-only activation."""
+    """Compute BUY and SELL pipelines; emit observation-only activation.
+
+    Memory Diagnostics may apply a capped secondary score adjustment (Sprint 44).
+    Primary category math is unchanged. Memory never invents a decision on its own.
+    """
     buy_breakdown = compute_buy_score(assessment, context, physics, liquidity)
-    buy_score = buy_breakdown.total
+    original_buy_score = buy_breakdown.total
     buy_confidence = compute_buy_confidence(
         assessment, context, physics, liquidity
     ).total
+
+    sell_breakdown = compute_sell_score(assessment, context, physics, liquidity)
+    original_sell_score = sell_breakdown.total
+    sell_confidence = compute_sell_confidence(
+        assessment, context, physics, liquidity
+    ).total
+
+    memory_influence = apply_memory_score_influence(
+        original_buy_score=original_buy_score,
+        original_sell_score=original_sell_score,
+        report=memory_diagnostics,
+    )
+    buy_score = memory_influence.adjusted_buy_score
+    sell_score = memory_influence.adjusted_sell_score
+
     buy_history = (*signal_history, (buy_score, buy_confidence))
     buy_stability = resolve_signal_stability(buy_history)
     buy_stability_status = signal_stability_explanation_status(
@@ -705,11 +730,6 @@ def apply_trade_decision_policy(
         liquidity_bias=_BUY_BIAS,
     )
 
-    sell_breakdown = compute_sell_score(assessment, context, physics, liquidity)
-    sell_score = sell_breakdown.total
-    sell_confidence = compute_sell_confidence(
-        assessment, context, physics, liquidity
-    ).total
     sell_history = (*sell_signal_history, (sell_score, sell_confidence))
     sell_stability = resolve_signal_stability(sell_history)
     sell_stability_status = signal_stability_explanation_status(
@@ -753,18 +773,21 @@ def apply_trade_decision_policy(
         readiness_status=readiness_status,
         side=side,
     )
+    evidence = capture_score_evidence(assessment, context, physics, liquidity)
+    # Explainability stays tied to primary breakdown totals (pre-Memory).
     explainability = build_decision_explainability(
         decision=decision,
         buy_breakdown=buy_breakdown,
         sell_breakdown=sell_breakdown,
-        buy_score=buy_score,
+        buy_score=original_buy_score,
         buy_confidence=buy_confidence,
-        sell_score=sell_score,
+        sell_score=original_sell_score,
         sell_confidence=sell_confidence,
         buy_stability=buy_stability,
         buy_readiness=buy_readiness,
         sell_readiness=sell_readiness,
         decision_explanation=explanation,
+        evidence=evidence,
     )
     return TradeDecisionSnapshot(
         timestamp=timestamp,
@@ -783,4 +806,5 @@ def apply_trade_decision_policy(
         buy_score_breakdown=buy_breakdown,
         sell_score_breakdown=sell_breakdown,
         explainability=explainability,
+        memory_influence=memory_influence,
     )

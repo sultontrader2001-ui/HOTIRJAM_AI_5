@@ -261,7 +261,7 @@ def test_render_with_real_market_and_health_values() -> None:
                 buy_lines=(
                     "Assessment    +20",
                     "Feed          +15",
-                    "Market State  +15",
+                    "State         +15",
                     "Behavior      +15",
                     "Physics       +20",
                     "Liquidity     +15",
@@ -270,12 +270,41 @@ def test_render_with_real_market_and_health_values() -> None:
                 sell_lines=(
                     "Assessment    +20",
                     "Feed          +15",
-                    "Market State   +0",
+                    "State          +0",
                     "Behavior       +0",
                     "Physics        +0",
                     "Liquidity      +0",
                 ),
                 sell_total=35,
+                buy_detail_lines=(
+                    "Physics",
+                    "Velocity           +242.73 ✓",
+                    "Acceleration       +18.52 ✓",
+                    "Direction          BUY",
+                    "Score              +20",
+                    "Liquidity",
+                    "Liquidity Shift    BUY",
+                    "DOM Imbalance      BUY",
+                    "Direction Confirmed YES",
+                    "Score              +15",
+                    "BUY",
+                    "Assessment    +20",
+                    "Feed          +15",
+                    "State         +15",
+                    "Behavior      +15",
+                    "Physics       +20",
+                    "Liquidity     +15",
+                    "TOTAL         100",
+                    "Reason",
+                    "BUY confirmed by",
+                    "Market State,",
+                    "Behavior,",
+                    "Physics,",
+                    "Liquidity.",
+                ),
+                buy_reason=(
+                    "BUY confirmed by\nMarket State,\nBehavior,\nPhysics,\nLiquidity."
+                ),
                 selection_lines=(
                     "Physics confirmed BUY",
                     "Liquidity confirmed BUY",
@@ -335,7 +364,9 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "DECISION EXPLANATION" in text
     assert "BUY selected because" in text
     assert "Physics confirmed BUY" in text
-    assert "Assessment    +20" in text or "Assessment" in text
+    assert "Velocity           +242.73 ✓" in text
+    assert "Direction Confirmed YES" in text
+    assert "BUY confirmed by" in text
     assert "TOTAL" in text
     assert "BUY Score         : 88 / 100" in text
     assert "BUY Confidence    : 92 %" in text

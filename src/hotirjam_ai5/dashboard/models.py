@@ -237,7 +237,7 @@ class DecisionExplanationView:
 
 @dataclass(frozen=True, slots=True)
 class DecisionExplainabilityView:
-    """DECISION EXPLANATION section (Sprint 36) — real score exposure only."""
+    """DECISION EXPLANATION section — real score evidence (Sprint 36/38)."""
 
     headline: str = "NO TRADE"
     buy_lines: tuple[str, ...] = ()
@@ -246,6 +246,10 @@ class DecisionExplainabilityView:
     sell_total: int = 0
     checklist: tuple[str, ...] = ()
     selection_lines: tuple[str, ...] = ()
+    buy_detail_lines: tuple[str, ...] = ()
+    sell_detail_lines: tuple[str, ...] = ()
+    buy_reason: str = ""
+    sell_reason: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,6 +273,10 @@ class TradeDecisionView:
     explainability: DecisionExplainabilityView = field(
         default_factory=DecisionExplainabilityView
     )
+    # Sprint 44 — Memory influence diagnostics (presentation only).
+    memory_influence_pct: float = 0.0
+    memory_agreement: float = 0.0
+    memory_persistence: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

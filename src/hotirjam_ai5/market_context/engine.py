@@ -75,6 +75,7 @@ class MarketContextEngine:
             summary=summary,
             state_direction=market_state.direction.value,
             behavior_direction=behavior.direction.value,
+            tick_delay_ms=feed_health.tick_delay_ms,
         )
         return self._latest
 

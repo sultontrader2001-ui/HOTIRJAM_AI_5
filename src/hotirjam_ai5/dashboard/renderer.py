@@ -159,6 +159,9 @@ class DashboardRenderer:
             _row("SELL Score", f"{trade.sell_score} / 100"),
             _row("SELL Confidence", f"{trade.sell_confidence} %"),
             _row("Signal Stability", stability),
+            _row("Memory Influence", f"{trade.memory_influence_pct:.1f}%"),
+            _row("Memory Agreement", f"{trade.memory_agreement:.1f}"),
+            _row("Memory Persistence", f"{trade.memory_persistence:.1f}"),
             *self._decision_explanation_section(trade.explainability),
         ]
 
@@ -166,28 +169,38 @@ class DashboardRenderer:
         self,
         expl: DecisionExplainabilityView,
     ) -> list[str]:
-        """Render DECISION EXPLANATION from real snapshot contributions."""
+        """Render DECISION EXPLANATION from real snapshot evidence."""
         lines = [
             "DECISION EXPLANATION",
             expl.headline,
-            "BUY",
         ]
-        if expl.buy_lines:
-            lines.extend(expl.buy_lines)
+        if expl.buy_detail_lines:
+            lines.extend(expl.buy_detail_lines)
         else:
-            lines.append("(no breakdown)")
-        lines.append(f"{'TOTAL':<14} {expl.buy_total}")
-        lines.append("SELL")
-        if expl.sell_lines:
-            lines.extend(expl.sell_lines)
+            lines.append("BUY")
+            if expl.buy_lines:
+                lines.extend(expl.buy_lines)
+            lines.append(f"{'TOTAL':<14} {expl.buy_total}")
+            if expl.buy_reason:
+                lines.append("Reason")
+                lines.extend(expl.buy_reason.splitlines())
+
+        if expl.sell_detail_lines:
+            lines.extend(expl.sell_detail_lines)
         else:
-            lines.append("(no breakdown)")
-        lines.append(f"{'TOTAL':<14} {expl.sell_total}")
+            lines.append("SELL")
+            if expl.sell_lines:
+                lines.extend(expl.sell_lines)
+            lines.append(f"{'TOTAL':<14} {expl.sell_total}")
+            if expl.sell_reason:
+                lines.append("Reason")
+                lines.extend(expl.sell_reason.splitlines())
+
         if expl.selection_lines:
             for line in expl.selection_lines:
                 lines.append(line)
         if expl.checklist:
-            lines.append("Reasons")
+            lines.append("Missing")
             lines.extend(expl.checklist)
         return lines
 

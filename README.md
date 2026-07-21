@@ -42,6 +42,13 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 35 | Signed Market State & Behavior | Done |
 | 36 | Decision Explainability Engine | Done |
 | 37 | Entry Timing Audit (audit only) | Done |
+| 38 | Decision Explainability v2 | Done |
+| 39 | Decision Horizon Audit (audit only) | Done |
+| 40 | Market Memory Architecture Design (design only) | Done |
+| 41 | Market Memory v1 Foundation | Done |
+| 42 | Market Memory Live Audit (audit only) | Done |
+| 43 | Market Memory Diagnostics | Done |
+| 44 | Market Memory Decision Integration v1 | Done |
 
 **Out of scope still:** tradable BUY, SELL, order execution, broker connectivity,
 positions, risk
@@ -60,7 +67,25 @@ Decision Evaluation maps intent to IDLE / WAITING / EVALUATING lifecycle states 
 Decision Assessment maps evaluation status to BLOCKED / REVIEW / READY only.
 Trade Decision emits observation-only `BUY_INTERNAL` / `SELL_INTERNAL` / `NO_TRADE`
 with BUY/SELL scores and a DECISION EXPLANATION section that exposes real
-contribution breakdowns and missing readiness conditions (Sprint 36).
+input evidence (physics velocity/acceleration, liquidity shift/imbalance, state,
+behavior, assessment, feed latency) plus contribution totals — no recalculation
+(Sprint 36/38).
+Decision horizon audit (Sprint 39): physics memory is 2–3 ticks; liquidity is one DOM
+snapshot; the only multi-step gate is 3 dashboard evaluations (~0.75–1.5 s). See
+`docs/SPRINT_39_DECISION_HORIZON_AUDIT.md`.
+Market Memory architecture (Sprint 40, design only): a new layer stores evolution of
+Physics / Liquidity / State / Behavior / Decision without replacing those engines.
+See `docs/SPRINT_40_MARKET_MEMORY_ARCHITECTURE.md`.
+Market Memory v1 (Sprint 41): passive bounded ring buffer + adapters. Does **not**
+feed Trade Decision. Diagnostics via `memory_diagnostics` (no dashboard UI yet).
+Market Memory live audit (Sprint 42): controlled-session evidence in
+`docs/SPRINT_42_MARKET_MEMORY_LIVE_AUDIT.md` (production NDJSON absent at audit time).
+Market Memory Diagnostics (Sprint 43): read-only Fast/Medium/Slow band summaries,
+consensus, timeline, and store metrics via `build_memory_diagnostics` — not wired into
+Trade Decision or dashboard rendering.
+Market Memory Decision Integration v1 (Sprint 44): capped secondary BUY/SELL score
+adjustment from Memory Diagnostics (max boost ±5 / oppose ±3). Primary category
+thresholds unchanged. Memory never invents decisions.
 
 ### Requirements
 

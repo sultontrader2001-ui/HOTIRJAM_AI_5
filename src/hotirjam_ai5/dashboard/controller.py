@@ -63,6 +63,16 @@ from hotirjam_ai5.market_state import (
 from hotirjam_ai5.market_transition import MarketTransitionEngine
 from hotirjam_ai5.entry_timing import EntryTimingAuditor
 from hotirjam_ai5.performance import PerformanceTracker, format_multi_zone
+from hotirjam_ai5.memory import (
+    BehaviorAdapter,
+    DecisionAdapter,
+    LiquidityAdapter,
+    MarketMemoryStore,
+    MemoryDiagnostics,
+    PhysicsAdapter,
+    StateAdapter,
+    build_memory_diagnostics,
+)
 from hotirjam_ai5.physics.engine import PhysicsEngine
 from hotirjam_ai5.physics.measurements import PhysicsSnapshot
 from hotirjam_ai5.trade_decision import TradeDecisionEngine
@@ -103,6 +113,7 @@ class DashboardController:
         trade_decision: TradeDecisionEngine | None = None,
         performance: PerformanceTracker | None = None,
         entry_timing: EntryTimingAuditor | None = None,
+        memory: MarketMemoryStore | None = None,
         stale_seconds: float = DEFAULT_DISCONNECT_SECONDS,
         stall_seconds: float = DEFAULT_STALL_SECONDS,
         clock: Callable[[], float] | None = None,
@@ -161,6 +172,8 @@ class DashboardController:
         self._entry_timing = entry_timing or EntryTimingAuditor(
             clock=wall_clock or time.time
         )
+        # Market Memory is passive — never read by Trade Decision (Sprint 41).
+        self._memory = memory or MarketMemoryStore()
         self._wall_clock = wall_clock or time.time
         self._previous_market_state: MarketStateSnapshot | None = None
         self._engine_status = EngineStatus.STARTING
@@ -169,6 +182,16 @@ class DashboardController:
         self._market = LiveMarketView(symbol=self._symbol)
         self._dom = DomView()
         self._physics_view = PhysicsView()
+
+    @property
+    def memory_diagnostics(self) -> MemoryDiagnostics:
+        """Passive memory diagnostics (not shown on dashboard yet)."""
+        return self._memory.diagnostics()
+
+    @property
+    def memory_store(self) -> MarketMemoryStore:
+        """Bounded memory store for tests / future diagnostics."""
+        return self._memory
 
     def start(self) -> None:
         """Mark the engine running and begin waiting for live ticks."""
@@ -201,6 +224,9 @@ class DashboardController:
             tick_velocity=physics.tick_velocity,
             tick_acceleration=physics.tick_acceleration,
         )
+        PhysicsAdapter.record(
+            self._memory, physics, timestamp=tick.timestamp
+        )
         self._statistics.record_tick()
         self._connection_status = ConnectionStatus.CONNECTED
         self._market_status = MarketStatus.OPEN
@@ -223,6 +249,9 @@ class DashboardController:
             status=snapshot.status,
         )
         self._liquidity.on_dom(snapshot)
+        liquidity = self._liquidity.snapshot()
+        if liquidity is not None:
+            LiquidityAdapter.record(self._memory, liquidity)
         self._log_dom_transition(previous, FeedStatus.HEALTHY)
 
     def check_connection_health(self) -> None:
@@ -235,6 +264,7 @@ class DashboardController:
             if self._connection_status is ConnectionStatus.CONNECTED:
                 self._connection_status = ConnectionStatus.DISCONNECTED
                 self._market_status = MarketStatus.WAITING
+            self._memory.clear()
         elif current in (FeedStatus.HEALTHY, FeedStatus.STALE):
             self._connection_status = ConnectionStatus.CONNECTED
             self._market_status = MarketStatus.OPEN
@@ -322,12 +352,19 @@ class DashboardController:
         liquidity_snapshot = None
         if dom_health.feed_status is FeedStatus.HEALTHY:
             liquidity_snapshot = self._liquidity.snapshot()
+        # Record State/Behavior before scoring so Memory Diagnostics include them.
+        StateAdapter.record(self._memory, market_state)
+        BehaviorAdapter.record(self._memory, market_behavior)
+        memory_report = build_memory_diagnostics(self._memory)
         trade_decision = self._trade_decision.evaluate(
             decision_assessment,
             market_context,
             physics_snapshot,
             liquidity_snapshot,
+            memory_diagnostics=memory_report,
         )
+        # Decision stream append after scoring — does not feed this evaluation.
+        DecisionAdapter.record(self._memory, trade_decision)
         self._statistics.record_decision(trade_decision.decision.value)
         if trade_decision.decision is TradeDecision.BUY_INTERNAL:
             self._log_buy_internal(
@@ -458,6 +495,9 @@ class DashboardController:
                 next_action=trade_decision.next_action,
                 explanation=_trade_explanation_view(trade_decision),
                 explainability=_trade_explainability_view(trade_decision),
+                memory_influence_pct=_memory_influence_pct(trade_decision),
+                memory_agreement=_memory_agreement(trade_decision),
+                memory_persistence=_memory_persistence(trade_decision),
             ),
             statistics=StatisticsView(
                 tick_count=tick_count,
@@ -543,6 +583,21 @@ class DashboardController:
         acceleration = physics.tick_acceleration
         shift = getattr(liquidity, "liquidity_shift", "UNKNOWN")
         imbalance = getattr(liquidity, "dom_imbalance", "UNKNOWN")
+        mi = decision.memory_influence
+        memory_part = ""
+        if mi is not None:
+            memory_part = (
+                f" original_buy={mi.original_buy_score}"
+                f" original_sell={mi.original_sell_score}"
+                f" memory_adj_buy={mi.buy_delta:+d}"
+                f" memory_adj_sell={mi.sell_delta:+d}"
+                f" adjusted_buy={mi.adjusted_buy_score}"
+                f" adjusted_sell={mi.adjusted_sell_score}"
+                f" consensus={mi.consensus}"
+                f" agreement={mi.agreement}"
+                f" persistence={mi.persistence}"
+                f" final={decision.decision.value}"
+            )
         self._signal_log.write(
             "BUY_INTERNAL "
             f"timestamp={decision.timestamp:.6f} "
@@ -552,6 +607,7 @@ class DashboardController:
             f"behavior={behavior} "
             f"physics=velocity:{velocity},acceleration:{acceleration} "
             f"liquidity=shift:{shift},imbalance:{imbalance}"
+            f"{memory_part}"
         )
 
     def _log_sell_internal(
@@ -569,6 +625,21 @@ class DashboardController:
         price = self._market.last_price
         shift = getattr(liquidity, "liquidity_shift", "UNKNOWN")
         imbalance = getattr(liquidity, "dom_imbalance", "UNKNOWN")
+        mi = decision.memory_influence
+        memory_part = ""
+        if mi is not None:
+            memory_part = (
+                f" original_buy={mi.original_buy_score}"
+                f" original_sell={mi.original_sell_score}"
+                f" memory_adj_buy={mi.buy_delta:+d}"
+                f" memory_adj_sell={mi.sell_delta:+d}"
+                f" adjusted_buy={mi.adjusted_buy_score}"
+                f" adjusted_sell={mi.adjusted_sell_score}"
+                f" consensus={mi.consensus}"
+                f" agreement={mi.agreement}"
+                f" persistence={mi.persistence}"
+                f" final={decision.decision.value}"
+            )
         self._signal_log.write(
             "SELL_INTERNAL "
             f"timestamp={decision.timestamp:.6f} "
@@ -580,7 +651,23 @@ class DashboardController:
             f"physics=velocity:{physics.tick_velocity},"
             f"acceleration:{physics.tick_acceleration} "
             f"liquidity=shift:{shift},imbalance:{imbalance}"
+            f"{memory_part}"
         )
+
+
+def _memory_influence_pct(trade_decision: TradeDecisionSnapshot) -> float:
+    mi = trade_decision.memory_influence
+    return 0.0 if mi is None else mi.influence_pct
+
+
+def _memory_agreement(trade_decision: TradeDecisionSnapshot) -> float:
+    mi = trade_decision.memory_influence
+    return 0.0 if mi is None else mi.agreement
+
+
+def _memory_persistence(trade_decision: TradeDecisionSnapshot) -> float:
+    mi = trade_decision.memory_influence
+    return 0.0 if mi is None else mi.persistence
 
 
 def _trade_explanation_view(
@@ -625,4 +712,8 @@ def _trade_explainability_view(
         sell_total=expl.sell_total,
         checklist=expl.checklist,
         selection_lines=expl.selection_lines,
+        buy_detail_lines=expl.buy_detail_lines,
+        sell_detail_lines=expl.sell_detail_lines,
+        buy_reason=expl.buy_reason,
+        sell_reason=expl.sell_reason,
     )

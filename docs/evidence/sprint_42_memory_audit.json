@@ -1,0 +1,262 @@
+{
+  "sprint": 42,
+  "session": {
+    "mode": "controlled_session",
+    "note": "No live NDJSON present on host; controlled 600-tick evolution (~30s wall) through DashboardController.",
+    "n_ticks": 600,
+    "n_dom": 300,
+    "n_frames": 150,
+    "session_duration_sec": 29.999971389770508
+  },
+  "structural": {
+    "capacity": 100,
+    "size_after_overflow": 100,
+    "expected_size": 100,
+    "oldest_after_overflow": 50.0,
+    "newest_after_overflow": 149.0,
+    "overflow_ok": true,
+    "frozen_item_ok": true,
+    "append_rejects_dict": true
+  },
+  "integrity": {
+    "chronological_order": true,
+    "missing_timestamps": 0,
+    "duplicate_timestamps_global": 749,
+    "duplicate_timestamps_per_source": {
+      "PHYSICS": 0,
+      "LIQUIDITY": 0,
+      "STATE": 0,
+      "BEHAVIOR": 0,
+      "DECISION": 0
+    },
+    "note_duplicates": "Global duplicate timestamps expected when multiple streams record at the same wall clock; per-source duplicates are the integrity concern."
+  },
+  "diagnostics": {
+    "memory_size": 1349,
+    "records_by_source": {
+      "PHYSICS": 599,
+      "LIQUIDITY": 300,
+      "STATE": 150,
+      "BEHAVIOR": 150,
+      "DECISION": 150
+    },
+    "oldest_timestamp": 1720000000.0,
+    "newest_timestamp": 1720000029.9499714
+  },
+  "source_stats": {
+    "LIQUIDITY": {
+      "record_count": 300,
+      "update_frequency_per_sec": 10.033454384701264,
+      "direction_distribution": {
+        "BUY": 100,
+        "NEUTRAL": 100,
+        "SELL": 100
+      },
+      "strength": {
+        "min": 0.0,
+        "max": 0.3333333333333333,
+        "mean": 0.22222222222222218,
+        "p50": 0.3333333333333333
+      },
+      "confidence": {
+        "min": 0.0,
+        "max": 0.3333333333333333,
+        "mean": 0.22222222222222218,
+        "p50": 0.3333333333333333
+      },
+      "first_ts": 1720000000.0,
+      "last_ts": 1720000029.8999715
+    },
+    "STATE": {
+      "record_count": 150,
+      "update_frequency_per_sec": 5.03356184735852,
+      "direction_distribution": {
+        "NEUTRAL": 1,
+        "UP": 99,
+        "DOWN": 50
+      },
+      "strength": {
+        "min": 0.2,
+        "max": 1.0,
+        "mean": 0.9713333333333333,
+        "p50": 1.0
+      },
+      "confidence": {
+        "min": 1.0,
+        "max": 1.0,
+        "mean": 1.0,
+        "p50": 1.0
+      },
+      "first_ts": 1720000000.0,
+      "last_ts": 1720000029.7999716
+    },
+    "BEHAVIOR": {
+      "record_count": 150,
+      "update_frequency_per_sec": 5.03356184735852,
+      "direction_distribution": {
+        "NEUTRAL": 115,
+        "BUY": 17,
+        "SELL": 18
+      },
+      "strength": {
+        "min": 0.5,
+        "max": 1.0,
+        "mean": 0.88,
+        "p50": 1.0
+      },
+      "confidence": {
+        "min": 1.0,
+        "max": 1.0,
+        "mean": 1.0,
+        "p50": 1.0
+      },
+      "first_ts": 1720000000.0,
+      "last_ts": 1720000029.7999716
+    },
+    "DECISION": {
+      "record_count": 150,
+      "update_frequency_per_sec": 5.03356184735852,
+      "direction_distribution": {
+        "NO_TRADE": 150
+      },
+      "strength": {
+        "min": 50.0,
+        "max": 80.0,
+        "mean": 62.8,
+        "p50": 55.0
+      },
+      "confidence": {
+        "min": 0.6,
+        "max": 0.85,
+        "mean": 0.7263333333333334,
+        "p50": 0.65
+      },
+      "first_ts": 1720000000.0,
+      "last_ts": 1720000029.7999716
+    },
+    "PHYSICS": {
+      "record_count": 599,
+      "update_frequency_per_sec": 20.03346392145352,
+      "direction_distribution": {
+        "UP": 299,
+        "DOWN": 300
+      },
+      "strength": {
+        "min": 5.0000047683761295,
+        "max": 205.0003862386484,
+        "mean": 80.47928040991754,
+        "p50": 26.00004386877299
+      },
+      "confidence": {
+        "min": 0.5,
+        "max": 1.0,
+        "mean": 0.9991652754590985,
+        "p50": 1.0
+      },
+      "first_ts": 1720000000.05,
+      "last_ts": 1720000029.9499714
+    }
+  },
+  "persistence": {
+    "LIQUIDITY": {
+      "direction_changes": 2,
+      "longest_buy_or_up_run": 100,
+      "longest_sell_or_down_run": 100,
+      "average_run_length": 100.0,
+      "run_count": 3,
+      "consecutive_buy_up_total_records": 100,
+      "consecutive_sell_down_total_records": 100
+    },
+    "STATE": {
+      "direction_changes": 2,
+      "longest_buy_or_up_run": 99,
+      "longest_sell_or_down_run": 50,
+      "average_run_length": 50.0,
+      "run_count": 3,
+      "consecutive_buy_up_total_records": 99,
+      "consecutive_sell_down_total_records": 50
+    },
+    "BEHAVIOR": {
+      "direction_changes": 67,
+      "longest_buy_or_up_run": 1,
+      "longest_sell_or_down_run": 2,
+      "average_run_length": 2.2058823529411766,
+      "run_count": 68,
+      "consecutive_buy_up_total_records": 17,
+      "consecutive_sell_down_total_records": 18
+    },
+    "DECISION": {
+      "direction_changes": 0,
+      "longest_buy_or_up_run": 0,
+      "longest_sell_or_down_run": 0,
+      "average_run_length": 150.0,
+      "run_count": 1,
+      "consecutive_buy_up_total_records": 0,
+      "consecutive_sell_down_total_records": 0
+    },
+    "PHYSICS": {
+      "direction_changes": 199,
+      "longest_buy_or_up_run": 200,
+      "longest_sell_or_down_run": 201,
+      "average_run_length": 2.995,
+      "run_count": 200,
+      "consecutive_buy_up_total_records": 299,
+      "consecutive_sell_down_total_records": 300
+    }
+  },
+  "cross_stream": {
+    "physics_before_liquidity": {
+      "pairs": 1,
+      "mean_lead_sec": 0.04999995231628418,
+      "median_lead_sec": 0.04999995231628418,
+      "early_first_pct": 100.0
+    },
+    "liquidity_before_decision": {
+      "pairs": 0,
+      "mean_lead_sec": null,
+      "median_lead_sec": null,
+      "early_first_pct": null
+    },
+    "physics_before_state": {
+      "pairs": 1,
+      "mean_lead_sec": 0.04999995231628418,
+      "median_lead_sec": 0.04999995231628418,
+      "early_first_pct": 100.0
+    },
+    "state_before_behavior": {
+      "pairs": 8,
+      "mean_lead_sec": 1.0749989748001099,
+      "median_lead_sec": 1.099998950958252,
+      "early_first_pct": 100.0
+    },
+    "event_counts": {
+      "physics": 199,
+      "liquidity": 1,
+      "state": 2,
+      "behavior": 34,
+      "decision": 0
+    },
+    "state_matches_latest_physics_dir": {
+      "compared": 149,
+      "agree_pct": 100.0
+    },
+    "behavior_matches_latest_state_mapped": {
+      "compared": 150,
+      "agree_pct": 24.0
+    }
+  },
+  "performance": {
+    "append_or_ingest_latency_ms": {
+      "n": 1050,
+      "mean": 0.07092797785021719,
+      "p50": 0.010040996130555868,
+      "p95": 0.39662502240389585,
+      "max": 1.554667018353939
+    },
+    "memory_size_final": 1349,
+    "peak_records": 1349,
+    "capacity": 2048,
+    "tracemalloc_peak_bytes": 247947,
+    "tracemalloc_peak_kib": 242.1357421875
+  }
+}

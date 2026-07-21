@@ -34,7 +34,7 @@ class FakeClock:
 class BuyInternalDecisionEngine:
     """Test double proving dashboard-only activation handling."""
 
-    def evaluate(self, *_args: object) -> TradeDecisionSnapshot:
+    def evaluate(self, *_args: object, **_kwargs: object) -> TradeDecisionSnapshot:
         return TradeDecisionSnapshot(
             timestamp=1_700_000_000.5,
             decision=TradeDecision.BUY_INTERNAL,
@@ -50,7 +50,7 @@ class BuyInternalDecisionEngine:
 class SellInternalDecisionEngine:
     """Test double proving SELL_INTERNAL logging and counting."""
 
-    def evaluate(self, *_args: object) -> TradeDecisionSnapshot:
+    def evaluate(self, *_args: object, **_kwargs: object) -> TradeDecisionSnapshot:
         return TradeDecisionSnapshot(
             timestamp=1_700_000_001.25,
             decision=TradeDecision.SELL_INTERNAL,

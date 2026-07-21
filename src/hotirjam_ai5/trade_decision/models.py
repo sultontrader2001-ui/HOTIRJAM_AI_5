@@ -114,8 +114,28 @@ class ScoreContributionLine:
 
 
 @dataclass(frozen=True, slots=True)
+class DecisionScoreEvidence:
+    """Raw inputs that produced the score breakdowns (Sprint 38).
+
+    Captured once at decision time — explainability never re-derives scores.
+    """
+
+    assessment_state: str
+    feed_status: str
+    feed_latency_ms: float | None
+    market_state: str
+    state_direction: str
+    behavior: str
+    behavior_direction: str
+    tick_velocity: float | None
+    tick_acceleration: float | None
+    liquidity_shift: str | None
+    dom_imbalance: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class DecisionExplainability:
-    """Fully explainable view of one trade decision (Sprint 36)."""
+    """Fully explainable view of one trade decision (Sprint 36/38)."""
 
     headline: str
     buy_contributions: tuple[ScoreContributionLine, ...]
@@ -124,6 +144,50 @@ class DecisionExplainability:
     sell_total: int
     checklist: tuple[str, ...]
     selection_lines: tuple[str, ...]
+    # Sprint 38 — detailed reasoning blocks + final reason sentences.
+    buy_detail_lines: tuple[str, ...] = ()
+    sell_detail_lines: tuple[str, ...] = ()
+    buy_reason: str = ""
+    sell_reason: str = ""
+    evidence: DecisionScoreEvidence | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryScoreInfluence:
+    """Logged Memory adjustment applied to primary BUY/SELL scores (Sprint 44)."""
+
+    original_buy_score: int
+    original_sell_score: int
+    buy_delta: int
+    sell_delta: int
+    adjusted_buy_score: int
+    adjusted_sell_score: int
+    consensus: str
+    agreement: float
+    persistence: float
+    confidence: float
+    status: str
+    influence_pct: float
+    applied: bool
+
+    @staticmethod
+    def none(original_buy: int, original_sell: int) -> MemoryScoreInfluence:
+        """Zero adjustment when Memory is unavailable or uncertain."""
+        return MemoryScoreInfluence(
+            original_buy_score=original_buy,
+            original_sell_score=original_sell,
+            buy_delta=0,
+            sell_delta=0,
+            adjusted_buy_score=original_buy,
+            adjusted_sell_score=original_sell,
+            consensus="NEUTRAL",
+            agreement=0.0,
+            persistence=0.0,
+            confidence=0.0,
+            status="UNCERTAIN",
+            influence_pct=0.0,
+            applied=False,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,3 +210,5 @@ class TradeDecisionSnapshot:
     buy_score_breakdown: BuyScoreBreakdown | None = None
     sell_score_breakdown: SellScoreBreakdown | None = None
     explainability: DecisionExplainability | None = None
+    # Sprint 44 — Memory secondary score influence (never invents decisions).
+    memory_influence: MemoryScoreInfluence | None = None
