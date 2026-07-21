@@ -81,8 +81,12 @@ def test_render_shows_placeholder_not_fake_prices() -> None:
     assert "Decision: NO_TRADE" in text
     assert "BUY Score          : 0 / 100" in text
     assert "BUY Confidence     : 0 %" in text
-    assert "Signal Stability   : UNSTABLE" in text
-    assert "Decision Readiness : UNKNOWN" in text
+    assert "SELL Score         : 0 / 100" in text
+    assert "SELL Confidence    : 0 %" in text
+    assert "BUY Stability      : UNSTABLE" in text
+    assert "SELL Stability     : UNSTABLE" in text
+    assert "BUY Readiness      : UNKNOWN" in text
+    assert "SELL Readiness     : UNKNOWN" in text
     assert "Explanation" in text
     assert "Assessment : UNKNOWN" in text
     assert "Liquidity  : UNKNOWN" in text
@@ -186,8 +190,12 @@ def test_render_with_real_market_and_health_values() -> None:
             decision="BUY_INTERNAL",
             buy_score=88,
             buy_confidence=92,
+            sell_score=35,
+            sell_confidence=40,
             signal_stability="STABLE",
+            sell_signal_stability="UNSTABLE",
             decision_readiness="READY",
+            sell_decision_readiness="NOT_READY",
             reason=(
                 "BUY requirements are satisfied and Decision Readiness is READY. "
                 "Awaiting release."
@@ -213,9 +221,11 @@ def test_render_with_real_market_and_health_values() -> None:
             tick_rate=37.0,
             running_time_seconds=65,
             buy_internal_count=3,
-            no_trade_count=7,
+            sell_internal_count=1,
+            no_trade_count=6,
             buy_internal_frequency=30.0,
-            no_trade_frequency=70.0,
+            sell_internal_frequency=10.0,
+            no_trade_frequency=60.0,
         ),
         events=("Connected", "DOM connected"),
     )
@@ -257,11 +267,16 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "TRADE DECISION" in text
     assert "BUY Score          : 88 / 100" in text
     assert "BUY Confidence     : 92 %" in text
-    assert "Signal Stability   : STABLE" in text
-    assert "Decision Readiness : READY" in text
+    assert "SELL Score         : 35 / 100" in text
+    assert "SELL Confidence    : 40 %" in text
+    assert "BUY Stability      : STABLE" in text
+    assert "SELL Stability     : UNSTABLE" in text
+    assert "BUY Readiness      : READY" in text
+    assert "SELL Readiness     : NOT_READY" in text
     assert "Decision: BUY_INTERNAL" in text
-    assert "BUY_INTERNAL: 3 (30.0%)" in text
-    assert "NO_TRADE    : 7 (70.0%)" in text
+    assert "BUY_INTERNAL : 3 (30.0%)" in text
+    assert "SELL_INTERNAL: 1 (10.0%)" in text
+    assert "NO_TRADE     : 6 (60.0%)" in text
     assert "Explanation" in text
     assert "Assessment : PASS" in text
     assert "Feed       : PASS" in text

@@ -1,4 +1,4 @@
-"""Session statistics: tick count, tick rate, running time."""
+"""Session statistics: tick count, tick rate, running time, decisions."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ class SessionStatistics:
         self._started_at = self._clock()
         self._tick_count = 0
         self._buy_internal_count = 0
+        self._sell_internal_count = 0
         self._no_trade_count = 0
 
     @property
@@ -35,17 +36,28 @@ class SessionStatistics:
         return self._buy_internal_count
 
     @property
+    def sell_internal_count(self) -> int:
+        return self._sell_internal_count
+
+    @property
     def no_trade_count(self) -> int:
         return self._no_trade_count
 
     @property
     def decision_count(self) -> int:
-        return self._buy_internal_count + self._no_trade_count
+        return (
+            self._buy_internal_count
+            + self._sell_internal_count
+            + self._no_trade_count
+        )
 
     def record_decision(self, decision: str) -> None:
         """Count one observation-only Trade Decision result."""
         if decision == "BUY_INTERNAL":
             self._buy_internal_count += 1
+            return
+        if decision == "SELL_INTERNAL":
+            self._sell_internal_count += 1
             return
         if decision == "NO_TRADE":
             self._no_trade_count += 1
@@ -59,6 +71,8 @@ class SessionStatistics:
             return 0.0
         if decision == "BUY_INTERNAL":
             count = self._buy_internal_count
+        elif decision == "SELL_INTERNAL":
+            count = self._sell_internal_count
         elif decision == "NO_TRADE":
             count = self._no_trade_count
         else:
@@ -80,5 +94,6 @@ class SessionStatistics:
         """Clear counters and restart the session clock."""
         self._tick_count = 0
         self._buy_internal_count = 0
+        self._sell_internal_count = 0
         self._no_trade_count = 0
         self._started_at = self._clock()

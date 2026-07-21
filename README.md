@@ -35,6 +35,7 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 28 | Signal Stability Framework (not emitted) | Done |
 | 29 | Decision Readiness Framework (not emitted) | Done |
 | 30 | Internal BUY Activation (observation only) | Done |
+| 31 | Internal SELL Activation (observation only) | Done |
 
 **Out of scope still:** tradable BUY, SELL, order execution, broker connectivity,
 positions, risk
@@ -137,10 +138,12 @@ Does not emit BUY/SELL, orders, risk, probability, or confidence.
 
 ### TRADE DECISION section
 
-Emits observation-only `BUY_INTERNAL` when Decision Readiness is `READY`;
-otherwise emits `NO_TRADE`. Displays BUY Score, BUY Confidence, Signal
-Stability, Decision Readiness, and a structured Explanation. `BUY_INTERNAL`
-is counted and logged locally only. It never reaches orders, positions,
+Emits observation-only `SELL_INTERNAL` when SELL Decision Readiness is `READY`,
+else `BUY_INTERNAL` when BUY Decision Readiness is `READY`, else `NO_TRADE`.
+Displays mirrored BUY/SELL scores, confidence, stability, and readiness.
+Internal activations are counted on the dashboard and appended to
+`logs/signals.log`; they are never printed to the terminal display, which
+shows only current dashboard state. They never reach orders, positions,
 execution, or a broker. Tradable BUY and SELL remain unavailable.
 
 ### Test

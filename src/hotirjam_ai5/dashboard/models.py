@@ -137,8 +137,10 @@ class StatisticsView:
     tick_rate: float = 0.0
     running_time_seconds: float = 0.0
     buy_internal_count: int = 0
+    sell_internal_count: int = 0
     no_trade_count: int = 0
     buy_internal_frequency: float = 0.0
+    sell_internal_frequency: float = 0.0
     no_trade_frequency: float = 0.0
 
 
@@ -240,8 +242,12 @@ class TradeDecisionView:
     decision: str = "NO_TRADE"
     buy_score: int = 0
     buy_confidence: int = 0
+    sell_score: int = 0
+    sell_confidence: int = 0
     signal_stability: str = "UNSTABLE"
+    sell_signal_stability: str = "UNSTABLE"
     decision_readiness: str = "UNKNOWN"
+    sell_decision_readiness: str = "UNKNOWN"
     reason: str = "Decision Readiness is UNKNOWN."
     next_action: str = "Execution Engine"
     explanation: DecisionExplanationView = field(

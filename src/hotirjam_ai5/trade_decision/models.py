@@ -1,7 +1,7 @@
 """Trade decision models.
 
-Trade Decision Engine output values. BUY_INTERNAL is observation-only.
-Tradable BUY and SELL remain unavailable.
+Trade Decision Engine output values. BUY_INTERNAL and SELL_INTERNAL are
+observation-only. Tradable BUY and SELL remain unavailable.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ class TradeDecision(StrEnum):
 
     NO_TRADE = "NO_TRADE"
     BUY_INTERNAL = "BUY_INTERNAL"
+    SELL_INTERNAL = "SELL_INTERNAL"
 
 
 class ExplanationStatus(StrEnum):
@@ -26,14 +27,14 @@ class ExplanationStatus(StrEnum):
 
 
 class SignalStability(StrEnum):
-    """Temporal confirmation of BUY strength across consecutive evaluations."""
+    """Temporal confirmation across consecutive evaluations."""
 
     STABLE = "STABLE"
     UNSTABLE = "UNSTABLE"
 
 
 class DecisionReadiness(StrEnum):
-    """Final readiness of the BUY pipeline for signal activation."""
+    """Final readiness of a directional pipeline for signal activation."""
 
     READY = "READY"
     NOT_READY = "NOT_READY"
@@ -84,6 +85,11 @@ class BuyConfidenceBreakdown:
         )
 
 
+# SELL uses identical category layouts with mirrored directional rules.
+SellScoreBreakdown = BuyScoreBreakdown
+SellConfidenceBreakdown = BuyConfidenceBreakdown
+
+
 @dataclass(frozen=True, slots=True)
 class DecisionExplanation:
     """Structured WHY for the current trade decision."""
@@ -109,6 +115,10 @@ class TradeDecisionSnapshot:
     next_action: str
     buy_score: int = 0
     buy_confidence: int = 0
+    sell_score: int = 0
+    sell_confidence: int = 0
     signal_stability: SignalStability = SignalStability.UNSTABLE
+    sell_signal_stability: SignalStability = SignalStability.UNSTABLE
     decision_readiness: DecisionReadiness = DecisionReadiness.UNKNOWN
+    sell_decision_readiness: DecisionReadiness = DecisionReadiness.UNKNOWN
     decision_explanation: DecisionExplanation | None = None

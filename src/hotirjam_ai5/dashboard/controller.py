@@ -36,6 +36,7 @@ from hotirjam_ai5.dashboard.models import (
     SystemView,
     TradeDecisionView,
 )
+from hotirjam_ai5.dashboard.signal_log import SignalLogWriter
 from hotirjam_ai5.dashboard.statistics import SessionStatistics
 from hotirjam_ai5.decision_assessment import DecisionAssessmentEngine
 from hotirjam_ai5.decision_evaluation import DecisionEvaluationEngine
@@ -80,6 +81,7 @@ class DashboardController:
         symbol: str = "MNQ",
         statistics: SessionStatistics | None = None,
         event_log: EventLog | None = None,
+        signal_log: SignalLogWriter | None = None,
         feed_health: FeedHealthMonitor | None = None,
         dom_health: DomHealthMonitor | None = None,
         physics: PhysicsEngine | None = None,
@@ -104,6 +106,7 @@ class DashboardController:
         self._clock = clock or time.monotonic
         self._statistics = statistics or SessionStatistics(clock=self._clock)
         self._event_log = event_log or EventLog(capacity=DASHBOARD_EVENT_LOG_CAPACITY)
+        self._signal_log = signal_log or SignalLogWriter()
         self._feed_health = feed_health or FeedHealthMonitor(
             stall_seconds=stall_seconds,
             disconnect_seconds=stale_seconds,
@@ -318,6 +321,13 @@ class DashboardController:
                 physics=physics_snapshot,
                 liquidity=liquidity_snapshot,
             )
+        elif trade_decision.decision is TradeDecision.SELL_INTERNAL:
+            self._log_sell_internal(
+                trade_decision,
+                market_context=market_context,
+                physics=physics_snapshot,
+                liquidity=liquidity_snapshot,
+            )
         return DashboardState(
             system=SystemView(
                 engine_status=self._engine_status,
@@ -394,8 +404,12 @@ class DashboardController:
                 decision=trade_decision.decision.value,
                 buy_score=trade_decision.buy_score,
                 buy_confidence=trade_decision.buy_confidence,
+                sell_score=trade_decision.sell_score,
+                sell_confidence=trade_decision.sell_confidence,
                 signal_stability=trade_decision.signal_stability.value,
+                sell_signal_stability=trade_decision.sell_signal_stability.value,
                 decision_readiness=trade_decision.decision_readiness.value,
+                sell_decision_readiness=trade_decision.sell_decision_readiness.value,
                 reason=trade_decision.reason,
                 next_action=trade_decision.next_action,
                 explanation=_trade_explanation_view(trade_decision),
@@ -405,9 +419,13 @@ class DashboardController:
                 tick_rate=tick_rate,
                 running_time_seconds=self._statistics.running_time_seconds(),
                 buy_internal_count=self._statistics.buy_internal_count,
+                sell_internal_count=self._statistics.sell_internal_count,
                 no_trade_count=self._statistics.no_trade_count,
                 buy_internal_frequency=self._statistics.decision_frequency(
                     "BUY_INTERNAL"
+                ),
+                sell_internal_frequency=self._statistics.decision_frequency(
+                    "SELL_INTERNAL"
                 ),
                 no_trade_frequency=self._statistics.decision_frequency("NO_TRADE"),
             ),
@@ -452,14 +470,17 @@ class DashboardController:
         physics: PhysicsSnapshot,
         liquidity: LiquiditySnapshot | None,
     ) -> None:
-        """Log every observation-only BUY_INTERNAL with its evidence."""
+        """Write every observation-only BUY_INTERNAL to the signal log file.
+
+        Signal entries never reach the on-screen event log.
+        """
         state = market_context.state
         behavior = market_context.behavior
         velocity = physics.tick_velocity
         acceleration = physics.tick_acceleration
         shift = getattr(liquidity, "liquidity_shift", "UNKNOWN")
         imbalance = getattr(liquidity, "dom_imbalance", "UNKNOWN")
-        self._event_log.append(
+        self._signal_log.write(
             "BUY_INTERNAL "
             f"timestamp={decision.timestamp:.6f} "
             f"score={decision.buy_score} "
@@ -467,6 +488,34 @@ class DashboardController:
             f"state={state} "
             f"behavior={behavior} "
             f"physics=velocity:{velocity},acceleration:{acceleration} "
+            f"liquidity=shift:{shift},imbalance:{imbalance}"
+        )
+
+    def _log_sell_internal(
+        self,
+        decision: TradeDecisionSnapshot,
+        *,
+        market_context: MarketContextSnapshot,
+        physics: PhysicsSnapshot,
+        liquidity: LiquiditySnapshot | None,
+    ) -> None:
+        """Write every observation-only SELL_INTERNAL to the signal log file.
+
+        Signal entries never reach the on-screen event log.
+        """
+        price = self._market.last_price
+        shift = getattr(liquidity, "liquidity_shift", "UNKNOWN")
+        imbalance = getattr(liquidity, "dom_imbalance", "UNKNOWN")
+        self._signal_log.write(
+            "SELL_INTERNAL "
+            f"timestamp={decision.timestamp:.6f} "
+            f"price={price} "
+            f"score={decision.sell_score} "
+            f"confidence={decision.sell_confidence} "
+            f"state={market_context.state} "
+            f"behavior={market_context.behavior} "
+            f"physics=velocity:{physics.tick_velocity},"
+            f"acceleration:{physics.tick_acceleration} "
             f"liquidity=shift:{shift},imbalance:{imbalance}"
         )
 

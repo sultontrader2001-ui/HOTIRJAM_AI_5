@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from hotirjam_ai5.dashboard.controller import DashboardController
+from hotirjam_ai5.dashboard.signal_log import SignalLogWriter
 from hotirjam_ai5.dashboard.models import (
     ConnectionStatus,
     EngineStatus,
@@ -41,6 +44,22 @@ class BuyInternalDecisionEngine:
             buy_confidence=93,
             signal_stability=SignalStability.STABLE,
             decision_readiness=DecisionReadiness.READY,
+        )
+
+
+class SellInternalDecisionEngine:
+    """Test double proving SELL_INTERNAL logging and counting."""
+
+    def evaluate(self, *_args: object) -> TradeDecisionSnapshot:
+        return TradeDecisionSnapshot(
+            timestamp=1_700_000_001.25,
+            decision=TradeDecision.SELL_INTERNAL,
+            reason="SELL Decision Readiness is READY.",
+            next_action="Execution Engine",
+            sell_score=89,
+            sell_confidence=91,
+            sell_signal_stability=SignalStability.STABLE,
+            sell_decision_readiness=DecisionReadiness.READY,
         )
 
 
@@ -138,9 +157,15 @@ def test_reject_non_positive_stale_seconds() -> None:
         DashboardController(stale_seconds=0)
 
 
-def test_buy_internal_is_logged_and_counted_without_execution() -> None:
+def _read_signal_lines(path: Path) -> list[str]:
+    return path.read_text(encoding="utf-8").splitlines()
+
+
+def test_buy_internal_is_logged_to_file_not_dashboard(tmp_path: Path) -> None:
+    log_path = tmp_path / "signals.log"
     controller = DashboardController(
         trade_decision=BuyInternalDecisionEngine(),  # type: ignore[arg-type]
+        signal_log=SignalLogWriter(log_path),
     )
     controller.start()
 
@@ -148,11 +173,15 @@ def test_buy_internal_is_logged_and_counted_without_execution() -> None:
 
     assert state.trade_decision.decision == "BUY_INTERNAL"
     assert state.statistics.buy_internal_count == 1
+    assert state.statistics.sell_internal_count == 0
     assert state.statistics.no_trade_count == 0
     assert state.statistics.buy_internal_frequency == 100.0
     assert state.statistics.no_trade_frequency == 0.0
-    assert len(state.events) == 1
-    log = state.events[0]
+    # The dashboard event log stays clean: no signal debug lines on screen.
+    assert not any("BUY_INTERNAL" in event for event in state.events)
+    lines = _read_signal_lines(log_path)
+    assert len(lines) == 1
+    log = lines[0]
     assert log.startswith("BUY_INTERNAL timestamp=1700000000.500000")
     assert "score=91" in log
     assert "confidence=93" in log
@@ -160,3 +189,33 @@ def test_buy_internal_is_logged_and_counted_without_execution() -> None:
     assert "behavior=UNKNOWN" in log
     assert "physics=velocity:None,acceleration:None" in log
     assert "liquidity=shift:UNKNOWN,imbalance:UNKNOWN" in log
+
+
+def test_sell_internal_is_logged_to_file_not_dashboard(tmp_path: Path) -> None:
+    log_path = tmp_path / "signals.log"
+    controller = DashboardController(
+        trade_decision=SellInternalDecisionEngine(),  # type: ignore[arg-type]
+        signal_log=SignalLogWriter(log_path),
+    )
+    controller.start()
+    controller.on_tick(_tick(price=20155.5))
+
+    state = controller.snapshot()
+
+    assert state.trade_decision.decision == "SELL_INTERNAL"
+    assert state.statistics.sell_internal_count == 1
+    assert state.statistics.buy_internal_count == 0
+    assert state.statistics.sell_internal_frequency == 100.0
+    # The dashboard event log stays clean: no signal debug lines on screen.
+    assert not any("SELL_INTERNAL" in event for event in state.events)
+    lines = _read_signal_lines(log_path)
+    assert any(line.startswith("SELL_INTERNAL ") for line in lines)
+    log = next(line for line in lines if line.startswith("SELL_INTERNAL "))
+    assert "timestamp=1700000001.250000" in log
+    assert "price=20155.5" in log
+    assert "score=89" in log
+    assert "confidence=91" in log
+    assert "state=" in log
+    assert "behavior=" in log
+    assert "physics=velocity:" in log
+    assert "liquidity=shift:" in log

@@ -116,8 +116,9 @@ class DashboardRenderer:
             "STATISTICS",
             f"Tick Rate : {_format_rate(stats.tick_rate)}",
             f"Tick Count: {_format_int(stats.tick_count)}",
-            f"BUY_INTERNAL: {stats.buy_internal_count} ({stats.buy_internal_frequency:.1f}%)",
-            f"NO_TRADE    : {stats.no_trade_count} ({stats.no_trade_frequency:.1f}%)",
+            f"BUY_INTERNAL : {stats.buy_internal_count} ({stats.buy_internal_frequency:.1f}%)",
+            f"SELL_INTERNAL: {stats.sell_internal_count} ({stats.sell_internal_frequency:.1f}%)",
+            f"NO_TRADE     : {stats.no_trade_count} ({stats.no_trade_frequency:.1f}%)",
         ]
 
         foundation_detail = (
@@ -158,8 +159,12 @@ class DashboardRenderer:
             "TRADE DECISION",
             f"BUY Score          : {trade.buy_score} / 100",
             f"BUY Confidence     : {trade.buy_confidence} %",
-            f"Signal Stability   : {trade.signal_stability}",
-            f"Decision Readiness : {trade.decision_readiness}",
+            f"SELL Score         : {trade.sell_score} / 100",
+            f"SELL Confidence    : {trade.sell_confidence} %",
+            f"BUY Stability      : {trade.signal_stability}",
+            f"SELL Stability     : {trade.sell_signal_stability}",
+            f"BUY Readiness      : {trade.decision_readiness}",
+            f"SELL Readiness     : {trade.sell_decision_readiness}",
             f"Decision: {trade.decision}",
             "Explanation",
             f"Assessment : {trade.explanation.assessment}",

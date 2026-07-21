@@ -459,9 +459,10 @@ def test_buy_never_emitted_across_scores() -> None:
         assert snap.reason == snap.decision_explanation.summary
 
 
-def test_sell_remains_unavailable() -> None:
+def test_sell_remains_unavailable_as_tradable() -> None:
     values = {item.value for item in TradeDecision}
     assert "BUY_INTERNAL" in values
+    assert "SELL_INTERNAL" in values
     assert "BUY" not in values
     assert "SELL" not in values
 
@@ -571,3 +572,102 @@ def test_signal_stability_unknown_until_window_full() -> None:
     assert snap.signal_stability.value == "UNSTABLE"
     assert snap.decision_explanation is not None
     assert snap.decision_explanation.signal_stability is ExplanationStatus.UNKNOWN
+
+
+def test_sell_ready_returns_sell_internal() -> None:
+    history = ((88, 92), (90, 90))
+    snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _context(),
+        _physics(velocity=-1.5, acceleration=-0.3),
+        _liquidity(
+            liquidity_shift=LiquidityBias.SELL.value,
+            dom_imbalance=LiquidityBias.SELL.value,
+        ),
+        timestamp=40.0,
+        sell_signal_history=history,
+    )
+    assert snap.sell_score == 100
+    assert snap.sell_confidence == 100
+    assert snap.sell_signal_stability.value == "STABLE"
+    assert snap.sell_decision_readiness.value == "READY"
+    assert snap.decision_readiness.value != "READY"
+    assert snap.decision is TradeDecision.SELL_INTERNAL
+    assert snap.decision is not TradeDecision.BUY_INTERNAL
+
+
+def test_sell_not_ready_returns_no_trade() -> None:
+    snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _context(),
+        _physics(velocity=-1.0, acceleration=-0.2),
+        _liquidity(
+            liquidity_shift=LiquidityBias.SELL.value,
+            dom_imbalance=LiquidityBias.SELL.value,
+        ),
+        timestamp=41.0,
+    )
+    assert snap.sell_score == 100
+    assert snap.sell_decision_readiness.value == "UNKNOWN"
+    assert snap.decision is TradeDecision.NO_TRADE
+
+
+def test_sell_priority_over_buy_when_both_would_compete() -> None:
+    """Guard: if both ready, SELL wins and BUY is demoted."""
+    from hotirjam_ai5.trade_decision.policy import resolve_trade_decision
+    from hotirjam_ai5.trade_decision.models import DecisionReadiness
+
+    assert (
+        resolve_trade_decision(
+            DecisionReadiness.READY,
+            DecisionReadiness.READY,
+        )
+        is TradeDecision.SELL_INTERNAL
+    )
+
+
+def test_buy_vs_sell_priority_prefers_ready_sell() -> None:
+    history = ((90, 90), (91, 91))
+    snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _context(),
+        _physics(velocity=-2.0, acceleration=-0.4),
+        _liquidity(
+            liquidity_shift=LiquidityBias.SELL.value,
+            dom_imbalance=LiquidityBias.SELL.value,
+        ),
+        timestamp=42.0,
+        signal_history=history,  # BUY history would be weak with SELL physics
+        sell_signal_history=history,
+    )
+    assert snap.decision is TradeDecision.SELL_INTERNAL
+    assert snap.sell_decision_readiness.value == "READY"
+    # BUY cannot be READY with negative physics / SELL liquidity.
+    assert snap.decision_readiness.value != "READY"
+
+
+def test_buy_and_sell_cannot_both_be_ready() -> None:
+    history = ((95, 95), (96, 96))
+    buy_snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _context(),
+        _physics(velocity=1.0, acceleration=0.2),
+        _liquidity(),
+        timestamp=43.0,
+        signal_history=history,
+    )
+    sell_snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _context(),
+        _physics(velocity=-1.0, acceleration=-0.2),
+        _liquidity(
+            liquidity_shift=LiquidityBias.SELL.value,
+            dom_imbalance=LiquidityBias.SELL.value,
+        ),
+        timestamp=44.0,
+        sell_signal_history=history,
+    )
+    assert buy_snap.decision_readiness.value == "READY"
+    assert buy_snap.sell_decision_readiness.value != "READY"
+    assert sell_snap.sell_decision_readiness.value == "READY"
+    assert sell_snap.decision_readiness.value != "READY"

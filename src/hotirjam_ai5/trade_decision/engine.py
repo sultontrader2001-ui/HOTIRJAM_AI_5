@@ -27,14 +27,17 @@ from hotirjam_ai5.trade_decision.policy import (
 class TradeDecisionEngine:
     """Orchestrates trade decision evaluation via the internal policy.
 
-    Maintains a rolling signal-stability history inside Trade Decision.
-    Emits BUY_INTERNAL only when Decision Readiness is READY; otherwise NO_TRADE.
-    Neither result is sent to execution, orders, positions, or a broker.
+    Maintains separate BUY/SELL rolling stability histories.
+    Emits SELL_INTERNAL or BUY_INTERNAL only when that side's readiness is READY.
+    Results are observation-only — never sent to execution or a broker.
     """
 
     def __init__(self, *, clock: Callable[[], float] | None = None) -> None:
         self._clock = clock or time.time
-        self._signal_history: deque[tuple[int, int]] = deque(
+        self._buy_signal_history: deque[tuple[int, int]] = deque(
+            maxlen=SIGNAL_STABILITY_WINDOW
+        )
+        self._sell_signal_history: deque[tuple[int, int]] = deque(
             maxlen=SIGNAL_STABILITY_WINDOW
         )
         explanation = empty_decision_explanation()
@@ -45,8 +48,12 @@ class TradeDecisionEngine:
             next_action=NEXT_ACTION,
             buy_score=0,
             buy_confidence=0,
+            sell_score=0,
+            sell_confidence=0,
             signal_stability=SignalStability.UNSTABLE,
+            sell_signal_stability=SignalStability.UNSTABLE,
             decision_readiness=DecisionReadiness.UNKNOWN,
+            sell_decision_readiness=DecisionReadiness.UNKNOWN,
             decision_explanation=explanation,
         )
 
@@ -58,17 +65,22 @@ class TradeDecisionEngine:
         liquidity: LiquiditySnapshot | None = None,
     ) -> TradeDecisionSnapshot:
         """Delegate decision logic to the internal policy with rolling history."""
-        prior_history = tuple(self._signal_history)
+        prior_buy = tuple(self._buy_signal_history)
+        prior_sell = tuple(self._sell_signal_history)
         self._latest = evaluate_trade_decision(
             assessment,
             context,
             physics,
             liquidity,
             timestamp=self._clock(),
-            signal_history=prior_history,
+            signal_history=prior_buy,
+            sell_signal_history=prior_sell,
         )
-        self._signal_history.append(
+        self._buy_signal_history.append(
             (self._latest.buy_score, self._latest.buy_confidence)
+        )
+        self._sell_signal_history.append(
+            (self._latest.sell_score, self._latest.sell_confidence)
         )
         return self._latest
 
@@ -85,6 +97,7 @@ def evaluate_trade_decision(
     *,
     timestamp: float,
     signal_history: tuple[tuple[int, int], ...] = (),
+    sell_signal_history: tuple[tuple[int, int], ...] = (),
 ) -> TradeDecisionSnapshot:
     """Orchestration entry point that delegates to Decision Policy."""
     return apply_trade_decision_policy(
@@ -94,4 +107,5 @@ def evaluate_trade_decision(
         liquidity,
         timestamp=timestamp,
         signal_history=signal_history,
+        sell_signal_history=sell_signal_history,
     )

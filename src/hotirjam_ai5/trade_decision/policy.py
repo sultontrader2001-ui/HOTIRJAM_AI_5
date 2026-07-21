@@ -1,11 +1,8 @@
-"""Trade Decision Policy — Score, Confidence, Stability, and Explanation.
+"""Trade Decision Policy — BUY/SELL Score, Confidence, Stability, Readiness.
 
-buy_score measures setup quality.
-buy_confidence measures decision reliability.
-signal_stability is temporal confirmation across consecutive evaluations.
-decision_explanation explains WHY the current decision was made.
-Emits observation-only BUY_INTERNAL only when Decision Readiness is READY.
-Tradable BUY and SELL remain unavailable.
+BUY and SELL paths are mirrored observation pipelines.
+Priority: SELL_INTERNAL if SELL readiness READY, else BUY_INTERNAL if BUY
+readiness READY, else NO_TRADE. Tradable orders remain unavailable.
 """
 
 from __future__ import annotations
@@ -27,6 +24,8 @@ from hotirjam_ai5.trade_decision.models import (
     DecisionExplanation,
     DecisionReadiness,
     ExplanationStatus,
+    SellConfidenceBreakdown,
+    SellScoreBreakdown,
     SignalStability,
     TradeDecision,
     TradeDecisionSnapshot,
@@ -72,6 +71,9 @@ DEFAULT_FAIL_SUMMARY = "Market conditions do not satisfy BUY requirements."
 SATISFIED_SUMMARY = (
     "BUY requirements are satisfied and Decision Readiness is READY. Awaiting release."
 )
+SELL_SATISFIED_SUMMARY = (
+    "SELL requirements are satisfied and Decision Readiness is READY. Awaiting release."
+)
 READINESS_NOT_READY_SUMMARY = "Decision Readiness is NOT_READY."
 READINESS_UNKNOWN_SUMMARY = "Decision Readiness is UNKNOWN."
 
@@ -79,6 +81,7 @@ _ELIGIBLE_STATES: Final[frozenset[str]] = frozenset({"ACTIVE", "TRENDING"})
 _ELIGIBLE_BEHAVIORS: Final[frozenset[str]] = frozenset({"STABLE", "ACCELERATING"})
 _HEALTHY_FEED: Final[str] = "HEALTHY"
 _BUY_BIAS: Final[str] = LiquidityBias.BUY.value
+_SELL_BIAS: Final[str] = LiquidityBias.SELL.value
 
 
 def format_buy_score_reason(score: int) -> str:
@@ -149,8 +152,9 @@ def resolve_decision_readiness(
     context: MarketContextSnapshot | None,
     liquidity: LiquiditySnapshot | None,
     signal_stability_status: ExplanationStatus,
+    liquidity_bias: str = _BUY_BIAS,
 ) -> DecisionReadiness:
-    """Resolve final BUY pipeline readiness for signal activation.
+    """Resolve directional pipeline readiness for signal activation.
 
     UNKNOWN when feed or liquidity inputs are unavailable, or stability
     has not yet accumulated a full confirmation window.
@@ -164,8 +168,8 @@ def resolve_decision_readiness(
 
     feed_pass = context.feed_status == _HEALTHY_FEED
     liquidity_pass = (
-        liquidity.liquidity_shift == _BUY_BIAS
-        and liquidity.dom_imbalance == _BUY_BIAS
+        liquidity.liquidity_shift == liquidity_bias
+        and liquidity.dom_imbalance == liquidity_bias
     )
     assessment_ready = (
         assessment.assessment_state is DecisionAssessmentState.READY
@@ -315,6 +319,113 @@ def compute_buy_confidence(
     )
 
 
+def compute_sell_score(
+    assessment: DecisionAssessmentSnapshot,
+    context: MarketContextSnapshot | None = None,
+    physics: PhysicsSnapshot | None = None,
+    liquidity: LiquiditySnapshot | None = None,
+) -> SellScoreBreakdown:
+    """Score each SELL setup-quality category (mirrored BUY weights)."""
+    assessment_pts = (
+        POINTS_ASSESSMENT
+        if assessment.assessment_state is DecisionAssessmentState.READY
+        else 0
+    )
+
+    feed_pts = 0
+    state_pts = 0
+    behavior_pts = 0
+    if context is not None:
+        if context.feed_status == _HEALTHY_FEED:
+            feed_pts = POINTS_FEED_HEALTH
+        if context.state in _ELIGIBLE_STATES:
+            state_pts = POINTS_MARKET_STATE
+        if context.behavior in _ELIGIBLE_BEHAVIORS:
+            behavior_pts = POINTS_BEHAVIOR
+
+    physics_pts = 0
+    if physics is not None:
+        velocity = physics.tick_velocity
+        acceleration = physics.tick_acceleration
+        if (
+            velocity is not None
+            and acceleration is not None
+            and velocity < 0
+            and acceleration < 0
+        ):
+            physics_pts = POINTS_PHYSICS
+
+    liquidity_pts = 0
+    if liquidity is not None:
+        if (
+            liquidity.liquidity_shift == _SELL_BIAS
+            and liquidity.dom_imbalance == _SELL_BIAS
+        ):
+            liquidity_pts = POINTS_LIQUIDITY
+
+    return SellScoreBreakdown(
+        assessment=assessment_pts,
+        feed_health=feed_pts,
+        market_state=state_pts,
+        behavior=behavior_pts,
+        physics=physics_pts,
+        liquidity=liquidity_pts,
+    )
+
+
+def compute_sell_confidence(
+    assessment: DecisionAssessmentSnapshot,
+    context: MarketContextSnapshot | None = None,
+    physics: PhysicsSnapshot | None = None,
+    liquidity: LiquiditySnapshot | None = None,
+) -> SellConfidenceBreakdown:
+    """Compute SELL decision reliability independently from sell_score."""
+    assessment_pts = (
+        CONF_ASSESSMENT_RELIABILITY
+        if assessment.assessment_state is DecisionAssessmentState.READY
+        else 0
+    )
+
+    feed_pts = 0
+    market_pts = 0
+    if context is not None:
+        if context.feed_status == _HEALTHY_FEED:
+            feed_pts = CONF_FEED_RELIABILITY
+        if (
+            context.state in _ELIGIBLE_STATES
+            and context.behavior in _ELIGIBLE_BEHAVIORS
+        ):
+            market_pts = CONF_MARKET_STABILITY
+
+    physics_pts = 0
+    if physics is not None:
+        velocity = physics.tick_velocity
+        acceleration = physics.tick_acceleration
+        if (
+            velocity is not None
+            and acceleration is not None
+            and velocity < 0
+            and acceleration < 0
+        ):
+            physics_pts = CONF_PHYSICS_STABILITY
+
+    liquidity_pts = 0
+    if liquidity is not None:
+        if (
+            liquidity.liquidity_shift == _SELL_BIAS
+            and liquidity.dom_imbalance == _SELL_BIAS
+        ):
+            liquidity_pts = CONF_LIQUIDITY_RELIABILITY
+
+    return SellConfidenceBreakdown(
+        assessment_reliability=assessment_pts,
+        feed_reliability=feed_pts,
+        physics_stability=physics_pts,
+        liquidity_reliability=liquidity_pts,
+        market_stability=market_pts,
+    )
+
+
 def _status_from_bool(ok: bool) -> ExplanationStatus:
     return ExplanationStatus.PASS if ok else ExplanationStatus.FAIL
 
@@ -327,8 +438,9 @@ def build_decision_explanation(
     *,
     signal_stability_status: ExplanationStatus = ExplanationStatus.UNKNOWN,
     readiness_status: ExplanationStatus = ExplanationStatus.UNKNOWN,
+    side: str = "BUY",
 ) -> DecisionExplanation:
-    """Build PASS/FAIL/UNKNOWN explanation for the current decision."""
+    """Build PASS/FAIL/UNKNOWN explanation for the selected side."""
     assessment_status = _status_from_bool(
         assessment.assessment_state is DecisionAssessmentState.READY
     )
@@ -349,15 +461,17 @@ def build_decision_explanation(
         acceleration = physics.tick_acceleration
         if velocity is None or acceleration is None:
             physics_status = ExplanationStatus.UNKNOWN
+        elif side == "SELL":
+            physics_status = _status_from_bool(velocity < 0 and acceleration < 0)
         else:
             physics_status = _status_from_bool(velocity > 0 and acceleration > 0)
 
     if liquidity is None:
         liquidity_status = ExplanationStatus.UNKNOWN
     else:
+        bias = _SELL_BIAS if side == "SELL" else _BUY_BIAS
         liquidity_status = _status_from_bool(
-            liquidity.liquidity_shift == _BUY_BIAS
-            and liquidity.dom_imbalance == _BUY_BIAS
+            liquidity.liquidity_shift == bias and liquidity.dom_imbalance == bias
         )
 
     summary = _build_explanation_summary(
@@ -370,6 +484,7 @@ def build_decision_explanation(
         signal_stability_status=signal_stability_status,
         readiness_status=readiness_status,
         context=context,
+        side=side,
     )
     return DecisionExplanation(
         assessment=assessment_status,
@@ -395,6 +510,7 @@ def _build_explanation_summary(
     signal_stability_status: ExplanationStatus,
     readiness_status: ExplanationStatus,
     context: MarketContextSnapshot | None,
+    side: str = "BUY",
 ) -> str:
     """Produce a concise sentence explaining the decision."""
     statuses = (
@@ -408,20 +524,20 @@ def _build_explanation_summary(
         readiness_status,
     )
     if all(status is ExplanationStatus.PASS for status in statuses):
-        return SATISFIED_SUMMARY
+        return SELL_SATISFIED_SUMMARY if side == "SELL" else SATISFIED_SUMMARY
 
     if readiness_status is ExplanationStatus.UNKNOWN:
         return READINESS_UNKNOWN_SUMMARY
 
     if readiness_status is ExplanationStatus.FAIL:
+        label = "SELL" if side == "SELL" else "BUY"
         if signal_stability_status is ExplanationStatus.FAIL:
             return (
-                "BUY signal is not yet stable across consecutive evaluations. "
+                f"{label} signal is not yet stable across consecutive evaluations. "
                 + READINESS_NOT_READY_SUMMARY
             )
         return READINESS_NOT_READY_SUMMARY
 
-    # Named combo matching earlier sprint examples.
     if (
         context is not None
         and context.state == "VOLATILE"
@@ -452,6 +568,8 @@ def _build_explanation_summary(
     ):
         return "Assessment is not READY for trade decision."
 
+    if side == "SELL":
+        return "Market conditions do not satisfy SELL requirements."
     return DEFAULT_FAIL_SUMMARY
 
 
@@ -460,10 +578,7 @@ def matches_buy_strategy(
     physics: PhysicsSnapshot | None = None,
     liquidity: LiquiditySnapshot | None = None,
 ) -> bool:
-    """Return True when context + physics + liquidity each score full points.
-
-    Assessment is checked separately via is_buy_eligible / compute_buy_score.
-    """
+    """Return True when context + physics + liquidity each score full BUY points."""
     if context is None or physics is None or liquidity is None:
         return False
     velocity = physics.tick_velocity
@@ -481,19 +596,47 @@ def matches_buy_strategy(
     )
 
 
+def matches_sell_strategy(
+    context: MarketContextSnapshot | None,
+    physics: PhysicsSnapshot | None = None,
+    liquidity: LiquiditySnapshot | None = None,
+) -> bool:
+    """Return True when context + physics + liquidity each score full SELL points."""
+    if context is None or physics is None or liquidity is None:
+        return False
+    velocity = physics.tick_velocity
+    acceleration = physics.tick_acceleration
+    if velocity is None or acceleration is None:
+        return False
+    return (
+        context.feed_status == _HEALTHY_FEED
+        and context.state in _ELIGIBLE_STATES
+        and context.behavior in _ELIGIBLE_BEHAVIORS
+        and velocity < 0
+        and acceleration < 0
+        and liquidity.liquidity_shift == _SELL_BIAS
+        and liquidity.dom_imbalance == _SELL_BIAS
+    )
+
+
 def is_buy_eligible(
     assessment: DecisionAssessmentSnapshot,
     context: MarketContextSnapshot | None = None,
     physics: PhysicsSnapshot | None = None,
     liquidity: LiquiditySnapshot | None = None,
 ) -> bool:
-    """True when buy_score reaches 100. Does not emit BUY."""
+    """True when buy_score reaches 100."""
     return compute_buy_score(assessment, context, physics, liquidity).total == POINTS_TOTAL
 
 
-def resolve_trade_decision(readiness: DecisionReadiness) -> TradeDecision:
-    """Activate observation-only BUY_INTERNAL when readiness is READY."""
-    if readiness is DecisionReadiness.READY:
+def resolve_trade_decision(
+    sell_readiness: DecisionReadiness,
+    buy_readiness: DecisionReadiness = DecisionReadiness.NOT_READY,
+) -> TradeDecision:
+    """Priority: SELL_INTERNAL, else BUY_INTERNAL, else NO_TRADE."""
+    if sell_readiness is DecisionReadiness.READY:
+        return TradeDecision.SELL_INTERNAL
+    if buy_readiness is DecisionReadiness.READY:
         return TradeDecision.BUY_INTERNAL
     return TradeDecision.NO_TRADE
 
@@ -506,28 +649,68 @@ def apply_trade_decision_policy(
     *,
     timestamp: float,
     signal_history: Sequence[tuple[int, int]] = (),
+    sell_signal_history: Sequence[tuple[int, int]] = (),
 ) -> TradeDecisionSnapshot:
-    """Compute score, confidence, stability, readiness, and explanation."""
-    score = compute_buy_score(assessment, context, physics, liquidity).total
-    confidence = compute_buy_confidence(
+    """Compute BUY and SELL pipelines; emit observation-only activation."""
+    buy_score = compute_buy_score(assessment, context, physics, liquidity).total
+    buy_confidence = compute_buy_confidence(
         assessment, context, physics, liquidity
     ).total
-    history = (*signal_history, (score, confidence))
-    stability = resolve_signal_stability(history)
-    stability_status = signal_stability_explanation_status(
-        stability,
-        history_length=len(history),
+    buy_history = (*signal_history, (buy_score, buy_confidence))
+    buy_stability = resolve_signal_stability(buy_history)
+    buy_stability_status = signal_stability_explanation_status(
+        buy_stability,
+        history_length=len(buy_history),
     )
-    readiness = resolve_decision_readiness(
-        buy_score=score,
-        buy_confidence=confidence,
-        signal_stability=stability,
+    buy_readiness = resolve_decision_readiness(
+        buy_score=buy_score,
+        buy_confidence=buy_confidence,
+        signal_stability=buy_stability,
         assessment=assessment,
         context=context,
         liquidity=liquidity,
-        signal_stability_status=stability_status,
+        signal_stability_status=buy_stability_status,
+        liquidity_bias=_BUY_BIAS,
     )
-    readiness_status = decision_readiness_explanation_status(readiness)
+
+    sell_score = compute_sell_score(assessment, context, physics, liquidity).total
+    sell_confidence = compute_sell_confidence(
+        assessment, context, physics, liquidity
+    ).total
+    sell_history = (*sell_signal_history, (sell_score, sell_confidence))
+    sell_stability = resolve_signal_stability(sell_history)
+    sell_stability_status = signal_stability_explanation_status(
+        sell_stability,
+        history_length=len(sell_history),
+    )
+    sell_readiness = resolve_decision_readiness(
+        buy_score=sell_score,
+        buy_confidence=sell_confidence,
+        signal_stability=sell_stability,
+        assessment=assessment,
+        context=context,
+        liquidity=liquidity,
+        signal_stability_status=sell_stability_status,
+        liquidity_bias=_SELL_BIAS,
+    )
+
+    # Directional physics/liquidity make dual READY impossible; guard anyway.
+    if (
+        buy_readiness is DecisionReadiness.READY
+        and sell_readiness is DecisionReadiness.READY
+    ):
+        sell_readiness = DecisionReadiness.NOT_READY
+
+    decision = resolve_trade_decision(sell_readiness, buy_readiness)
+    if decision is TradeDecision.SELL_INTERNAL:
+        side = "SELL"
+        stability_status = sell_stability_status
+        readiness_status = decision_readiness_explanation_status(sell_readiness)
+    else:
+        side = "BUY"
+        stability_status = buy_stability_status
+        readiness_status = decision_readiness_explanation_status(buy_readiness)
+
     explanation = build_decision_explanation(
         assessment,
         context,
@@ -535,15 +718,20 @@ def apply_trade_decision_policy(
         liquidity,
         signal_stability_status=stability_status,
         readiness_status=readiness_status,
+        side=side,
     )
     return TradeDecisionSnapshot(
         timestamp=timestamp,
-        decision=resolve_trade_decision(readiness),
+        decision=decision,
         reason=explanation.summary,
         next_action=NEXT_ACTION,
-        buy_score=score,
-        buy_confidence=confidence,
-        signal_stability=stability,
-        decision_readiness=readiness,
+        buy_score=buy_score,
+        buy_confidence=buy_confidence,
+        sell_score=sell_score,
+        sell_confidence=sell_confidence,
+        signal_stability=buy_stability,
+        sell_signal_stability=sell_stability,
+        decision_readiness=buy_readiness,
+        sell_decision_readiness=sell_readiness,
         decision_explanation=explanation,
     )
