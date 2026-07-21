@@ -216,10 +216,11 @@ class DecisionAssessmentView:
 
 @dataclass(frozen=True, slots=True)
 class TradeDecisionView:
-    """TRADE DECISION section — NO_TRADE with BUY framework (not emitted)."""
+    """TRADE DECISION section — scored NO_TRADE (BUY not emitted)."""
 
     decision: str = "NO_TRADE"
-    reason: str = "Trading not authorized."
+    buy_score: int = 0
+    reason: str = "BUY score: 0/100. Awaiting release."
     next_action: str = "Execution Engine"
 
 

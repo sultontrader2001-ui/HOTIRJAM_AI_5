@@ -154,8 +154,8 @@ class DashboardRenderer:
             f"Reason: {assessment.reason}",
             f"Next  : {assessment.next_stage}",
             "TRADE DECISION",
+            f"BUY Score : {trade.buy_score} / 100",
             f"Decision: {trade.decision}",
-            f"Reason  : {trade.reason}",
             f"Next    : {trade.next_action}",
             "LOG",
         ]

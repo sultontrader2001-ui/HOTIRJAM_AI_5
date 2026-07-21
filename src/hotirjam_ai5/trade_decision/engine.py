@@ -21,7 +21,7 @@ class TradeDecisionEngine:
     """Orchestrates trade decision evaluation via the internal policy.
 
     Consumes DecisionAssessmentSnapshot, MarketContextSnapshot, PhysicsSnapshot,
-    and LiquiditySnapshot. Always returns NO_TRADE in Sprint 23.
+    and LiquiditySnapshot. Computes buy_score; always returns NO_TRADE.
     Never places orders or connects to a broker.
     """
 
@@ -32,6 +32,7 @@ class TradeDecisionEngine:
             decision=TradeDecision.NO_TRADE,
             reason=PENDING_REASON,
             next_action=NEXT_ACTION,
+            buy_score=0,
         )
 
     def evaluate(

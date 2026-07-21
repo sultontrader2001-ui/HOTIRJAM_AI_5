@@ -1,7 +1,7 @@
 """Trade decision models.
 
 Trade Decision Engine output values. SELL remains unavailable.
-BUY exists for future emission; Sprint 19 does not emit BUY yet.
+BUY exists for future emission; scoring does not emit BUY yet.
 """
 
 from __future__ import annotations
@@ -18,10 +18,34 @@ class TradeDecision(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class BuyScoreBreakdown:
+    """Per-category BUY score contributions (max 100)."""
+
+    assessment: int
+    feed_health: int
+    market_state: int
+    behavior: int
+    physics: int
+    liquidity: int
+
+    @property
+    def total(self) -> int:
+        return (
+            self.assessment
+            + self.feed_health
+            + self.market_state
+            + self.behavior
+            + self.physics
+            + self.liquidity
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class TradeDecisionSnapshot:
-    """Trade decision derived from Decision Assessment only."""
+    """Trade decision derived from assessment, context, physics, and liquidity."""
 
     timestamp: float
     decision: TradeDecision
     reason: str
     next_action: str
+    buy_score: int = 0

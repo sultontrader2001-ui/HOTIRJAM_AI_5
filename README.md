@@ -28,6 +28,7 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 21 | Structured BUY Strategy v1 (not emitted) | Done |
 | 22 | BUY Strategy Phase 3 — Physics Filter (not emitted) | Done |
 | 23 | BUY Strategy Phase 4 — Liquidity Filter (not emitted) | Done |
+| 24 | BUY Strategy Scoring Framework (not emitted) | Done |
 
 **Out of scope still:** emitting BUY, SELL, order execution, broker connectivity, risk
 
@@ -40,7 +41,7 @@ Decision Foundation only checks whether observation context is complete enough f
 Decision Intent maps foundation readiness to WAIT / OBSERVE / EVALUATE workflow steps only.
 Decision Evaluation maps intent to IDLE / WAITING / EVALUATING lifecycle states only.
 Decision Assessment maps evaluation status to BLOCKED / REVIEW / READY only.
-Trade Decision keeps emitting `NO_TRADE`; BUY strategy can validate on structured MarketContext fields, positive physics velocity/acceleration, and BUY liquidity shift/imbalance when assessment is READY.
+Trade Decision keeps emitting `NO_TRADE` and reports a structured BUY score (0–100) from assessment, context, physics, and liquidity.
 
 ### Requirements
 
@@ -129,12 +130,9 @@ Does not emit BUY/SELL, orders, risk, probability, or confidence.
 
 ### TRADE DECISION section
 
-Emits `NO_TRADE` only. Structured BUY strategy (READY + healthy feed +
-ACTIVE/TRENDING + STABLE/ACCELERATING + positive velocity/acceleration +
-liquidity shift BUY + DOM imbalance BUY) may validate and report awaiting
-release; BUY is not emitted yet. Summary text is never inspected.
-SELL remains unavailable. Liquidity observation producer is not wired yet
-(missing liquidity → strategy not satisfied).
+Emits `NO_TRADE` only. Displays `BUY Score : XX / 100` from category points
+(Assessment 20, Feed 15, State 15, Behavior 15, Physics 20, Liquidity 15).
+BUY is not emitted. SELL remains unavailable.
 
 ### Test
 
