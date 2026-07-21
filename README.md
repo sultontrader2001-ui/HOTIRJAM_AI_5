@@ -40,6 +40,8 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 33 | Professional Live Dashboard v2 | Done |
 | 34 | Full Decision Architecture Audit (audit only) | Done |
 | 35 | Signed Market State & Behavior | Done |
+| 36 | Decision Explainability Engine | Done |
+| 37 | Entry Timing Audit (audit only) | Done |
 
 **Out of scope still:** tradable BUY, SELL, order execution, broker connectivity,
 positions, risk
@@ -56,7 +58,9 @@ Decision Foundation only checks whether observation context is complete enough f
 Decision Intent maps foundation readiness to WAIT / OBSERVE / EVALUATE workflow steps only.
 Decision Evaluation maps intent to IDLE / WAITING / EVALUATING lifecycle states only.
 Decision Assessment maps evaluation status to BLOCKED / REVIEW / READY only.
-Trade Decision keeps emitting `NO_TRADE` with BUY Score, BUY Confidence, and a structured Decision Explanation (PASS/FAIL/UNKNOWN per category).
+Trade Decision emits observation-only `BUY_INTERNAL` / `SELL_INTERNAL` / `NO_TRADE`
+with BUY/SELL scores and a DECISION EXPLANATION section that exposes real
+contribution breakdowns and missing readiness conditions (Sprint 36).
 
 ### Requirements
 

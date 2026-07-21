@@ -236,6 +236,19 @@ class DecisionExplanationView:
 
 
 @dataclass(frozen=True, slots=True)
+class DecisionExplainabilityView:
+    """DECISION EXPLANATION section (Sprint 36) — real score exposure only."""
+
+    headline: str = "NO TRADE"
+    buy_lines: tuple[str, ...] = ()
+    buy_total: int = 0
+    sell_lines: tuple[str, ...] = ()
+    sell_total: int = 0
+    checklist: tuple[str, ...] = ()
+    selection_lines: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class TradeDecisionView:
     """TRADE DECISION section — observation-only internal activation."""
 
@@ -252,6 +265,9 @@ class TradeDecisionView:
     next_action: str = "Execution Engine"
     explanation: DecisionExplanationView = field(
         default_factory=DecisionExplanationView
+    )
+    explainability: DecisionExplainabilityView = field(
+        default_factory=DecisionExplainabilityView
     )
 
 

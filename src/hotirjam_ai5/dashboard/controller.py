@@ -18,6 +18,7 @@ from hotirjam_ai5.dashboard.models import (
     DecisionAssessmentView,
     DecisionEvaluationView,
     DecisionExplanationView,
+    DecisionExplainabilityView,
     DecisionFoundationView,
     DecisionIntentView,
     DomHealthView,
@@ -60,6 +61,7 @@ from hotirjam_ai5.market_state import (
     MarketStateSnapshot,
 )
 from hotirjam_ai5.market_transition import MarketTransitionEngine
+from hotirjam_ai5.entry_timing import EntryTimingAuditor
 from hotirjam_ai5.performance import PerformanceTracker, format_multi_zone
 from hotirjam_ai5.physics.engine import PhysicsEngine
 from hotirjam_ai5.physics.measurements import PhysicsSnapshot
@@ -100,6 +102,7 @@ class DashboardController:
         decision_assessment: DecisionAssessmentEngine | None = None,
         trade_decision: TradeDecisionEngine | None = None,
         performance: PerformanceTracker | None = None,
+        entry_timing: EntryTimingAuditor | None = None,
         stale_seconds: float = DEFAULT_DISCONNECT_SECONDS,
         stall_seconds: float = DEFAULT_STALL_SECONDS,
         clock: Callable[[], float] | None = None,
@@ -153,6 +156,9 @@ class DashboardController:
             clock=wall_clock or time.time
         )
         self._performance = performance or PerformanceTracker(
+            clock=wall_clock or time.time
+        )
+        self._entry_timing = entry_timing or EntryTimingAuditor(
             clock=wall_clock or time.time
         )
         self._wall_clock = wall_clock or time.time
@@ -347,6 +353,12 @@ class DashboardController:
             liquidity=liquidity_snapshot,
             timestamp=trade_decision.timestamp,
         )
+        self._entry_timing.observe(
+            trade_decision,
+            symbol=self._symbol,
+            current_price=self._market.last_price,
+            timestamp=trade_decision.timestamp,
+        )
         performance = self._performance.snapshot()
         last_result = "—"
         records = self._performance.records
@@ -445,6 +457,7 @@ class DashboardController:
                 reason=trade_decision.reason,
                 next_action=trade_decision.next_action,
                 explanation=_trade_explanation_view(trade_decision),
+                explainability=_trade_explainability_view(trade_decision),
             ),
             statistics=StatisticsView(
                 tick_count=tick_count,
@@ -584,4 +597,32 @@ def _trade_explanation_view(
         signal_stability=explanation.signal_stability.value,
         readiness=explanation.readiness.value,
         summary=explanation.summary,
+    )
+
+
+def _trade_explainability_view(
+    trade_decision: TradeDecisionSnapshot,
+) -> DecisionExplainabilityView:
+    """Map snapshot explainability — presentation only, no recalculation."""
+    expl = trade_decision.explainability
+    if expl is None:
+        return DecisionExplainabilityView(
+            headline="NO TRADE",
+            buy_total=trade_decision.buy_score,
+            sell_total=trade_decision.sell_score,
+        )
+    buy_lines = tuple(
+        f"{line.label:<14} +{line.points}" for line in expl.buy_contributions
+    )
+    sell_lines = tuple(
+        f"{line.label:<14} +{line.points}" for line in expl.sell_contributions
+    )
+    return DecisionExplainabilityView(
+        headline=expl.headline,
+        buy_lines=buy_lines,
+        buy_total=expl.buy_total,
+        sell_lines=sell_lines,
+        sell_total=expl.sell_total,
+        checklist=expl.checklist,
+        selection_lines=expl.selection_lines,
     )

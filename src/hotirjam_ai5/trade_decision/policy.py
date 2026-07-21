@@ -18,6 +18,9 @@ from hotirjam_ai5.decision_assessment import (
 from hotirjam_ai5.liquidity import LiquidityBias, LiquiditySnapshot
 from hotirjam_ai5.market_context import MarketContextSnapshot
 from hotirjam_ai5.physics.measurements import PhysicsSnapshot
+from hotirjam_ai5.trade_decision.explainability import (
+    build_decision_explainability,
+)
 from hotirjam_ai5.trade_decision.models import (
     BuyConfidenceBreakdown,
     BuyScoreBreakdown,
@@ -680,7 +683,8 @@ def apply_trade_decision_policy(
     sell_signal_history: Sequence[tuple[int, int]] = (),
 ) -> TradeDecisionSnapshot:
     """Compute BUY and SELL pipelines; emit observation-only activation."""
-    buy_score = compute_buy_score(assessment, context, physics, liquidity).total
+    buy_breakdown = compute_buy_score(assessment, context, physics, liquidity)
+    buy_score = buy_breakdown.total
     buy_confidence = compute_buy_confidence(
         assessment, context, physics, liquidity
     ).total
@@ -701,7 +705,8 @@ def apply_trade_decision_policy(
         liquidity_bias=_BUY_BIAS,
     )
 
-    sell_score = compute_sell_score(assessment, context, physics, liquidity).total
+    sell_breakdown = compute_sell_score(assessment, context, physics, liquidity)
+    sell_score = sell_breakdown.total
     sell_confidence = compute_sell_confidence(
         assessment, context, physics, liquidity
     ).total
@@ -748,6 +753,19 @@ def apply_trade_decision_policy(
         readiness_status=readiness_status,
         side=side,
     )
+    explainability = build_decision_explainability(
+        decision=decision,
+        buy_breakdown=buy_breakdown,
+        sell_breakdown=sell_breakdown,
+        buy_score=buy_score,
+        buy_confidence=buy_confidence,
+        sell_score=sell_score,
+        sell_confidence=sell_confidence,
+        buy_stability=buy_stability,
+        buy_readiness=buy_readiness,
+        sell_readiness=sell_readiness,
+        decision_explanation=explanation,
+    )
     return TradeDecisionSnapshot(
         timestamp=timestamp,
         decision=decision,
@@ -762,4 +780,7 @@ def apply_trade_decision_policy(
         decision_readiness=buy_readiness,
         sell_decision_readiness=sell_readiness,
         decision_explanation=explanation,
+        buy_score_breakdown=buy_breakdown,
+        sell_score_breakdown=sell_breakdown,
+        explainability=explainability,
     )

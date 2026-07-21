@@ -106,6 +106,27 @@ class DecisionExplanation:
 
 
 @dataclass(frozen=True, slots=True)
+class ScoreContributionLine:
+    """One category contribution from a real score breakdown."""
+
+    label: str
+    points: int
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionExplainability:
+    """Fully explainable view of one trade decision (Sprint 36)."""
+
+    headline: str
+    buy_contributions: tuple[ScoreContributionLine, ...]
+    buy_total: int
+    sell_contributions: tuple[ScoreContributionLine, ...]
+    sell_total: int
+    checklist: tuple[str, ...]
+    selection_lines: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class TradeDecisionSnapshot:
     """Trade decision derived from assessment, context, physics, and liquidity."""
 
@@ -122,3 +143,6 @@ class TradeDecisionSnapshot:
     decision_readiness: DecisionReadiness = DecisionReadiness.UNKNOWN
     sell_decision_readiness: DecisionReadiness = DecisionReadiness.UNKNOWN
     decision_explanation: DecisionExplanation | None = None
+    buy_score_breakdown: BuyScoreBreakdown | None = None
+    sell_score_breakdown: SellScoreBreakdown | None = None
+    explainability: DecisionExplainability | None = None

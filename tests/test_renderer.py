@@ -9,6 +9,7 @@ from hotirjam_ai5.dashboard.models import (
     DecisionAssessmentView,
     DecisionEvaluationView,
     DecisionExplanationView,
+    DecisionExplainabilityView,
     DecisionFoundationView,
     DecisionIntentView,
     DisplayClockView,
@@ -39,6 +40,7 @@ def test_render_includes_live_v2_sections_and_title() -> None:
     assert "MARKET" in text
     assert "AI STATUS" in text
     assert "TRADE DECISION" in text
+    assert "DECISION EXPLANATION" in text
     assert "PERFORMANCE" in text
     assert "SYSTEM" in text
     assert "NY Time" in text
@@ -254,6 +256,34 @@ def test_render_with_real_market_and_health_values() -> None:
                     "Awaiting release."
                 ),
             ),
+            explainability=DecisionExplainabilityView(
+                headline="BUY selected because",
+                buy_lines=(
+                    "Assessment    +20",
+                    "Feed          +15",
+                    "Market State  +15",
+                    "Behavior      +15",
+                    "Physics       +20",
+                    "Liquidity     +15",
+                ),
+                buy_total=100,
+                sell_lines=(
+                    "Assessment    +20",
+                    "Feed          +15",
+                    "Market State   +0",
+                    "Behavior       +0",
+                    "Physics        +0",
+                    "Liquidity      +0",
+                ),
+                sell_total=35,
+                selection_lines=(
+                    "Physics confirmed BUY",
+                    "Liquidity confirmed BUY",
+                    "BUY score 100",
+                    "BUY confidence 92%",
+                    "SELL score 35",
+                ),
+            ),
         ),
         statistics=StatisticsView(
             tick_count=120,
@@ -302,6 +332,11 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "Assessment        : READY" in text
     assert "BUY READY / SELL NOT_READY" in text
     assert ">>>  BUY_INTERNAL  <<<" in text
+    assert "DECISION EXPLANATION" in text
+    assert "BUY selected because" in text
+    assert "Physics confirmed BUY" in text
+    assert "Assessment    +20" in text or "Assessment" in text
+    assert "TOTAL" in text
     assert "BUY Score         : 88 / 100" in text
     assert "BUY Confidence    : 92 %" in text
     assert "SELL Score        : 35 / 100" in text

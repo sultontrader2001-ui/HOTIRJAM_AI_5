@@ -6,7 +6,7 @@ UI/UX only — no trading logic. Default layout is trading-focused; pass
 
 from __future__ import annotations
 
-from hotirjam_ai5.dashboard.models import DashboardState
+from hotirjam_ai5.dashboard.models import DashboardState, DecisionExplainabilityView
 
 SEPARATOR = "═" * 60
 SECTION = "─" * 60
@@ -159,7 +159,37 @@ class DashboardRenderer:
             _row("SELL Score", f"{trade.sell_score} / 100"),
             _row("SELL Confidence", f"{trade.sell_confidence} %"),
             _row("Signal Stability", stability),
+            *self._decision_explanation_section(trade.explainability),
         ]
+
+    def _decision_explanation_section(
+        self,
+        expl: DecisionExplainabilityView,
+    ) -> list[str]:
+        """Render DECISION EXPLANATION from real snapshot contributions."""
+        lines = [
+            "DECISION EXPLANATION",
+            expl.headline,
+            "BUY",
+        ]
+        if expl.buy_lines:
+            lines.extend(expl.buy_lines)
+        else:
+            lines.append("(no breakdown)")
+        lines.append(f"{'TOTAL':<14} {expl.buy_total}")
+        lines.append("SELL")
+        if expl.sell_lines:
+            lines.extend(expl.sell_lines)
+        else:
+            lines.append("(no breakdown)")
+        lines.append(f"{'TOTAL':<14} {expl.sell_total}")
+        if expl.selection_lines:
+            for line in expl.selection_lines:
+                lines.append(line)
+        if expl.checklist:
+            lines.append("Reasons")
+            lines.extend(expl.checklist)
+        return lines
 
     def _performance_section(self, state: DashboardState) -> list[str]:
         perf = state.performance

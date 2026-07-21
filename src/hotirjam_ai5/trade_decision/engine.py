@@ -22,6 +22,10 @@ from hotirjam_ai5.trade_decision.policy import (
     apply_trade_decision_policy,
     empty_decision_explanation,
 )
+from hotirjam_ai5.trade_decision.explainability import (
+    build_decision_explainability,
+    empty_score_breakdown,
+)
 
 
 class TradeDecisionEngine:
@@ -41,6 +45,7 @@ class TradeDecisionEngine:
             maxlen=SIGNAL_STABILITY_WINDOW
         )
         explanation = empty_decision_explanation()
+        zero = empty_score_breakdown()
         self._latest = TradeDecisionSnapshot(
             timestamp=self._clock(),
             decision=TradeDecision.NO_TRADE,
@@ -55,6 +60,21 @@ class TradeDecisionEngine:
             decision_readiness=DecisionReadiness.UNKNOWN,
             sell_decision_readiness=DecisionReadiness.UNKNOWN,
             decision_explanation=explanation,
+            buy_score_breakdown=zero,
+            sell_score_breakdown=zero,
+            explainability=build_decision_explainability(
+                decision=TradeDecision.NO_TRADE,
+                buy_breakdown=zero,
+                sell_breakdown=zero,
+                buy_score=0,
+                buy_confidence=0,
+                sell_score=0,
+                sell_confidence=0,
+                buy_stability=SignalStability.UNSTABLE,
+                buy_readiness=DecisionReadiness.UNKNOWN,
+                sell_readiness=DecisionReadiness.UNKNOWN,
+                decision_explanation=explanation,
+            ),
         )
 
     def evaluate(
