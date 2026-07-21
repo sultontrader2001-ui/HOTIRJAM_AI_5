@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import argparse
 import time
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 
 from hotirjam_ai5.dashboard.terminal import TerminalDisplay
 from hotirjam_ai5.live_data.ingress import LiveTickIngress
 from hotirjam_ai5.live_data.paths import default_tick_path
+from hotirjam_ai5.live_validator.certification_dashboard import (
+    AuditLog,
+    MarketTelemetry,
+)
 from hotirjam_ai5.live_validator.controller import LiveValidatorController
 from hotirjam_ai5.live_validator.display import render_validator_frame
 from hotirjam_ai5.live_validator.keyboard_input import KeyboardInput
@@ -56,6 +61,16 @@ class LiveValidatorApp:
         self._last_tick_wall: float | None = None
         self._ticks_seen = 0
         self._keyboard = KeyboardInput()
+        # Presentation-only feed telemetry for the certification dashboard.
+        # Never feeds any engine.
+        self._last_bid: float | None = None
+        self._last_ask: float | None = None
+        self._last_spread: float | None = None
+        self._last_latency_ms: float | None = None
+        self._tick_wall_times: deque[float] = deque()
+        self._audit = AuditLog()
+        self._started_wall: float | None = None
+        self._last_feed_status: str | None = None
 
     @property
     def developer_mode(self) -> bool:
@@ -75,6 +90,16 @@ class LiveValidatorApp:
             return "STALE"
         return "LIVE"
 
+    def uptime_seconds(self) -> float | None:
+        """Seconds since ``run()`` started, or None before start."""
+        if self._started_wall is None:
+            return None
+        return max(0.0, self._wall_clock() - self._started_wall)
+
+    @property
+    def audit_log(self) -> AuditLog:
+        return self._audit
+
     def poll_once(self) -> int:
         """Pull new ticks into the controller. Returns accepted tick count."""
         if self._ingress is None:
@@ -82,18 +107,54 @@ class LiveValidatorApp:
         ticks = self._ingress.poll()
         for tick in ticks:
             self._controller.on_tick(tick)
-            self._last_tick_wall = self._wall_clock()
+            wall = self._wall_clock()
+            self._last_tick_wall = wall
             self._ticks_seen += 1
+            # Display-only feed telemetry (dashboard MARKET section).
+            self._last_bid = tick.bid
+            self._last_ask = tick.ask
+            self._last_spread = tick.spread
+            self._last_latency_ms = max(0.0, (wall - tick.timestamp) * 1000.0)
+            self._tick_wall_times.append(wall)
         return len(ticks)
+
+    def _tick_rate(self) -> float | None:
+        """Ticks accepted in the trailing 1s window. Presentation only."""
+        if self._ticks_seen == 0:
+            return None
+        now = self._wall_clock()
+        while self._tick_wall_times and now - self._tick_wall_times[0] > 1.0:
+            self._tick_wall_times.popleft()
+        return float(len(self._tick_wall_times))
+
+    def _track_feed_transition(self, status: str) -> None:
+        """Record feed status changes in the presentation-only audit log."""
+        if status == self._last_feed_status:
+            return
+        level = "WARNING" if status == "STALE" else "INFO"
+        self._audit.record(level, f"Feed {status}", timestamp=self._wall_clock())
+        self._last_feed_status = status
 
     def render_once(self) -> str:
         frame = self._controller.latest
         if frame.current_price is None:
             frame = self._controller.evaluate_now()
+        status = self.feed_status()
+        self._track_feed_transition(status)
+        market = MarketTelemetry(
+            bid=self._last_bid,
+            ask=self._last_ask,
+            spread=self._last_spread,
+            tick_rate=self._tick_rate(),
+            latency_ms=self._last_latency_ms,
+        )
         text = render_validator_frame(
             frame,
             developer_mode=self._developer_mode,
-            feed_status=self.feed_status(),
+            feed_status=status,
+            market=market,
+            uptime_seconds=self.uptime_seconds(),
+            audit=self._audit,
         )
         self._display.render_frame(text)
         return text
@@ -107,6 +168,8 @@ class LiveValidatorApp:
     def run(self, *, max_frames: int | None = None) -> int:
         """Poll continuously; redraw on refresh cadence. Returns 0 on exit."""
         self._display.prepare()
+        self._started_wall = self._wall_clock()
+        self._audit.info("Validator started", timestamp=self._started_wall)
         frames = 0
         last_render_at: float | None = None
         self._keyboard.enable()

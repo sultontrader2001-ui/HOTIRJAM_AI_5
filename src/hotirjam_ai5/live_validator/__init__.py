@@ -6,6 +6,11 @@ Execution Engine: DISABLED
 
 from hotirjam_ai5.live_validator.app import LiveValidatorApp, main
 from hotirjam_ai5.live_validator.candle_builder import TickBarBuilder
+from hotirjam_ai5.live_validator.certification_dashboard import (
+    AuditLog,
+    MarketTelemetry,
+    render_certification_dashboard,
+)
 from hotirjam_ai5.live_validator.controller import LiveValidatorController
 from hotirjam_ai5.live_validator.display import render_validator_frame
 from hotirjam_ai5.live_validator.logger import SnapshotLogger
@@ -15,12 +20,15 @@ from hotirjam_ai5.live_validator.swing_confirmer import SwingConfirmer
 
 __all__ = [
     "ArchitecturePipeline",
+    "AuditLog",
     "LiveValidatorApp",
     "LiveValidatorController",
+    "MarketTelemetry",
     "SnapshotLogger",
     "SwingConfirmer",
     "TickBarBuilder",
     "ValidatorFrame",
     "main",
+    "render_certification_dashboard",
     "render_validator_frame",
 ]

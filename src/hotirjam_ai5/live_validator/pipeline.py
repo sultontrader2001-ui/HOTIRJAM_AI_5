@@ -44,6 +44,10 @@ class ArchitecturePipeline:
         self._tick_size = tick_size
         self._symbol = symbol
 
+    @property
+    def tick_size(self) -> float:
+        return self._tick_size
+
     def evaluate(
         self,
         *,

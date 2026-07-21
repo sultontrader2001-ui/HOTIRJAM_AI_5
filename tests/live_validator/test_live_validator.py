@@ -125,21 +125,24 @@ def test_controller_on_tick_updates_and_never_enables_decision(tmp_path: Path) -
     assert "break_capability" in payload
 
 
-def test_display_trader_view_sections() -> None:
+def test_display_default_is_certification_dashboard() -> None:
     frame = Pipeline.empty_frame(timestamp=1_700_000_000.0)
     text = render_validator_frame(frame)
-    assert "HOTIRJAM AI 5" in text
-    assert "LIVE ANALYSIS" in text
-    assert "Current Price" in text
-    assert "Feed Status" in text
-    assert "OBJECTIVE" in text
-    assert "MARKET MOMENTUM" in text
-    assert "BREAK ANALYSIS" in text
-    assert "AI THINKING" in text
-    assert "Decision Engine   DISABLED" in text
-    assert "Execution Engine  DISABLED" in text
-    assert "Observation Mode  No Orders" in text
-    # Developer noise must stay hidden in default trader view.
+    assert "LIVE CERTIFICATION DASHBOARD" in text
+    for section in (
+        "MARKET",
+        "OBJECTIVE ENGINE",
+        "INITIATIVE ENGINE",
+        "RESPONSE ENGINE",
+        "CONTINUATION ENGINE",
+        "BREAK CAPABILITY",
+        "SYSTEM",
+        "AUDIT LOG",
+    ):
+        assert section in text
+    assert "Decision          DISABLED" in text
+    assert "Execution         DISABLED" in text
+    # Developer noise must stay hidden in the default dashboard.
     assert "Impulse/Mom/Cndl" not in text
     assert "Pressure/Decay" not in text
     assert "Pressure/Resist" not in text
@@ -149,11 +152,50 @@ def test_display_developer_view_toggle() -> None:
     frame = Pipeline.empty_frame(timestamp=1_700_000_000.0)
     text = render_validator_frame(frame, developer_mode=True)
     assert "DEVELOPER VIEW" in text
+    assert "CURRENT OBJECTIVE" in text
+    assert "STRUCTURAL OBJECTIVE DIAGNOSTICS" in text
+    assert "No diagnostics available." in text
     assert "INITIATIVE" in text
     assert "RESPONSE" in text
     assert "CONTINUATION" in text
     assert "BREAK CAPABILITY" in text
     assert "Decision Engine   DISABLED" in text
+    assert "MARKET MOMENTUM" not in text
+
+
+def test_developer_view_shows_attached_diagnostics() -> None:
+    from dataclasses import replace
+
+    from hotirjam_ai5.objective import ConfirmedSwing
+    from hotirjam_ai5.objective_diagnostics import (
+        ObjectiveDiagnosticsInputs,
+        audit_objectives,
+    )
+
+    diagnostics = audit_objectives(
+        ObjectiveDiagnosticsInputs(
+            current_price=100.0,
+            tick_size=0.25,
+            confirmed_highs=(ConfirmedSwing(105.0, 70.0, confirmed_at=1.0),),
+            confirmed_lows=(ConfirmedSwing(95.0, 70.0, confirmed_at=1.0),),
+            timestamp=1_700_000_000.0,
+        )
+    )
+    frame = replace(
+        Pipeline.empty_frame(timestamp=1_700_000_000.0),
+        current_price=100.0,
+        objective_diagnostics=diagnostics,
+    )
+    text = render_validator_frame(frame, developer_mode=True)
+    assert "STRUCTURAL OBJECTIVE DIAGNOSTICS" in text
+    assert "HIGHS" in text
+    assert "LOWS" in text
+    assert "Summary" in text
+    assert "Total Swings" in text
+    assert "Eligible Highs" in text
+    assert "No diagnostics available." not in text
+    trader = render_validator_frame(frame, developer_mode=False)
+    assert "STRUCTURAL OBJECTIVE DIAGNOSTICS" not in trader
 
 
 def test_app_poll_and_render_without_decision(tmp_path: Path) -> None:

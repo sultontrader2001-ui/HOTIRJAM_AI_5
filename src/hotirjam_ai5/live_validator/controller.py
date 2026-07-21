@@ -11,6 +11,10 @@ from hotirjam_ai5.live_validator.logger import SnapshotLogger
 from hotirjam_ai5.live_validator.models import ValidatorFrame
 from hotirjam_ai5.live_validator.pipeline import ArchitecturePipeline
 from hotirjam_ai5.live_validator.swing_confirmer import SwingConfirmer
+from hotirjam_ai5.objective_diagnostics import (
+    ObjectiveDiagnosticsInputs,
+    audit_objectives,
+)
 
 
 class LiveValidatorController:
@@ -64,12 +68,40 @@ class LiveValidatorController:
     def _evaluate(self) -> ValidatorFrame:
         assert self._last_price is not None
         ts = self._last_tick_ts if self._last_tick_ts is not None else self._clock()
+        highs = self._swings.confirmed_highs
+        lows = self._swings.confirmed_lows
         frame = self._pipeline.evaluate(
             current_price=self._last_price,
             timestamp=ts,
             candles=self._bars.candles_for_engines(),
-            confirmed_highs=self._swings.confirmed_highs,
-            confirmed_lows=self._swings.confirmed_lows,
+            confirmed_highs=highs,
+            confirmed_lows=lows,
+        )
+        # Presentation-only: attach existing structural diagnostics.
+        # Does not alter Objective Engine selection or any engine scores.
+        diagnostics = audit_objectives(
+            ObjectiveDiagnosticsInputs(
+                current_price=self._last_price,
+                tick_size=self._pipeline.tick_size,
+                confirmed_highs=highs,
+                confirmed_lows=lows,
+                timestamp=ts,
+            )
+        )
+        frame = ValidatorFrame(
+            timestamp=frame.timestamp,
+            current_price=frame.current_price,
+            symbol=frame.symbol,
+            candle_count=frame.candle_count,
+            swing_high_count=frame.swing_high_count,
+            swing_low_count=frame.swing_low_count,
+            objective=frame.objective,
+            initiative=frame.initiative,
+            response=frame.response,
+            continuation=frame.continuation,
+            break_capability=frame.break_capability,
+            decision=frame.decision,
+            objective_diagnostics=diagnostics,
         )
         self._latest = frame
         self._evaluations += 1
