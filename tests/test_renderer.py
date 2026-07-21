@@ -78,7 +78,7 @@ def test_render_shows_placeholder_not_fake_prices() -> None:
     assert "Reason: Evaluation complete, awaiting final decision." in text
     assert "Next  : Decision Assessment Engine" in text
     assert "Decision: NO_TRADE" in text
-    assert "Reason  : Review incomplete." in text
+    assert "Reason  : Decision assessment still under review." in text
     assert "Next    : Execution Engine" in text
     assert "Tick Count: 0" in text
 
@@ -173,7 +173,7 @@ def test_render_with_real_market_and_health_values() -> None:
         ),
         trade_decision=TradeDecisionView(
             decision="NO_TRADE",
-            reason="Waiting for first trading policy.",
+            reason="Trading policy not yet authorized.",
             next_action="Execution Engine",
         ),
         statistics=StatisticsView(
@@ -220,7 +220,7 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "Next  : Trade Decision Engine" in text
     assert "TRADE DECISION" in text
     assert "Decision: NO_TRADE" in text
-    assert "Reason  : Waiting for first trading policy." in text
+    assert "Reason  : Trading policy not yet authorized." in text
     assert "Next    : Execution Engine" in text
     assert "• DOM connected" in text
 

@@ -1,4 +1,4 @@
-"""Unit tests for Trade Decision Engine + Policy (Sprint 16)."""
+"""Unit tests for Trade Decision Engine + Policy v2 (Sprint 17)."""
 
 from __future__ import annotations
 
@@ -30,53 +30,51 @@ def _assessment(state: DecisionAssessmentState) -> DecisionAssessmentSnapshot:
     )
 
 
-def test_policy_blocked_maps_to_no_trade() -> None:
+def test_rule_blocked_no_trade() -> None:
     snap = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.BLOCKED),
         timestamp=1.0,
     )
     assert snap.decision is TradeDecision.NO_TRADE
     assert snap.reason == BLOCKED_REASON
+    assert snap.reason == "Decision assessment blocked."
     assert snap.next_action == NEXT_ACTION
 
 
-def test_policy_review_maps_to_no_trade() -> None:
+def test_rule_review_no_trade() -> None:
     snap = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.REVIEW),
         timestamp=2.0,
     )
     assert snap.decision is TradeDecision.NO_TRADE
     assert snap.reason == REVIEW_REASON
+    assert snap.reason == "Decision assessment still under review."
     assert snap.next_action == NEXT_ACTION
 
 
-def test_policy_ready_maps_to_no_trade() -> None:
+def test_rule_ready_no_trade() -> None:
     snap = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.READY),
         timestamp=3.0,
     )
     assert snap.decision is TradeDecision.NO_TRADE
     assert snap.reason == READY_REASON
+    assert snap.reason == "Trading policy not yet authorized."
     assert snap.next_action == NEXT_ACTION
     assert snap.timestamp == 3.0
 
 
-def test_policy_reason_generation() -> None:
-    blocked = apply_trade_decision_policy(
-        _assessment(DecisionAssessmentState.BLOCKED),
-        timestamp=4.0,
-    )
-    review = apply_trade_decision_policy(
-        _assessment(DecisionAssessmentState.REVIEW),
-        timestamp=5.0,
-    )
-    ready = apply_trade_decision_policy(
-        _assessment(DecisionAssessmentState.READY),
-        timestamp=6.0,
-    )
-    assert blocked.reason == "Assessment blocked."
-    assert review.reason == "Review incomplete."
-    assert ready.reason == "Waiting for first trading policy."
+def test_reason_mapping_is_operational() -> None:
+    reasons = {
+        DecisionAssessmentState.BLOCKED: "Decision assessment blocked.",
+        DecisionAssessmentState.REVIEW: "Decision assessment still under review.",
+        DecisionAssessmentState.READY: "Trading policy not yet authorized.",
+    }
+    for state, expected in reasons.items():
+        snap = apply_trade_decision_policy(_assessment(state), timestamp=4.0)
+        assert snap.reason == expected
+        assert "not implemented" not in snap.reason.lower()
+        assert "placeholder" not in snap.reason.lower()
 
 
 def test_engine_delegates_to_policy() -> None:
@@ -121,6 +119,7 @@ def test_output_never_contains_prohibited_words() -> None:
         "confidence",
         "stop loss",
         "take profit",
+        "not implemented",
     )
     for state in DecisionAssessmentState:
         snap = apply_trade_decision_policy(_assessment(state), timestamp=1.0)
