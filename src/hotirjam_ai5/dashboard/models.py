@@ -256,6 +256,22 @@ class TradeDecisionView:
 
 
 @dataclass(frozen=True, slots=True)
+class PerformanceView:
+    """PERFORMANCE section — analytics only (Sprint 32)."""
+
+    buy_signals: int = 0
+    sell_signals: int = 0
+    success_count: int = 0
+    failed_count: int = 0
+    win_rate: float = 0.0
+    average_points: float = 0.0
+    last_signal_decision: str = "—"
+    last_signal_utc: str = "—"
+    last_signal_new_york: str = "—"
+    last_signal_tashkent: str = "—"
+
+
+@dataclass(frozen=True, slots=True)
 class DashboardState:
     """Complete snapshot rendered each refresh cycle."""
 
@@ -281,4 +297,5 @@ class DashboardState:
     )
     trade_decision: TradeDecisionView = field(default_factory=TradeDecisionView)
     statistics: StatisticsView = field(default_factory=StatisticsView)
+    performance: PerformanceView = field(default_factory=PerformanceView)
     events: Sequence[str] = ()

@@ -31,6 +31,7 @@ from hotirjam_ai5.dashboard.models import (
     MarketStateView,
     MarketTransitionView,
     MarketStatus,
+    PerformanceView,
     PhysicsView,
     StatisticsView,
     SystemView,
@@ -57,6 +58,7 @@ from hotirjam_ai5.market_state import (
     MarketStateSnapshot,
 )
 from hotirjam_ai5.market_transition import MarketTransitionEngine
+from hotirjam_ai5.performance import PerformanceTracker
 from hotirjam_ai5.physics.engine import PhysicsEngine
 from hotirjam_ai5.physics.measurements import PhysicsSnapshot
 from hotirjam_ai5.trade_decision import TradeDecisionEngine
@@ -95,6 +97,7 @@ class DashboardController:
         decision_evaluation: DecisionEvaluationEngine | None = None,
         decision_assessment: DecisionAssessmentEngine | None = None,
         trade_decision: TradeDecisionEngine | None = None,
+        performance: PerformanceTracker | None = None,
         stale_seconds: float = DEFAULT_DISCONNECT_SECONDS,
         stall_seconds: float = DEFAULT_STALL_SECONDS,
         clock: Callable[[], float] | None = None,
@@ -145,6 +148,9 @@ class DashboardController:
             or DecisionAssessmentEngine(clock=wall_clock or time.time)
         )
         self._trade_decision = trade_decision or TradeDecisionEngine(
+            clock=wall_clock or time.time
+        )
+        self._performance = performance or PerformanceTracker(
             clock=wall_clock or time.time
         )
         self._previous_market_state: MarketStateSnapshot | None = None
@@ -328,6 +334,17 @@ class DashboardController:
                 physics=physics_snapshot,
                 liquidity=liquidity_snapshot,
             )
+        # Analytics only — observes Trade Decision; never modifies it.
+        self._performance.observe(
+            trade_decision,
+            symbol=self._symbol,
+            current_price=self._market.last_price,
+            market_context=market_context,
+            physics=physics_snapshot,
+            liquidity=liquidity_snapshot,
+            timestamp=trade_decision.timestamp,
+        )
+        performance = self._performance.snapshot()
         return DashboardState(
             system=SystemView(
                 engine_status=self._engine_status,
@@ -428,6 +445,18 @@ class DashboardController:
                     "SELL_INTERNAL"
                 ),
                 no_trade_frequency=self._statistics.decision_frequency("NO_TRADE"),
+            ),
+            performance=PerformanceView(
+                buy_signals=performance.buy_signals,
+                sell_signals=performance.sell_signals,
+                success_count=performance.success_count,
+                failed_count=performance.failed_count,
+                win_rate=performance.win_rate,
+                average_points=performance.average_points,
+                last_signal_decision=performance.last_signal_decision,
+                last_signal_utc=performance.last_signal_utc,
+                last_signal_new_york=performance.last_signal_new_york,
+                last_signal_tashkent=performance.last_signal_tashkent,
             ),
             events=self._event_log.latest(),
         )

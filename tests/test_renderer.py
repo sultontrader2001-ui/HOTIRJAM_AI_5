@@ -46,6 +46,7 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "DECISION EVALUATION" in text
     assert "DECISION ASSESSMENT" in text
     assert "TRADE DECISION" in text
+    assert "PERFORMANCE" in text
     assert "LOG" in text
     assert "State       :" in text
     assert "Transition  :" in text

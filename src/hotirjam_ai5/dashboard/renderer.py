@@ -76,6 +76,7 @@ class DashboardRenderer:
         evaluation = state.decision_evaluation
         assessment = state.decision_assessment
         trade = state.trade_decision
+        performance = state.performance
         events = list(state.events) if state.events else ["(none)"]
 
         system_rows = [
@@ -178,6 +179,18 @@ class DashboardRenderer:
             "Summary",
             trade.explanation.summary,
             f"Next    : {trade.next_action}",
+            "PERFORMANCE",
+            f"BUY Signals    : {performance.buy_signals}",
+            f"SELL Signals   : {performance.sell_signals}",
+            f"Success        : {performance.success_count}",
+            f"Failed         : {performance.failed_count}",
+            f"Win Rate       : {performance.win_rate:.1f}%",
+            f"Average Points : {_format_physics(performance.average_points)}",
+            "Last Signal",
+            f"Decision : {performance.last_signal_decision}",
+            f"UTC      : {performance.last_signal_utc}",
+            f"New York : {performance.last_signal_new_york}",
+            f"Tashkent : {performance.last_signal_tashkent}",
             "LOG",
         ]
         for event in events:

@@ -36,6 +36,7 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 29 | Decision Readiness Framework (not emitted) | Done |
 | 30 | Internal BUY Activation (observation only) | Done |
 | 31 | Internal SELL Activation (observation only) | Done |
+| 32 | Performance Tracker + Multi-Timezone Logging | Done |
 
 **Out of scope still:** tradable BUY, SELL, order execution, broker connectivity,
 positions, risk
@@ -146,6 +147,15 @@ Internal activations are counted on the dashboard and appended to
 shows only current dashboard state. They never reach orders, positions,
 execution, or a broker. Tradable BUY and SELL remain unavailable.
 
+### PERFORMANCE section
+
+Analytics-only observer of `BUY_INTERNAL` / `SELL_INTERNAL`. Records each
+activation (edge-triggered), evaluates price move after 5 minutes, and shows
+success/failed/win rate/average points plus last-signal times in UTC,
+America/New_York, and Asia/Tashkent. Completed evaluations append to
+`logs/performance_log.jsonl`. Never connects to a broker or modifies Trade
+Decision. Runs all day — not limited to the New York session.
+
 ### Test
 
 ```bash
@@ -155,5 +165,5 @@ pytest
 ### Architecture (planned)
 
 ```
-NinjaTrader (NT01/NT04) → Live Data → Physics → Market State → Market Transition → Market Behavior → Market Context → Decision Foundation → Decision Intent → Decision Evaluation → Decision Assessment → Trade Decision → Execution
+NinjaTrader (NT01/NT04) → Live Data → Physics → Market State → Market Transition → Market Behavior → Market Context → Decision Foundation → Decision Intent → Decision Evaluation → Decision Assessment → Trade Decision → (Performance Tracker observes) → Execution
 ```
