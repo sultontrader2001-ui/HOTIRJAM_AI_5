@@ -17,9 +17,11 @@ from hotirjam_ai5.live_validator.certification_dashboard import (
 )
 from hotirjam_ai5.live_validator.controller import LiveValidatorController
 from hotirjam_ai5.live_validator.display import render_validator_frame
+from hotirjam_ai5.live_validator.idc import idc_page_for_key, render_idc
 from hotirjam_ai5.live_validator.keyboard_input import KeyboardInput
 from hotirjam_ai5.live_validator.logger import SnapshotLogger
 from hotirjam_ai5.live_validator.pipeline import ArchitecturePipeline
+from hotirjam_ai5.live_validator.presentation_mode import IdcPage, PresentationMode
 
 DEFAULT_POLL_SECONDS = 0.05
 DEFAULT_REFRESH_SECONDS = 0.5
@@ -58,6 +60,8 @@ class LiveValidatorApp:
         self._clock = clock
         self._wall_clock = wall_clock
         self._stale_seconds = stale_seconds
+        self._presentation_mode = PresentationMode.DASHBOARD
+        self._idc_page = IdcPage.MENU
         self._developer_mode = False
         self._last_tick_wall: float | None = None
         self._ticks_seen = 0
@@ -74,11 +78,41 @@ class LiveValidatorApp:
         self._last_feed_status: str | None = None
 
     @property
+    def presentation_mode(self) -> PresentationMode:
+        return self._presentation_mode
+
+    @property
+    def idc_page(self) -> IdcPage:
+        return self._idc_page
+
+    @property
     def developer_mode(self) -> bool:
         return self._developer_mode
 
+    def enter_idc(self) -> bool:
+        """Open IDC Main Menu. Rendering only — does not touch the runtime."""
+        if (
+            self._presentation_mode is PresentationMode.IDC
+            and self._idc_page is IdcPage.MENU
+        ):
+            return False
+        self._presentation_mode = PresentationMode.IDC
+        self._idc_page = IdcPage.MENU
+        return True
+
+    def exit_idc(self) -> bool:
+        """Leave IDC and return to the Certification Dashboard."""
+        if self._presentation_mode is not PresentationMode.IDC:
+            return False
+        self._presentation_mode = PresentationMode.DASHBOARD
+        self._idc_page = IdcPage.MENU
+        self._developer_mode = False
+        return True
+
     def toggle_developer_mode(self) -> bool:
-        """Flip Trader ↔ Developer view. Returns new mode."""
+        """Flip Trader ↔ Developer view. No-op while IDC is open."""
+        if self._presentation_mode is PresentationMode.IDC:
+            return self._developer_mode
         self._developer_mode = not self._developer_mode
         return self._developer_mode
 
@@ -144,6 +178,12 @@ class LiveValidatorApp:
         self._last_feed_status = status
 
     def render_once(self) -> str:
+        # IDC is presentation-only: never reads ValidatorFrame, never evaluate().
+        if self._presentation_mode is PresentationMode.IDC:
+            text = render_idc(self._idc_page)
+            self._display.render_frame(text)
+            return text
+
         frame = self._controller.latest
         if frame.current_price is None:
             frame = self._controller.evaluate_now()
@@ -173,23 +213,41 @@ class LiveValidatorApp:
     _MAX_KEYS_PER_POLL = 32
 
     def _poll_keyboard_toggle(self) -> bool:
-        """Drain pending keys: D toggles the view, ESC returns to Dashboard.
+        """Drain pending keys for Dashboard / Developer View / IDC navigation.
 
         Non-blocking and cross-platform. Returns True when the view changed,
         so the caller can redraw immediately instead of waiting for the next
-        refresh tick.
+        refresh tick. Never restarts the runtime or touches engines.
         """
         changed = False
         for _ in range(self._MAX_KEYS_PER_POLL):
             ch = self._keyboard.poll_key()
             if ch is None:
                 break
-            if ch in {"d", "D"}:
+            if self._presentation_mode is PresentationMode.IDC:
+                changed = self._handle_idc_key(ch) or changed
+            elif ch in {"i", "I"}:
+                changed = self.enter_idc() or changed
+            elif ch in {"d", "D"}:
                 self.toggle_developer_mode()
                 changed = True
             elif ch == self._ESCAPE:
                 changed = self.exit_developer_mode() or changed
         return changed
+
+    def _handle_idc_key(self, ch: str) -> bool:
+        """IDC navigation: page keys, Q back to menu or Dashboard."""
+        if ch in {"q", "Q"}:
+            if self._idc_page is IdcPage.MENU:
+                return self.exit_idc()
+            self._idc_page = IdcPage.MENU
+            return True
+        if self._idc_page is IdcPage.MENU:
+            page = idc_page_for_key(ch)
+            if page is not None:
+                self._idc_page = page
+                return True
+        return False
 
     def run(self, *, max_frames: int | None = None) -> int:
         """Poll continuously; redraw on refresh cadence. Returns 0 on exit."""
@@ -231,7 +289,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         description=(
             "HOTIRJAM AI 5 Live Validator — observation only. "
             "Runs Objective→Initiative→Response→Continuation→Break Capability. "
-            "Decision and Execution are DISABLED. Press D to toggle Developer View."
+            "Decision and Execution are DISABLED. "
+            "Press D for Developer View; Press I for Internal Diagnostics Console."
         )
     )
     parser.add_argument(
