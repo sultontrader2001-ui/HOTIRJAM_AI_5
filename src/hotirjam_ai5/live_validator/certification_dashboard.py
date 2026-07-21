@@ -119,15 +119,13 @@ def _colorize(text: str, code: str, *, enabled: bool) -> str:
 def _style_status(value: str, *, use_color: bool) -> str:
     """Color PASS / FAIL / WARNING / ERROR / N/A / STALE when supported."""
     upper = value.upper()
-    if upper == "PASS":
-        return _colorize(value, _GREEN, enabled=use_color)
-    if upper == "LIVE":
+    if upper in {"PASS", "LOCKED", "LIVE"}:
         return _colorize(value, _GREEN, enabled=use_color)
     if upper in {"FAIL", "ERROR"}:
         return _colorize(value, _RED, enabled=use_color)
-    if upper in {"WARNING", "STALE"}:
+    if upper in {"WARNING", "STALE", "TESTING"}:
         return _colorize(value, _YELLOW, enabled=use_color)
-    if upper == _NA:
+    if upper in {_NA, "NOT TESTED", "NOT IMPLEMENTED"}:
         return _colorize(value, _GRAY, enabled=use_color)
     return value
 
@@ -160,6 +158,10 @@ def _fmt_event_time(timestamp: float) -> str:
         return "--:--:--"
 
 
+_OBJECTIVE_CERT_VALUES = frozenset({"NOT TESTED", "TESTING", "PASS", "LOCKED"})
+_OBJECTIVE_LABEL = 21  # one pad past "Structural Objective" (20)
+
+
 def _certification(certifications: Mapping[str, str] | None, key: str) -> str:
     if not certifications:
         return _NA
@@ -169,17 +171,28 @@ def _certification(certifications: Mapping[str, str] | None, key: str) -> str:
     return _NA
 
 
+def _objective_certification(certifications: Mapping[str, str] | None) -> str:
+    """Objective panel certification: NOT TESTED | TESTING | PASS | LOCKED only."""
+    if not certifications:
+        return "NOT TESTED"
+    raw = certifications.get("objective", "")
+    value = str(raw).upper().replace("_", " ").strip()
+    if value in _OBJECTIVE_CERT_VALUES:
+        return value
+    return "NOT TESTED"
+
+
 def _objective_state(frame: ValidatorFrame) -> str:
     obj = frame.objective
     if obj.is_complete:
-        return "COMPLETE"
+        return "READY"
     if obj.has_high or obj.has_low:
         return "PARTIAL"
     return "NONE"
 
 
 def _distance_summary(frame: ValidatorFrame, *, use_color: bool) -> str:
-    """Compact single Distance field (display-only)."""
+    """Compact Distance field (keeps panel height when Current High/Low are split)."""
     obj = frame.objective
     high = obj.nearest_high_distance_ticks
     low = obj.nearest_low_distance_ticks
@@ -204,9 +217,9 @@ def _resolve_width(terminal_width: int | None) -> int:
     return max(width, _MIN_WIDTH if (_MIN_WIDTH - 3) % 2 == 0 else _MIN_WIDTH + 1)
 
 
-def _field(label: str, value: str, *, inner: int) -> str:
-    label_part = f"{label:<{_LABEL}}"
-    remaining = max(1, inner - _LABEL)
+def _field(label: str, value: str, *, inner: int, label_width: int = _LABEL) -> str:
+    label_part = f"{label:<{label_width}}"
+    remaining = max(1, inner - label_width)
     return label_part + _pad(value, remaining)
 
 
@@ -217,6 +230,7 @@ def _panel(
     inner: int,
     badge: str | None = None,
     use_color: bool = False,
+    label_width: int = _LABEL,
 ) -> list[str]:
     """Title, underline, then field rows. Height normalized later."""
     if badge is not None:
@@ -227,7 +241,7 @@ def _panel(
         header = _pad(title, inner)
     lines = [header, _pad("-" * min(inner, max(8, _visible_len(title) + 2)), inner)]
     for label, value in fields:
-        lines.append(_field(label, value, inner=inner))
+        lines.append(_field(label, value, inner=inner, label_width=label_width))
     return lines
 
 
@@ -303,19 +317,28 @@ def render_certification_dashboard(
         inner=inner,
         use_color=use_color,
     )
+    # Current Objective = Current High / Current Low (separate rows).
+    # Distance stays as one compact row so panel height matches MARKET (6 fields).
+    # Structural Objective is not built yet — show NOT IMPLEMENTED (never N/A).
     objective_panel = _panel(
         "OBJECTIVE ENGINE",
         [
             ("Current High", _fmt(obj.nearest_high_price, use_color=use_color)),
             ("Current Low", _fmt(obj.nearest_low_price, use_color=use_color)),
-            ("Major High", _style_status(_NA, use_color=use_color)),
-            ("Major Low", _style_status(_NA, use_color=use_color)),
             ("Distance", _distance_summary(frame, use_color=use_color)),
-            ("Status", _objective_state(frame)),
+            (
+                "Structural Objective",
+                _style_status("NOT IMPLEMENTED", use_color=use_color),
+            ),
+            ("Calculation State", _objective_state(frame)),
+            (
+                "Certification",
+                _style_status(_objective_certification(certifications), use_color=use_color),
+            ),
         ],
         inner=inner,
-        badge=_certification(certifications, "objective"),
         use_color=use_color,
+        label_width=_OBJECTIVE_LABEL,
     )
     initiative_panel = _panel(
         "INITIATIVE ENGINE",

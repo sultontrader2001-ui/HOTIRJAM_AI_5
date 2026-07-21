@@ -108,7 +108,9 @@ def test_no_empty_fields_missing_data_shows_na() -> None:
     text = _strip(_render(_empty_frame()))
     assert "Bid" in text and "N/A" in text
     assert "Current High" in text
-    assert "Major High" in text
+    assert "Current Low" in text
+    assert "Structural Objective" in text
+    assert "NOT IMPLEMENTED" in text
     assert "Uptime" in text
     # Required labels always present.
     for label in ("Price", "Bid", "Ask", "Spread", "Tick Rate", "Latency"):
@@ -148,11 +150,51 @@ def test_market_telemetry_rendered() -> None:
 
 def test_objective_section_values() -> None:
     text = _strip(_render(_full_frame()))
-    assert "Current High" in text and "106.00" in text
-    assert "Current Low" in text and "98.00" in text
-    assert "Distance" in text
-    assert "H 4.0" in text and "L 28.0" in text
-    assert "Status" in text and "COMPLETE" in text
+    lines = text.splitlines()
+    high = next(line for line in lines if "Current High" in line)
+    low = next(line for line in lines if "Current Low" in line)
+    assert "106.00" in high
+    assert "98.00" in low
+    # Distance kept compact so panel height stays matched to MARKET.
+    distance = next(line for line in lines if "Distance" in line)
+    assert "H 4.0" in distance and "L 28.0" in distance
+    # Structural Objective is explicitly not implemented (never N/A on its own value).
+    structural = next(line for line in lines if "Structural Objective" in line)
+    right = structural.split("|")[2] if structural.count("|") >= 2 else structural
+    assert "NOT IMPLEMENTED" in right
+    assert "N/A" not in right
+    # Calculation State (not certification) shows READY when complete.
+    assert "Calculation State    READY" in text or "Calculation State   READY" in text
+    assert "COMPLETE" not in text
+    # Old short labels must not reappear as standalone field names.
+    assert "Current Objective" not in text or "Current High" in text
+    assert "Current High" in text and "Current Low" in text
+
+
+def test_objective_certification_row_not_tested() -> None:
+    text = _strip(_render(_full_frame()))
+    cert = next(line for line in text.splitlines() if "Certification" in line)
+    assert "NOT TESTED" in cert
+    # Allowed lifecycle values only when overridden.
+    for value in ("TESTING", "PASS", "LOCKED"):
+        overridden = _strip(_render(_full_frame(), certifications={"objective": value}))
+        row = next(line for line in overridden.splitlines() if "Certification" in line)
+        assert value in row
+    # FAIL is not an Objective certification value — stays NOT TESTED.
+    failed = _strip(_render(_full_frame(), certifications={"objective": "FAIL"}))
+    assert "NOT TESTED" in next(line for line in failed.splitlines() if "Certification" in line)
+    # No floating badge on the Objective title row.
+    title = next(line for line in text.splitlines() if "OBJECTIVE ENGINE" in line)
+    assert "N/A" not in title
+
+
+def test_objective_panel_height_unchanged() -> None:
+    """Objective panel fits the same 8-line height as MARKET (no grid growth)."""
+    text = _render(_full_frame())
+    lines = text.splitlines()
+    top = next(i for i, line in enumerate(lines) if "MARKET" in line)
+    bottom = next(i for i, line in enumerate(lines) if line.count("+") == 3 and i > top)
+    assert bottom - top == 8
 
 
 def test_essential_fields_only_no_reason_noise() -> None:
@@ -165,8 +207,8 @@ def test_essential_fields_only_no_reason_noise() -> None:
 
 def test_certification_badges_fixed_in_titles() -> None:
     empty = _strip(_render(_empty_frame()))
-    # Default badges are N/A on each engine title row.
-    assert empty.count("N/A") >= 5
+    # Default badges are N/A on the other engine title rows.
+    assert empty.count("N/A") >= 4
 
     passed = _strip(
         _render(
@@ -174,16 +216,23 @@ def test_certification_badges_fixed_in_titles() -> None:
             certifications={"objective": "PASS", "initiative": "FAIL"},
         )
     )
-    assert "OBJECTIVE ENGINE" in passed and "PASS" in passed
     assert "INITIATIVE ENGINE" in passed and "FAIL" in passed
     # Line indices of engine titles stay stable.
     empty_lines = empty.splitlines()
     passed_lines = passed.splitlines()
     assert len(empty_lines) == len(passed_lines)
-    obj_i = next(i for i, line in enumerate(empty_lines) if "OBJECTIVE ENGINE" in line)
     ini_i = next(i for i, line in enumerate(empty_lines) if "INITIATIVE ENGINE" in line)
-    assert "PASS" in passed_lines[obj_i]
     assert "FAIL" in passed_lines[ini_i]
+    # Objective certification appears in its own row, not as a title badge.
+    obj_title = next(line for line in passed_lines if "OBJECTIVE ENGINE" in line)
+    assert "PASS" not in obj_title
+    obj_cert = next(line for line in passed_lines if "Certification" in line)
+    assert "PASS" in obj_cert
+    # Structural Objective never shows N/A as its value.
+    structural = next(line for line in passed_lines if "Structural Objective" in line)
+    right = structural.split("|")[2]
+    assert "NOT IMPLEMENTED" in right
+    assert "N/A" not in right
 
 
 def test_colors_applied_when_enabled() -> None:
