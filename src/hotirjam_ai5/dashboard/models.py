@@ -403,12 +403,14 @@ class SystemPanelView:
 
 @dataclass(frozen=True, slots=True)
 class AccountStatusView:
-    """ACCOUNT STATUS section — virtual prop account (Sprint 47)."""
+    """ACCOUNT STATUS section — virtual prop account (Sprint 47/48)."""
 
     starting_balance: float | None = None
     current_balance: float | None = None
     current_equity: float | None = None
     today_pnl: float | None = None
+    weekly_pnl: float | None = None
+    monthly_pnl: float | None = None
     lifetime_pnl: float | None = None
     profit_target: float | None = None
     progress_pct: float | None = None

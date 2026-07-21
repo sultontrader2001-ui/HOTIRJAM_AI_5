@@ -795,6 +795,8 @@ def _account_status_view(snapshot: AccountStatusSnapshot) -> AccountStatusView:
         current_balance=snapshot.current_balance,
         current_equity=snapshot.current_equity,
         today_pnl=snapshot.today_pnl,
+        weekly_pnl=snapshot.weekly_pnl,
+        monthly_pnl=snapshot.monthly_pnl,
         lifetime_pnl=snapshot.lifetime_pnl,
         profit_target=snapshot.profit_target,
         progress_pct=snapshot.progress_pct,

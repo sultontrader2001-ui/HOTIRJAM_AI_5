@@ -93,7 +93,10 @@ class DashboardApp:
     def render_once(self) -> str:
         """Render the current snapshot to the terminal (diff update)."""
         state = self._controller.snapshot()
-        text = self._renderer.render(state)
+        width = self._renderer.fixed_width
+        if width is None:
+            width = self._display.terminal_width()
+        text = self._renderer.render(state, width=width)
         self._display.render_frame(text)
         return text
 

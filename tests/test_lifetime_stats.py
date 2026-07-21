@@ -74,12 +74,13 @@ def test_empty_store_renders_double_dash(tmp_path: Path) -> None:
             today_stats=PeriodStatsView(),
             lifetime_stats=PeriodStatsView(),
             signal_history=(),
-        )
+        ),
+        width=100,
     )
     assert "TODAY" in text
     assert "LIFETIME" in text
     assert "SIGNAL HISTORY" in text
-    assert f"Win Rate{' ' * (22 - 8)}: {MISSING}" in text or "Win Rate" in text
+    assert "Win Rate" in text
     assert MISSING in text
 
 
@@ -245,15 +246,15 @@ def test_renderer_today_lifetime_history_layout() -> None:
             ),
         ),
     )
-    text = DashboardRenderer().render(state)
+    text = DashboardRenderer().render(state, width=100)
     assert "TODAY" in text
     assert "LIFETIME" in text
     assert "SIGNAL HISTORY" in text
     assert "PERFORMANCE" not in text
     assert "LAST SIGNAL" not in text
-    assert "Signals Today" in text
+    assert "Signals" in text
     assert "Total Signals" in text
     assert "Memory Accuracy" in text
     assert "HELPED" in text
-    assert "Memory Usage" not in text  # trimmed SYSTEM
-    assert "Append Rate" not in text
+    assert "Memory Usage" in text
+    assert "Append Rate" in text

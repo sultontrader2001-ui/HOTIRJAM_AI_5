@@ -97,7 +97,7 @@ def test_app_runs_limited_frames_without_fake_market_data() -> None:
     clock = FakeClock(0.0)
     app = DashboardApp(
         controller=DashboardController(symbol="MNQ"),
-        renderer=DashboardRenderer(),
+        renderer=DashboardRenderer(width=100),
         display=TerminalDisplay(stream=buffer),
         refresh_seconds=0.25,
         poll_seconds=0.05,
@@ -108,8 +108,8 @@ def test_app_runs_limited_frames_without_fake_market_data() -> None:
     assert code == 0
     output = buffer.getvalue()
     assert "HOTIRJAM AI 5 LIVE" in output
-    assert "Price                 : --" in output
-    assert "Feed Health           : DISCONNECTED" in output
+    assert "Price" in output and "--" in output
+    assert "Feed Health" in output and "DISCONNECTED" in output
     assert "MARKET" in output
     assert "AI STATUS" in output
     assert "TRADE DECISION" in output
@@ -147,7 +147,7 @@ def test_app_updates_from_live_ingress(tmp_path: Path) -> None:
     app = DashboardApp(
         controller=DashboardController(symbol="MNQ"),
         ingress=ingress,
-        renderer=DashboardRenderer(),
+        renderer=DashboardRenderer(width=100),
         display=TerminalDisplay(stream=buffer),
         refresh_seconds=0.25,
         poll_seconds=0.05,
@@ -157,9 +157,8 @@ def test_app_updates_from_live_ingress(tmp_path: Path) -> None:
     code = app.run(max_frames=1)
     assert code == 0
     output = buffer.getvalue()
-    assert "Feed Health           : HEALTHY" in output
-    assert "Price                 : 20110.00" in output
-    assert ">>>  " not in output or "Decision : NO_TRADE" in output
+    assert "Feed Health" in output and "HEALTHY" in output
+    assert "20110.00" in output
     assert "DECISION FOUNDATION" not in output
     assert "Tick received" not in output
 

@@ -1,10 +1,12 @@
-"""Pure string renderer for the Professional Trading Dashboard v2.
+"""Professional dual-column LIVE dashboard renderer (Sprint 48).
 
-Visualization only — no trading logic. Default layout is the live monitor;
-pass ``verbose=True`` for developer/pipeline details.
+Layout only — no trading logic. Width ≥160 → two columns; otherwise single column.
 """
 
 from __future__ import annotations
+
+import shutil
+from collections.abc import Sequence
 
 from hotirjam_ai5.dashboard.models import (
     DashboardState,
@@ -13,10 +15,34 @@ from hotirjam_ai5.dashboard.models import (
     MemoryPanelView,
 )
 
-SEPARATOR = "═" * 64
-SECTION = "─" * 64
 MISSING = "--"
-LABEL_WIDTH = 22
+LABEL_WIDTH = 18
+DUAL_COLUMN_MIN_WIDTH = 160
+DEFAULT_WIDTH = 80
+DUAL_HISTORY_ROWS = 8
+SINGLE_HISTORY_ROWS = 12
+
+# Box-drawing characters
+_H = "─"
+_V = "│"
+_TL = "┌"
+_TR = "┐"
+_BL = "└"
+_BR = "┘"
+_DH = "═"
+_DV = "║"
+_DTL = "╔"
+_DTR = "╗"
+_DBL = "╚"
+_DBR = "╝"
+
+
+def detect_terminal_width() -> int:
+    """Return current terminal columns (minimum 40)."""
+    try:
+        return max(40, shutil.get_terminal_size(fallback=(DEFAULT_WIDTH, 24)).columns)
+    except OSError:
+        return DEFAULT_WIDTH
 
 
 def _format_price(value: float | None) -> str:
@@ -31,7 +57,9 @@ def _format_int(value: int | None) -> str:
     return str(value)
 
 
-def _format_rate(value: float) -> str:
+def _format_rate(value: float | None) -> str:
+    if value is None:
+        return MISSING
     if value == int(value):
         return f"{int(value)}/s"
     return f"{value:.2f}/s"
@@ -61,12 +89,6 @@ def _format_physics(value: float | None, *, digits: int = 2) -> str:
     return f"{value:.{digits}f}"
 
 
-def _format_ms(value: float | None) -> str:
-    if value is None:
-        return MISSING
-    return f"{value:.1f} ms"
-
-
 def _format_money(value: float | None, *, signed: bool = False) -> str:
     if value is None:
         return MISSING
@@ -86,92 +108,202 @@ def _format_runtime(seconds: float) -> str:
     return f"{secs}s"
 
 
-def _row(label: str, value: str) -> str:
-    return f"{label:<{LABEL_WIDTH}}: {value}"
+def _pad(text: str, width: int) -> str:
+    """Pad or leave as-is — never clip content (widen visually via pad only)."""
+    if len(text) >= width:
+        return text
+    return text.ljust(width)
 
 
-def _emphasize_decision(decision: str) -> list[str]:
-    """Make the active decision the largest, easiest line to see."""
-    if decision == "BUY_INTERNAL":
-        banner = ">>>  BUY_INTERNAL  <<<"
-    elif decision == "SELL_INTERNAL":
-        banner = ">>>  SELL_INTERNAL  <<<"
-    else:
-        banner = f"Decision : {decision}"
-    pad = max(0, (64 - len(banner)) // 2)
-    centered = f"{' ' * pad}{banner}"
-    return ["", centered, ""]
+def _center(text: str, width: int) -> str:
+    if len(text) >= width:
+        return text
+    pad = width - len(text)
+    left = pad // 2
+    return (" " * left) + text + (" " * (pad - left))
 
 
-def _band_lines(title: str, band: MemoryBandView) -> list[str]:
-    return [
-        title,
-        _row("Direction", band.direction or MISSING),
-        _row("Strength", _format_pct(band.strength)),
-        _row("Confidence", _format_pct(band.confidence)),
-        _row("Persistence", _format_pct(band.persistence)),
-    ]
+def _kv(label: str, value: str, width: int) -> str:
+    """Label left, value right-aligned within ``width`` (no clipping)."""
+    lab = label if len(label) <= LABEL_WIDTH else label[:LABEL_WIDTH]
+    lab = f"{lab:<{LABEL_WIDTH}}"
+    # Reserve at least 1 space between label and value.
+    avail = max(1, width - LABEL_WIDTH - 1)
+    val = value
+    if len(val) > avail:
+        # Prefer showing full value (no clip); overflow is allowed per acceptance.
+        return f"{lab} {val}"
+    return f"{lab} {val:>{avail}}"
+
+
+def _framed_top(title: str, width: int) -> str:
+    """Top border with centered title carved into the line."""
+    label = f" {title} "
+    if len(label) >= width:
+        return f"{_TL}{_H * width}{_TR}"
+    side = width - len(label)
+    left = side // 2
+    right = side - left
+    return f"{_TL}{_H * left}{label}{_H * right}{_TR}"
+
+
+def _framed_bottom(width: int) -> str:
+    return f"{_BL}{_H * width}{_BR}"
+
+
+def _framed_row(content: str, width: int) -> str:
+    body = _pad(content, width)
+    if len(body) > width:
+        return f"{_V}{body}{_V}"
+    return f"{_V}{body}{_V}"
+
+
+def _panel(title: str, rows: Sequence[tuple[str, str]], width: int) -> list[str]:
+    """Boxed panel: title header + key/value rows."""
+    inner = max(24, width - 2)
+    lines = [_framed_top(title, inner)]
+    for label, value in rows:
+        lines.append(_framed_row(_kv(label, value, inner), inner))
+    lines.append(_framed_bottom(inner))
+    return lines
+
+
+def _panel_lines(title: str, body_lines: Sequence[str], width: int) -> list[str]:
+    """Boxed panel with free-form body lines (already width-sized content)."""
+    inner = max(24, width - 2)
+    lines = [_framed_top(title, inner)]
+    for raw in body_lines:
+        lines.append(_framed_row(_pad(raw, inner), inner))
+    lines.append(_framed_bottom(inner))
+    return lines
+
+
+def _stack_panels(panels: Sequence[list[str]]) -> list[str]:
+    out: list[str] = []
+    for panel in panels:
+        if out:
+            out.append("")  # small gap between panels
+        out.extend(panel)
+    return out
+
+
+def _merge_columns(left: list[str], right: list[str], *, gap: str = " ") -> list[str]:
+    height = max(len(left), len(right))
+    left_w = max((len(x) for x in left), default=0)
+    right_w = max((len(x) for x in right), default=0)
+    left_p = [_pad(x, left_w) for x in left] + [" " * left_w] * (height - len(left))
+    right_p = [_pad(x, right_w) for x in right] + [" " * right_w] * (height - len(right))
+    return [f"{L}{gap}{R}" for L, R in zip(left_p, right_p, strict=True)]
 
 
 class DashboardRenderer:
-    """Converts a DashboardState into the Professional Trading Dashboard v2."""
+    """Converts a DashboardState into the Professional Trading Dashboard."""
 
-    def __init__(self, *, verbose: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        verbose: bool = False,
+        width: int | None = None,
+    ) -> None:
         self._verbose = verbose
+        self._fixed_width = width
 
     @property
     def verbose(self) -> bool:
         return self._verbose
 
-    def render(self, state: DashboardState) -> str:
-        """Return the full dashboard text."""
-        lines = [
-            SEPARATOR,
-            "HOTIRJAM AI 5 LIVE".center(64),
-            SEPARATOR,
-            "",
-            *self._market_section(state),
-            SECTION,
-            *self._ai_status_section(state),
-            SECTION,
-            *self._trade_decision_section(state),
-            SECTION,
-            *self._memory_section(state.memory_panel),
-            SECTION,
-            *self._account_status_section(state),
-            SECTION,
-            *self._today_section(state),
-            SECTION,
-            *self._lifetime_section(state),
-            SECTION,
-            *self._signal_history_section(state),
-            SECTION,
-            *self._system_section(state),
-        ]
-        if self._verbose:
-            lines.extend([SECTION, *self._verbose_section(state)])
-        return "\n".join(lines)
+    @property
+    def fixed_width(self) -> int | None:
+        """Optional width override (tests / forced layout)."""
+        return self._fixed_width
 
-    def _market_section(self, state: DashboardState) -> list[str]:
+    def render(self, state: DashboardState, *, width: int | None = None) -> str:
+        """Return the full dashboard text for the given terminal width."""
+        cols = width if width is not None else self._fixed_width
+        if cols is None:
+            cols = detect_terminal_width()
+        if cols >= DUAL_COLUMN_MIN_WIDTH:
+            body = self._render_dual(state, cols)
+        else:
+            body = self._render_single(state, max(cols, 64))
+        if self._verbose:
+            verbose_w = cols if cols >= DUAL_COLUMN_MIN_WIDTH else max(cols, 64)
+            body = body + "\n" + "\n".join(self._verbose_section(state, verbose_w))
+        return body
+
+    def _render_dual(self, state: DashboardState, cols: int) -> str:
+        gap = 1
+        col_w = (cols - gap) // 2
+        left = _stack_panels(
+            [
+                self._market_panel(state, col_w),
+                self._ai_status_panel(state, col_w),
+                self._trade_decision_panel(state, col_w),
+                self._memory_panel(state.memory_panel, col_w),
+            ]
+        )
+        right = _stack_panels(
+            [
+                self._today_panel(state, col_w),
+                self._lifetime_panel(state, col_w),
+                self._account_status_panel(state, col_w),
+                self._system_panel(state, col_w),
+            ]
+        )
+        merged = _merge_columns(left, right, gap=" " * gap)
+        banner = self._banner(cols)
+        history = self._signal_history_panel(state, cols, limit=DUAL_HISTORY_ROWS)
+        return "\n".join([*banner, *merged, "", *history])
+
+    def _render_single(self, state: DashboardState, cols: int) -> str:
+        panels = _stack_panels(
+            [
+                self._market_panel(state, cols),
+                self._ai_status_panel(state, cols),
+                self._trade_decision_panel(state, cols),
+                self._memory_panel(state.memory_panel, cols),
+                self._today_panel(state, cols),
+                self._lifetime_panel(state, cols),
+                self._account_status_panel(state, cols),
+                self._system_panel(state, cols),
+                self._signal_history_panel(state, cols, limit=SINGLE_HISTORY_ROWS),
+            ]
+        )
+        return "\n".join([*self._banner(cols), *panels])
+
+    def _banner(self, cols: int) -> list[str]:
+        inner = max(24, cols - 2)
+        title = _center("HOTIRJAM AI 5 LIVE", inner)
+        return [
+            f"{_DTL}{_DH * inner}{_DTR}",
+            f"{_DV}{title}{_DV}",
+            f"{_DBL}{_DH * inner}{_DBR}",
+            "",
+        ]
+
+    def _market_panel(self, state: DashboardState, width: int) -> list[str]:
         market = state.market
         clock = state.display_clock
-        return [
+        return _panel(
             "MARKET",
-            _row("Symbol", market.symbol),
-            _row("Price", _format_price(market.last_price)),
-            _row("Bid", _format_price(market.bid)),
-            _row("Ask", _format_price(market.ask)),
-            _row("Spread", _format_price(market.spread)),
-            _row("Market Status", state.system.market_status.value),
-            _row("NY Time", clock.new_york if clock.new_york else MISSING),
-            _row("UZ Time", clock.tashkent if clock.tashkent else MISSING),
-            _row("Feed Health", state.feed_health.feed_status.value),
-            _row("DOM Health", state.dom_health.feed_status.value),
-            _row("Ticks/sec", _format_rate(state.statistics.tick_rate)),
-            _row("DOM updates/sec", _format_rate(state.dom_health.update_rate)),
-        ]
+            [
+                ("Symbol", market.symbol or MISSING),
+                ("Price", _format_price(market.last_price)),
+                ("Bid", _format_price(market.bid)),
+                ("Ask", _format_price(market.ask)),
+                ("Spread", _format_price(market.spread)),
+                ("Market Status", state.system.market_status.value),
+                ("NY Time", clock.new_york if clock.new_york else MISSING),
+                ("UZ Time", clock.tashkent if clock.tashkent else MISSING),
+                ("Feed Health", state.feed_health.feed_status.value),
+                ("DOM Health", state.dom_health.feed_status.value),
+                ("Ticks/sec", _format_rate(state.statistics.tick_rate)),
+                ("DOM updates/sec", _format_rate(state.dom_health.update_rate)),
+            ],
+            width,
+        )
 
-    def _ai_status_section(self, state: DashboardState) -> list[str]:
+    def _ai_status_panel(self, state: DashboardState, width: int) -> list[str]:
         physics = state.physics
         liquidity = state.liquidity
         trade = state.trade_decision
@@ -179,9 +311,10 @@ class DashboardRenderer:
             f"v={_format_physics(physics.tick_velocity)}  "
             f"a={_format_physics(physics.tick_acceleration)}"
         )
-        if liquidity.shift in (MISSING, "—") and liquidity.imbalance in (
+        if liquidity.shift in (MISSING, "—", "") and liquidity.imbalance in (
             MISSING,
             "—",
+            "",
         ):
             liquidity_text = MISSING
         else:
@@ -195,209 +328,186 @@ class DashboardRenderer:
         readiness = (
             f"BUY {trade.decision_readiness} / SELL {trade.sell_decision_readiness}"
         )
-        return [
+        return _panel(
             "AI STATUS",
-            _row("Market State", state.market_state.state),
-            _row("Behavior", state.market_behavior.behavior),
-            _row("Assessment", state.decision_assessment.assessment_state),
-            _row("Physics", physics_text),
-            _row("Liquidity", liquidity_text),
-            _row("Decision Readiness", readiness),
-        ]
+            [
+                ("Market State", state.market_state.state),
+                ("Behavior", state.market_behavior.behavior),
+                ("Assessment", state.decision_assessment.assessment_state),
+                ("Physics", physics_text),
+                ("Liquidity", liquidity_text),
+                ("Decision Readiness", readiness),
+            ],
+            width,
+        )
 
-    def _trade_decision_section(self, state: DashboardState) -> list[str]:
+    def _trade_decision_panel(self, state: DashboardState, width: int) -> list[str]:
         trade = state.trade_decision
         stability = (
             f"BUY {trade.signal_stability} / SELL {trade.sell_signal_stability}"
         )
-        return [
+        decision = trade.decision
+        if decision == "BUY_INTERNAL":
+            decision_disp = ">>> BUY_INTERNAL <<<"
+        elif decision == "SELL_INTERNAL":
+            decision_disp = ">>> SELL_INTERNAL <<<"
+        else:
+            decision_disp = decision
+        return _panel(
             "TRADE DECISION",
-            *_emphasize_decision(trade.decision),
-            _row("Decision", trade.decision),
-            _row("BUY Score", f"{trade.buy_score} / 100"),
-            _row("SELL Score", f"{trade.sell_score} / 100"),
-            _row("BUY Confidence", f"{trade.buy_confidence} %"),
-            _row("SELL Confidence", f"{trade.sell_confidence} %"),
-            _row("Memory Influence %", _format_pct(trade.memory_influence_pct)),
-            _row("Memory Agreement %", _format_pct(trade.memory_agreement)),
-            _row("Memory Persistence %", _format_pct(trade.memory_persistence)),
-            _row("Signal Stability", stability),
-        ]
-
-    def _memory_section(self, panel: MemoryPanelView) -> list[str]:
-        lines = ["MEMORY"]
-        lines.extend(_band_lines("Fast Band", panel.fast))
-        lines.extend(_band_lines("Medium Band", panel.medium))
-        lines.extend(_band_lines("Slow Band", panel.slow))
-        lines.extend(
             [
-                "Consensus",
-                _row("Direction", panel.consensus_direction or MISSING),
-                _row("Agreement", _format_pct(panel.consensus_agreement)),
-                _row("Confidence", _format_pct(panel.consensus_confidence)),
-                _row("Status", panel.consensus_status or MISSING),
-            ]
+                ("Decision", decision_disp),
+                ("BUY Score", f"{trade.buy_score} / 100"),
+                ("SELL Score", f"{trade.sell_score} / 100"),
+                ("BUY Confidence", f"{trade.buy_confidence} %"),
+                ("SELL Confidence", f"{trade.sell_confidence} %"),
+                ("Memory Influence %", _format_pct(trade.memory_influence_pct)),
+                ("Memory Agreement %", _format_pct(trade.memory_agreement)),
+                ("Memory Persistence %", _format_pct(trade.memory_persistence)),
+                ("Signal Stability", stability),
+            ],
+            width,
         )
-        return lines
 
-    def _account_status_section(self, state: DashboardState) -> list[str]:
-        acct = state.account_status
-        return [
-            "ACCOUNT STATUS",
-            _row("Starting Balance", _format_money(acct.starting_balance)),
-            _row("Current Balance", _format_money(acct.current_balance)),
-            _row("Current Equity", _format_money(acct.current_equity)),
-            _row("Today's P/L", _format_money(acct.today_pnl, signed=True)),
-            _row("Lifetime P/L", _format_money(acct.lifetime_pnl, signed=True)),
-            _row("Profit Target", _format_money(acct.profit_target)),
-            _row("Progress %", _format_pct(acct.progress_pct)),
-            _row("Remaining", _format_money(acct.remaining_profit)),
-            _row("Risk Status", acct.risk_status or MISSING),
-            _row("Win Rate", _format_pct(acct.win_rate)),
-            _row("Profit Factor", _format_points(acct.profit_factor)),
-        ]
-
-    def _today_section(self, state: DashboardState) -> list[str]:
-        today = state.today_stats
-        return [
-            "TODAY",
-            _row("Signals Today", _format_int(today.signals)),
-            _row("BUY Signals", _format_int(today.buy_signals)),
-            _row("SELL Signals", _format_int(today.sell_signals)),
-            _row("NO TRADE", _format_int(today.no_trade)),
-            _row("Wins", _format_int(today.wins)),
-            _row("Losses", _format_int(today.losses)),
-            _row("Breakeven", _format_int(today.breakeven)),
-            _row("Win Rate", _format_pct(today.win_rate)),
-            _row("Average RR", _format_points(today.average_rr)),
-            _row("Average Win", _format_signed_points(today.average_win)),
-            _row(
-                "Average Loss",
-                _format_signed_points(
-                    None if today.average_loss is None else -abs(today.average_loss)
-                ),
-            ),
-            _row("Profit Factor", _format_points(today.profit_factor)),
-            _row("Average MFE", _format_signed_points(today.average_mfe)),
-            _row("Average MAE", _format_signed_points(today.average_mae)),
-            _row("Memory Helped", _format_int(today.memory_helped)),
-            _row("Memory Hurt", _format_int(today.memory_hurt)),
-            _row("Memory No Effect", _format_int(today.memory_no_effect)),
-        ]
-
-    def _lifetime_section(self, state: DashboardState) -> list[str]:
-        life = state.lifetime_stats
-        return [
-            "LIFETIME",
-            _row("Total Signals", _format_int(life.signals)),
-            _row("BUY Signals", _format_int(life.buy_signals)),
-            _row("SELL Signals", _format_int(life.sell_signals)),
-            _row("NO TRADE", _format_int(life.no_trade)),
-            _row("Total Wins", _format_int(life.wins)),
-            _row("Total Losses", _format_int(life.losses)),
-            _row("Breakeven", _format_int(life.breakeven)),
-            _row("Overall Win Rate", _format_pct(life.win_rate)),
-            _row("Overall Profit Factor", _format_points(life.profit_factor)),
-            _row("Average RR", _format_points(life.average_rr)),
-            _row("Average Win", _format_signed_points(life.average_win)),
-            _row(
-                "Average Loss",
-                _format_signed_points(
-                    None if life.average_loss is None else -abs(life.average_loss)
-                ),
-            ),
-            _row("Average MFE", _format_signed_points(life.average_mfe)),
-            _row("Average MAE", _format_signed_points(life.average_mae)),
-            _row("Largest Win", _format_signed_points(life.largest_win)),
-            _row("Largest Loss", _format_signed_points(life.largest_loss)),
-            _row("Net Points", _format_signed_points(life.net_points)),
-            _row("Gross Profit", _format_signed_points(life.gross_profit)),
-            _row(
-                "Gross Loss",
-                _format_signed_points(
-                    None if life.gross_loss is None else -abs(life.gross_loss)
-                ),
-            ),
-            _row("Avg Signals/Day", _format_points(life.average_signals_per_day)),
-            _row("Avg Points/Signal", _format_signed_points(life.average_points_per_signal)),
-            _row("Memory Helped", _format_int(life.memory_helped)),
-            _row("Memory Hurt", _format_int(life.memory_hurt)),
-            _row("Memory No Effect", _format_int(life.memory_no_effect)),
-            _row("Memory Accuracy", _format_pct(life.memory_accuracy)),
-        ]
-
-    def _signal_history_section(self, state: DashboardState) -> list[str]:
-        lines = ["SIGNAL HISTORY"]
-        if not state.signal_history:
-            lines.append(_row("Latest", MISSING))
-            return lines
-        # Compact table header
-        lines.append(
-            f"{'#':>2} {'Time':<8} {'Side':<4} {'Entry':>9} {'Exit':>9} "
-            f"{'Result':<10} {'Pts':>7} {'Dur':<10} Memory"
-        )
-        for row in state.signal_history:
-            entry = MISSING if row.entry is None else f"{row.entry:.2f}"
-            exit_ = MISSING if row.exit is None else f"{row.exit:.2f}"
-            pts = MISSING if row.points is None else f"{row.points:+.2f}"
-            lines.append(
-                f"{row.index:>2} {row.time_label:<8} {row.direction:<4} "
-                f"{entry:>9} {exit_:>9} {row.result:<10} {pts:>7} "
-                f"{row.duration_label:<10} {row.memory_effect}"
+    def _memory_panel(self, panel: MemoryPanelView, width: int) -> list[str]:
+        def band_value(band: MemoryBandView) -> str:
+            return (
+                f"{band.direction or MISSING}  "
+                f"S:{_format_pct(band.strength)}  "
+                f"C:{_format_pct(band.confidence)}  "
+                f"P:{_format_pct(band.persistence)}"
             )
-        return lines
 
-    def _system_section(self, state: DashboardState) -> list[str]:
+        return _panel(
+            "MEMORY",
+            [
+                ("Fast Band", band_value(panel.fast)),
+                ("Medium Band", band_value(panel.medium)),
+                ("Slow Band", band_value(panel.slow)),
+                ("Consensus Dir", panel.consensus_direction or MISSING),
+                ("Agreement", _format_pct(panel.consensus_agreement)),
+                ("Confidence", _format_pct(panel.consensus_confidence)),
+                ("Status", panel.consensus_status or MISSING),
+            ],
+            width,
+        )
+
+    def _today_panel(self, state: DashboardState, width: int) -> list[str]:
+        today = state.today_stats
+        return _panel(
+            "TODAY",
+            [
+                ("Signals", _format_int(today.signals)),
+                ("BUY", _format_int(today.buy_signals)),
+                ("SELL", _format_int(today.sell_signals)),
+                ("Wins", _format_int(today.wins)),
+                ("Losses", _format_int(today.losses)),
+                ("Win Rate", _format_pct(today.win_rate)),
+                ("Profit Factor", _format_points(today.profit_factor)),
+                ("Average RR", _format_points(today.average_rr)),
+                ("Average MFE", _format_signed_points(today.average_mfe)),
+                ("Average MAE", _format_signed_points(today.average_mae)),
+            ],
+            width,
+        )
+
+    def _lifetime_panel(self, state: DashboardState, width: int) -> list[str]:
+        life = state.lifetime_stats
+        return _panel(
+            "LIFETIME",
+            [
+                ("Total Signals", _format_int(life.signals)),
+                ("Wins", _format_int(life.wins)),
+                ("Losses", _format_int(life.losses)),
+                ("Overall Win Rate", _format_pct(life.win_rate)),
+                ("Overall Profit Factor", _format_points(life.profit_factor)),
+                ("Memory Accuracy", _format_pct(life.memory_accuracy)),
+                ("Net Profit", _format_signed_points(life.net_points)),
+                ("Largest Win", _format_signed_points(life.largest_win)),
+                ("Largest Loss", _format_signed_points(life.largest_loss)),
+            ],
+            width,
+        )
+
+    def _account_status_panel(self, state: DashboardState, width: int) -> list[str]:
+        acct = state.account_status
+        return _panel(
+            "ACCOUNT STATUS",
+            [
+                ("Starting Balance", _format_money(acct.starting_balance)),
+                ("Current Balance", _format_money(acct.current_balance)),
+                ("Current Equity", _format_money(acct.current_equity)),
+                ("Today's P/L", _format_money(acct.today_pnl, signed=True)),
+                ("Weekly P/L", _format_money(acct.weekly_pnl, signed=True)),
+                ("Monthly P/L", _format_money(acct.monthly_pnl, signed=True)),
+                ("Lifetime P/L", _format_money(acct.lifetime_pnl, signed=True)),
+                ("Profit Target", _format_money(acct.profit_target)),
+                ("Progress", _format_pct(acct.progress_pct)),
+                ("Remaining", _format_money(acct.remaining_profit)),
+                ("Risk Status", acct.risk_status or MISSING),
+                ("Win Rate", _format_pct(acct.win_rate)),
+                ("Profit Factor", _format_points(acct.profit_factor)),
+            ],
+            width,
+        )
+
+    def _system_panel(self, state: DashboardState, width: int) -> list[str]:
         stats = state.statistics
         panel = state.system_panel
-        return [
+        append = (
+            MISSING
+            if panel.append_rate is None
+            else f"{panel.append_rate:.2f}/s"
+        )
+        return _panel(
             "SYSTEM",
-            _row("Runtime", _format_runtime(stats.running_time_seconds)),
-            _row("Memory Records", _format_int(panel.memory_records)),
-            _row("Decision Count", _format_int(panel.decision_count)),
-            _row("Version", panel.version or MISSING),
-            _row("Git Commit", panel.git_commit or MISSING),
-        ]
+            [
+                ("Runtime", _format_runtime(stats.running_time_seconds)),
+                ("Decision Count", _format_int(panel.decision_count)),
+                ("Memory Records", _format_int(panel.memory_records)),
+                ("Memory Usage", _format_pct(panel.memory_usage_pct)),
+                ("Append Rate", append),
+                ("Version", panel.version or MISSING),
+                ("Git Commit", panel.git_commit or MISSING),
+            ],
+            width,
+        )
 
-    def _decision_explanation_section(
+    def _signal_history_panel(
         self,
-        expl: DecisionExplainabilityView,
+        state: DashboardState,
+        width: int,
+        *,
+        limit: int,
     ) -> list[str]:
-        """Verbose-only explainability block."""
-        lines = [
-            "DECISION EXPLANATION",
-            expl.headline,
-        ]
-        if expl.buy_detail_lines:
-            lines.extend(expl.buy_detail_lines)
+        inner = max(40, width - 2)
+        header = (
+            f"{'#':>2}  {'Time':<8}  {'Side':<4}  {'Result':<4}  "
+            f"{'Points':>7}  {'Duration':<10}  Memory"
+        )
+        body: list[str] = [_pad(header, inner)]
+        rows = state.signal_history[:limit]
+        if not rows:
+            body.append(_pad(f"  {MISSING}", inner))
         else:
-            lines.append("BUY")
-            if expl.buy_lines:
-                lines.extend(expl.buy_lines)
-            lines.append(f"{'TOTAL':<14} {expl.buy_total}")
-            if expl.buy_reason:
-                lines.append("Reason")
-                lines.extend(expl.buy_reason.splitlines())
+            for row in rows:
+                result = row.result
+                if result == "BREAKEVEN":
+                    result = "BE"
+                elif result == "WIN":
+                    result = "WIN"
+                elif result == "LOSS":
+                    result = "LOSS"
+                pts = MISSING if row.points is None else f"{row.points:.2f}"
+                line = (
+                    f"{row.index:>2}  {row.time_label:<8}  {row.direction:<4}  "
+                    f"{result:<4}  {pts:>7}  {row.duration_label:<10}  "
+                    f"{row.memory_effect}"
+                )
+                body.append(_pad(line, inner))
+        return _panel_lines("SIGNAL HISTORY", body, width)
 
-        if expl.sell_detail_lines:
-            lines.extend(expl.sell_detail_lines)
-        else:
-            lines.append("SELL")
-            if expl.sell_lines:
-                lines.extend(expl.sell_lines)
-            lines.append(f"{'TOTAL':<14} {expl.sell_total}")
-            if expl.sell_reason:
-                lines.append("Reason")
-                lines.extend(expl.sell_reason.splitlines())
-
-        if expl.selection_lines:
-            lines.extend(expl.selection_lines)
-        if expl.checklist:
-            lines.append("Missing")
-            lines.extend(expl.checklist)
-        return lines
-
-    def _verbose_section(self, state: DashboardState) -> list[str]:
+    def _verbose_section(self, state: DashboardState, width: int) -> list[str]:
         """Developer / pipeline details — hidden in default live mode."""
         foundation = state.decision_foundation
         intent = state.decision_intent
@@ -412,57 +522,74 @@ class DashboardRenderer:
             if foundation.ready
             else (foundation.blocking_reason or foundation.summary)
         )
-        lines = [
-            "VERBOSE",
-            "OBSERVATION LAYER",
-            _row("Transition", transition.transition),
-            _row("Context", context.summary),
-            "DECISION FOUNDATION",
-            _row("Ready", "YES" if foundation.ready else "NO"),
-            foundation_detail,
-            "DECISION INTENT",
-            _row("Intent", intent.intent),
-            _row("Reason", intent.reason),
-            _row("Next", intent.next_step),
-            "DECISION EVALUATION",
-            _row("Status", evaluation.status),
-            _row("Allowed", "YES" if evaluation.evaluation_allowed else "NO"),
-            _row("Reason", evaluation.reason),
-            _row("Next", evaluation.next_stage),
-            "DECISION ASSESSMENT",
-            _row("State", assessment.assessment_state),
-            _row("Ready", "YES" if assessment.assessment_ready else "NO"),
-            _row("Reason", assessment.reason),
-            _row("Next", assessment.next_stage),
-            "TRADE DECISION DETAIL",
-            _row("Reason", trade.reason),
-            _row("Next", trade.next_action),
-            *self._decision_explanation_section(trade.explainability),
-            "STATISTICS",
-            _row("Tick Count", _format_int(state.statistics.tick_count)),
-            _row(
+        rows: list[tuple[str, str]] = [
+            ("Transition", transition.transition),
+            ("Context", context.summary),
+            ("Foundation Ready", "YES" if foundation.ready else "NO"),
+            ("Foundation", foundation_detail),
+            ("Intent", intent.intent),
+            ("Intent Reason", intent.reason),
+            ("Intent Next", intent.next_step),
+            ("Eval Status", evaluation.status),
+            ("Eval Allowed", "YES" if evaluation.evaluation_allowed else "NO"),
+            ("Eval Reason", evaluation.reason),
+            ("Assessment", assessment.assessment_state),
+            ("Assess Ready", "YES" if assessment.assessment_ready else "NO"),
+            ("Trade Reason", trade.reason),
+            ("Trade Next", trade.next_action),
+            ("Tick Count", _format_int(state.statistics.tick_count)),
+            (
                 "BUY_INTERNAL",
                 (
                     f"{state.statistics.buy_internal_count} "
                     f"({state.statistics.buy_internal_frequency:.1f}%)"
                 ),
             ),
-            _row(
+            (
                 "SELL_INTERNAL",
                 (
                     f"{state.statistics.sell_internal_count} "
                     f"({state.statistics.sell_internal_frequency:.1f}%)"
                 ),
             ),
-            _row(
+            (
                 "NO_TRADE",
                 (
                     f"{state.statistics.no_trade_count} "
                     f"({state.statistics.no_trade_frequency:.1f}%)"
                 ),
             ),
-            "LOG",
         ]
-        for event in events:
-            lines.append(f"• {event}")
+        lines = _panel("VERBOSE", rows, width)
+        lines.extend(self._decision_explanation_section(trade.explainability, width))
+        log_lines = [f"• {event}" for event in events]
+        lines.extend(_panel_lines("LOG", log_lines, width))
         return lines
+
+    def _decision_explanation_section(
+        self,
+        expl: DecisionExplainabilityView,
+        width: int,
+    ) -> list[str]:
+        body: list[str] = [expl.headline or MISSING]
+        if expl.buy_detail_lines:
+            body.extend(expl.buy_detail_lines)
+        else:
+            body.append("BUY")
+            body.extend(expl.buy_lines)
+            body.append(f"TOTAL {expl.buy_total}")
+            if expl.buy_reason:
+                body.extend(expl.buy_reason.splitlines())
+        if expl.sell_detail_lines:
+            body.extend(expl.sell_detail_lines)
+        else:
+            body.append("SELL")
+            body.extend(expl.sell_lines)
+            body.append(f"TOTAL {expl.sell_total}")
+            if expl.sell_reason:
+                body.extend(expl.sell_reason.splitlines())
+        body.extend(expl.selection_lines)
+        if expl.checklist:
+            body.append("Missing")
+            body.extend(expl.checklist)
+        return _panel_lines("DECISION EXPLANATION", body, width)

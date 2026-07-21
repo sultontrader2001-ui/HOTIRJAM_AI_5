@@ -136,6 +136,10 @@ class TerminalDisplay:
         if self._is_windows_console():
             _windows_set_cursor_home()
 
+    def terminal_width(self) -> int:
+        """Current terminal column count for layout decisions."""
+        return self._terminal_width()
+
     def _terminal_width(self) -> int:
         try:
             return max(40, shutil.get_terminal_size(fallback=(80, 24)).columns)

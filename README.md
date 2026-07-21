@@ -52,6 +52,7 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 45 | Professional Trading Dashboard v2 | Done |
 | 46 | Lifetime Performance Dashboard | Done |
 | 47 | Virtual 50K Prop Account Dashboard | Done |
+| 48 | Professional Dual Column Dashboard | Done |
 
 **Out of scope still:** tradable BUY, SELL, order execution, broker connectivity,
 positions, risk
@@ -97,6 +98,10 @@ on the America/New_York calendar day). Visualization only — no trading-logic c
 Virtual 50K Prop Account (Sprint 47): ACCOUNT STATUS panel driven by completed
 observation trades (MNQ $2/pt default). Persists to `logs/virtual_account.json`.
 Configurable starting balance / target / max drawdown. No broker. Statistics only.
+Professional Dual-Column Dashboard (Sprint 48): layout-only redesign. Terminal width
+≥160 → two columns (MARKET/AI/TRADE/MEMORY | TODAY/LIFETIME/ACCOUNT/SYSTEM) with
+SIGNAL HISTORY full-width below; narrower terminals keep single-column fallback.
+Unicode box drawing; no trading-logic changes.
 
 ### Requirements
 
@@ -206,11 +211,11 @@ Never connects to a broker or modifies Trade Decision.
 
 ### Live Dashboard v2
 
-Default terminal layout is trading-focused: MARKET, AI STATUS, TRADE DECISION
-(emphasized), MEMORY, ACCOUNT STATUS, TODAY, LIFETIME, SIGNAL HISTORY, and SYSTEM.
-NY/UZ wall times are always visible. Pipeline internals (foundation, intent,
-evaluation, reasons, explanation, LOG) appear only with `--verbose`. Refresh/poll
-cadence is unchanged.
+Default terminal layout (Sprint 48): dual-column when width ≥160 — left MARKET /
+AI STATUS / TRADE DECISION / MEMORY; right TODAY / LIFETIME / ACCOUNT STATUS /
+SYSTEM; SIGNAL HISTORY full width at the bottom. Narrower terminals use a single
+column stack. Unicode box panels; NY/UZ wall times always visible. Pipeline
+internals appear only with `--verbose`.
 
 ### Test
 

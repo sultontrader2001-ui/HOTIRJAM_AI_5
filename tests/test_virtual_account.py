@@ -182,16 +182,22 @@ def test_account_status_section_renders() -> None:
             profit_factor=1.5,
         )
     )
-    text = DashboardRenderer().render(state)
+    text = DashboardRenderer().render(state, width=100)
     assert "ACCOUNT STATUS" in text
-    assert "Starting Balance      : $50,000.00" in text
-    assert "Current Balance       : $50,120.00" in text
-    assert "Today's P/L           : $+40.00" in text
-    assert "Risk Status           : SAFE" in text
-    assert "Progress %            : 4.0%" in text
+    assert "Starting Balance" in text
+    assert "$50,000.00" in text
+    assert "Current Balance" in text
+    assert "$50,120.00" in text
+    assert "Today's P/L" in text
+    assert "$+40.00" in text
+    assert "Risk Status" in text
+    assert "SAFE" in text
+    assert "Progress" in text
+    assert "4.0%" in text
 
 
 def test_empty_account_panel_uses_missing() -> None:
-    text = DashboardRenderer().render(DashboardState())
+    text = DashboardRenderer().render(DashboardState(), width=100)
     assert "ACCOUNT STATUS" in text
-    assert f"Risk Status           : {MISSING}" in text
+    assert "Risk Status" in text
+    assert MISSING in text
