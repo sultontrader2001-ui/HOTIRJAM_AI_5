@@ -17,6 +17,7 @@ from hotirjam_ai5.dashboard.models import (
     DashboardState,
     DecisionAssessmentView,
     DecisionEvaluationView,
+    DecisionExplanationView,
     DecisionFoundationView,
     DecisionIntentView,
     DomHealthView,
@@ -56,6 +57,8 @@ from hotirjam_ai5.market_transition import MarketTransitionEngine
 from hotirjam_ai5.physics.engine import PhysicsEngine
 from hotirjam_ai5.physics.measurements import PhysicsSnapshot
 from hotirjam_ai5.trade_decision import TradeDecisionEngine
+from hotirjam_ai5.trade_decision.models import TradeDecisionSnapshot
+from hotirjam_ai5.trade_decision.policy import empty_decision_explanation
 
 # Backward-compatible alias used by CLI / older call sites.
 DEFAULT_STALE_SECONDS = DEFAULT_DISCONNECT_SECONDS
@@ -373,6 +376,7 @@ class DashboardController:
                 buy_confidence=trade_decision.buy_confidence,
                 reason=trade_decision.reason,
                 next_action=trade_decision.next_action,
+                explanation=_trade_explanation_view(trade_decision),
             ),
             statistics=StatisticsView(
                 tick_count=tick_count,
@@ -411,3 +415,18 @@ class DashboardController:
             return
         if current is FeedStatus.DISCONNECTED and previous is not FeedStatus.DISCONNECTED:
             self._event_log.append("DOM connection lost")
+
+
+def _trade_explanation_view(
+    trade_decision: TradeDecisionSnapshot,
+) -> DecisionExplanationView:
+    explanation = trade_decision.decision_explanation or empty_decision_explanation()
+    return DecisionExplanationView(
+        assessment=explanation.assessment.value,
+        feed=explanation.feed.value,
+        market_state=explanation.market_state.value,
+        behavior=explanation.behavior.value,
+        physics=explanation.physics.value,
+        liquidity=explanation.liquidity.value,
+        summary=explanation.summary,
+    )

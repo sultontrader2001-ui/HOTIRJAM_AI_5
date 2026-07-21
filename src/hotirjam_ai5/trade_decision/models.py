@@ -1,7 +1,7 @@
 """Trade decision models.
 
 Trade Decision Engine output values. SELL remains unavailable.
-BUY exists for future emission; score/confidence do not emit BUY yet.
+BUY exists for future emission; score/confidence/explanation do not emit BUY yet.
 """
 
 from __future__ import annotations
@@ -15,6 +15,14 @@ class TradeDecision(StrEnum):
 
     NO_TRADE = "NO_TRADE"
     BUY = "BUY"
+
+
+class ExplanationStatus(StrEnum):
+    """Per-category explanation status for a trade decision."""
+
+    PASS = "PASS"
+    FAIL = "FAIL"
+    UNKNOWN = "UNKNOWN"
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +70,19 @@ class BuyConfidenceBreakdown:
 
 
 @dataclass(frozen=True, slots=True)
+class DecisionExplanation:
+    """Structured WHY for the current trade decision."""
+
+    assessment: ExplanationStatus
+    feed: ExplanationStatus
+    market_state: ExplanationStatus
+    behavior: ExplanationStatus
+    physics: ExplanationStatus
+    liquidity: ExplanationStatus
+    summary: str
+
+
+@dataclass(frozen=True, slots=True)
 class TradeDecisionSnapshot:
     """Trade decision derived from assessment, context, physics, and liquidity."""
 
@@ -71,3 +92,4 @@ class TradeDecisionSnapshot:
     next_action: str
     buy_score: int = 0
     buy_confidence: int = 0
+    decision_explanation: DecisionExplanation | None = None

@@ -12,8 +12,8 @@ from hotirjam_ai5.physics.measurements import PhysicsSnapshot
 from hotirjam_ai5.trade_decision.models import TradeDecision, TradeDecisionSnapshot
 from hotirjam_ai5.trade_decision.policy import (
     NEXT_ACTION,
-    PENDING_REASON,
     apply_trade_decision_policy,
+    empty_decision_explanation,
 )
 
 
@@ -21,19 +21,21 @@ class TradeDecisionEngine:
     """Orchestrates trade decision evaluation via the internal policy.
 
     Consumes DecisionAssessmentSnapshot, MarketContextSnapshot, PhysicsSnapshot,
-    and LiquiditySnapshot. Computes buy_score; always returns NO_TRADE.
-    Never places orders or connects to a broker.
+    and LiquiditySnapshot. Computes score, confidence, and explanation.
+    Always returns NO_TRADE. Never places orders or connects to a broker.
     """
 
     def __init__(self, *, clock: Callable[[], float] | None = None) -> None:
         self._clock = clock or time.time
+        explanation = empty_decision_explanation()
         self._latest = TradeDecisionSnapshot(
             timestamp=self._clock(),
             decision=TradeDecision.NO_TRADE,
-            reason=PENDING_REASON,
+            reason=explanation.summary,
             next_action=NEXT_ACTION,
             buy_score=0,
             buy_confidence=0,
+            decision_explanation=explanation,
         )
 
     def evaluate(

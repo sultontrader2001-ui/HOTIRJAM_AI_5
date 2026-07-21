@@ -1,8 +1,9 @@
-"""Trade Decision Policy — BUY Score + BUY Confidence Framework.
+"""Trade Decision Policy — Score, Confidence, and Decision Explanation.
 
 buy_score measures setup quality.
 buy_confidence measures decision reliability.
-They are computed independently. Always emits NO_TRADE. SELL remains unavailable.
+decision_explanation explains WHY the current decision was made.
+Always emits NO_TRADE. SELL remains unavailable.
 """
 
 from __future__ import annotations
@@ -20,6 +21,8 @@ from hotirjam_ai5.physics.measurements import PhysicsSnapshot
 from hotirjam_ai5.trade_decision.models import (
     BuyConfidenceBreakdown,
     BuyScoreBreakdown,
+    DecisionExplanation,
+    ExplanationStatus,
     TradeDecision,
     TradeDecisionSnapshot,
 )
@@ -51,6 +54,8 @@ CONF_MARKET_STABILITY: Final[int] = 15
 CONF_TOTAL: Final[int] = 100
 
 NEXT_ACTION = "Execution Engine"
+DEFAULT_FAIL_SUMMARY = "Market conditions do not satisfy BUY requirements."
+SATISFIED_SUMMARY = "BUY requirements are satisfied. Awaiting release."
 
 _ELIGIBLE_STATES: Final[frozenset[str]] = frozenset({"ACTIVE", "TRENDING"})
 _ELIGIBLE_BEHAVIORS: Final[frozenset[str]] = frozenset({"STABLE", "ACCELERATING"})
@@ -61,6 +66,19 @@ _BUY_BIAS: Final[str] = LiquidityBias.BUY.value
 def format_buy_score_reason(score: int) -> str:
     """Format the NO_TRADE reason for a computed BUY score."""
     return f"BUY score: {score}/100. Awaiting release."
+
+
+def empty_decision_explanation() -> DecisionExplanation:
+    """Default explanation before inputs are available."""
+    return DecisionExplanation(
+        assessment=ExplanationStatus.UNKNOWN,
+        feed=ExplanationStatus.UNKNOWN,
+        market_state=ExplanationStatus.UNKNOWN,
+        behavior=ExplanationStatus.UNKNOWN,
+        physics=ExplanationStatus.UNKNOWN,
+        liquidity=ExplanationStatus.UNKNOWN,
+        summary=DEFAULT_FAIL_SUMMARY,
+    )
 
 
 PENDING_REASON = format_buy_score_reason(0)
@@ -152,7 +170,6 @@ def compute_buy_confidence(
     if context is not None:
         if context.feed_status == _HEALTHY_FEED:
             feed_pts = CONF_FEED_RELIABILITY
-        # Market stability is a single confidence category (state + behavior).
         if (
             context.state in _ELIGIBLE_STATES
             and context.behavior in _ELIGIBLE_BEHAVIORS
@@ -186,6 +203,122 @@ def compute_buy_confidence(
         liquidity_reliability=liquidity_pts,
         market_stability=market_pts,
     )
+
+
+def _status_from_bool(ok: bool) -> ExplanationStatus:
+    return ExplanationStatus.PASS if ok else ExplanationStatus.FAIL
+
+
+def build_decision_explanation(
+    assessment: DecisionAssessmentSnapshot,
+    context: MarketContextSnapshot | None = None,
+    physics: PhysicsSnapshot | None = None,
+    liquidity: LiquiditySnapshot | None = None,
+) -> DecisionExplanation:
+    """Build PASS/FAIL/UNKNOWN explanation for the current decision."""
+    assessment_status = _status_from_bool(
+        assessment.assessment_state is DecisionAssessmentState.READY
+    )
+
+    if context is None:
+        feed_status = ExplanationStatus.UNKNOWN
+        state_status = ExplanationStatus.UNKNOWN
+        behavior_status = ExplanationStatus.UNKNOWN
+    else:
+        feed_status = _status_from_bool(context.feed_status == _HEALTHY_FEED)
+        state_status = _status_from_bool(context.state in _ELIGIBLE_STATES)
+        behavior_status = _status_from_bool(context.behavior in _ELIGIBLE_BEHAVIORS)
+
+    if physics is None:
+        physics_status = ExplanationStatus.UNKNOWN
+    else:
+        velocity = physics.tick_velocity
+        acceleration = physics.tick_acceleration
+        if velocity is None or acceleration is None:
+            physics_status = ExplanationStatus.UNKNOWN
+        else:
+            physics_status = _status_from_bool(velocity > 0 and acceleration > 0)
+
+    if liquidity is None:
+        liquidity_status = ExplanationStatus.UNKNOWN
+    else:
+        liquidity_status = _status_from_bool(
+            liquidity.liquidity_shift == _BUY_BIAS
+            and liquidity.dom_imbalance == _BUY_BIAS
+        )
+
+    summary = _build_explanation_summary(
+        assessment_status=assessment_status,
+        feed_status=feed_status,
+        state_status=state_status,
+        behavior_status=behavior_status,
+        physics_status=physics_status,
+        liquidity_status=liquidity_status,
+        context=context,
+    )
+    return DecisionExplanation(
+        assessment=assessment_status,
+        feed=feed_status,
+        market_state=state_status,
+        behavior=behavior_status,
+        physics=physics_status,
+        liquidity=liquidity_status,
+        summary=summary,
+    )
+
+
+def _build_explanation_summary(
+    *,
+    assessment_status: ExplanationStatus,
+    feed_status: ExplanationStatus,
+    state_status: ExplanationStatus,
+    behavior_status: ExplanationStatus,
+    physics_status: ExplanationStatus,
+    liquidity_status: ExplanationStatus,
+    context: MarketContextSnapshot | None,
+) -> str:
+    """Produce a concise sentence explaining the decision."""
+    statuses = (
+        assessment_status,
+        feed_status,
+        state_status,
+        behavior_status,
+        physics_status,
+        liquidity_status,
+    )
+    if all(status is ExplanationStatus.PASS for status in statuses):
+        return SATISFIED_SUMMARY
+
+    # Named combo matching the sprint example.
+    if (
+        context is not None
+        and context.state == "VOLATILE"
+        and state_status is ExplanationStatus.FAIL
+        and physics_status is ExplanationStatus.UNKNOWN
+    ):
+        return "Market is volatile and physics confirmation is missing."
+
+    if (
+        context is not None
+        and context.state == "VOLATILE"
+        and state_status is ExplanationStatus.FAIL
+        and physics_status is ExplanationStatus.FAIL
+    ):
+        return "Market is volatile and physics confirmation failed."
+
+    if assessment_status is ExplanationStatus.FAIL and all(
+        status is not ExplanationStatus.FAIL
+        for status in (
+            feed_status,
+            state_status,
+            behavior_status,
+            physics_status,
+            liquidity_status,
+        )
+    ):
+        return "Assessment is not READY for trade decision."
+
+    return DEFAULT_FAIL_SUMMARY
 
 
 def matches_buy_strategy(
@@ -232,16 +365,20 @@ def apply_trade_decision_policy(
     *,
     timestamp: float,
 ) -> TradeDecisionSnapshot:
-    """Compute buy_score and buy_confidence; emit NO_TRADE only."""
+    """Compute score, confidence, and explanation; emit NO_TRADE only."""
     score = compute_buy_score(assessment, context, physics, liquidity).total
     confidence = compute_buy_confidence(
         assessment, context, physics, liquidity
     ).total
+    explanation = build_decision_explanation(
+        assessment, context, physics, liquidity
+    )
     return TradeDecisionSnapshot(
         timestamp=timestamp,
         decision=TradeDecision.NO_TRADE,
-        reason=format_buy_score_reason(score),
+        reason=explanation.summary,
         next_action=NEXT_ACTION,
         buy_score=score,
         buy_confidence=confidence,
+        decision_explanation=explanation,
     )

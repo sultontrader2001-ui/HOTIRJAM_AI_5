@@ -8,6 +8,7 @@ from hotirjam_ai5.dashboard.models import (
     DashboardState,
     DecisionAssessmentView,
     DecisionEvaluationView,
+    DecisionExplanationView,
     DecisionFoundationView,
     DecisionIntentView,
     DomHealthView,
@@ -80,7 +81,11 @@ def test_render_shows_placeholder_not_fake_prices() -> None:
     assert "Decision: NO_TRADE" in text
     assert "BUY Score       : 0 / 100" in text
     assert "BUY Confidence : 0 %" in text
-    assert "Next    : Execution Engine" in text
+    assert "Explanation" in text
+    assert "Assessment : UNKNOWN" in text
+    assert "Liquidity  : UNKNOWN" in text
+    assert "Summary" in text
+    assert "Market conditions do not satisfy BUY requirements." in text
     assert "Next    : Execution Engine" in text
     assert "Tick Count: 0" in text
 
@@ -175,10 +180,19 @@ def test_render_with_real_market_and_health_values() -> None:
         ),
         trade_decision=TradeDecisionView(
             decision="NO_TRADE",
-            buy_score=82,
-            buy_confidence=94,
-            reason="BUY score: 82/100. Awaiting release.",
+            buy_score=35,
+            buy_confidence=45,
+            reason="Market conditions do not satisfy BUY requirements.",
             next_action="Execution Engine",
+            explanation=DecisionExplanationView(
+                assessment="PASS",
+                feed="PASS",
+                market_state="FAIL",
+                behavior="FAIL",
+                physics="FAIL",
+                liquidity="UNKNOWN",
+                summary="Market conditions do not satisfy BUY requirements.",
+            ),
         ),
         statistics=StatisticsView(
             tick_count=120,
@@ -223,9 +237,18 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "Reason: Evaluation completed successfully." in text
     assert "Next  : Trade Decision Engine" in text
     assert "TRADE DECISION" in text
-    assert "BUY Score       : 82 / 100" in text
-    assert "BUY Confidence : 94 %" in text
+    assert "BUY Score       : 35 / 100" in text
+    assert "BUY Confidence : 45 %" in text
     assert "Decision: NO_TRADE" in text
+    assert "Explanation" in text
+    assert "Assessment : PASS" in text
+    assert "Feed       : PASS" in text
+    assert "State      : FAIL" in text
+    assert "Behavior   : FAIL" in text
+    assert "Physics    : FAIL" in text
+    assert "Liquidity  : UNKNOWN" in text
+    assert "Summary" in text
+    assert "Market conditions do not satisfy BUY requirements." in text
     assert "Next    : Execution Engine" in text
     assert "• DOM connected" in text
 

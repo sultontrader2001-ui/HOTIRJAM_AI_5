@@ -215,14 +215,30 @@ class DecisionAssessmentView:
 
 
 @dataclass(frozen=True, slots=True)
+class DecisionExplanationView:
+    """Structured WHY for TRADE DECISION."""
+
+    assessment: str = "UNKNOWN"
+    feed: str = "UNKNOWN"
+    market_state: str = "UNKNOWN"
+    behavior: str = "UNKNOWN"
+    physics: str = "UNKNOWN"
+    liquidity: str = "UNKNOWN"
+    summary: str = "Market conditions do not satisfy BUY requirements."
+
+
+@dataclass(frozen=True, slots=True)
 class TradeDecisionView:
     """TRADE DECISION section — scored/confidence NO_TRADE (BUY not emitted)."""
 
     decision: str = "NO_TRADE"
     buy_score: int = 0
     buy_confidence: int = 0
-    reason: str = "BUY score: 0/100. Awaiting release."
+    reason: str = "Market conditions do not satisfy BUY requirements."
     next_action: str = "Execution Engine"
+    explanation: DecisionExplanationView = field(
+        default_factory=DecisionExplanationView
+    )
 
 
 @dataclass(frozen=True, slots=True)
