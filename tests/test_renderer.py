@@ -7,6 +7,7 @@ from hotirjam_ai5.dashboard.models import (
     ConnectionStatus,
     DashboardState,
     DecisionFoundationView,
+    DecisionIntentView,
     DomHealthView,
     DomView,
     EngineStatus,
@@ -37,11 +38,13 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "MARKET ANALYSIS" in text
     assert "CONTEXT" in text
     assert "DECISION FOUNDATION" in text
+    assert "DECISION INTENT" in text
     assert "LOG" in text
     assert "State       :" in text
     assert "Transition  :" in text
     assert "Behavior    :" in text
     assert "Ready :" in text
+    assert "Intent :" in text
 
 
 def test_render_shows_placeholder_not_fake_prices() -> None:
@@ -56,6 +59,9 @@ def test_render_shows_placeholder_not_fake_prices() -> None:
     assert "Insufficient market context." in text
     assert "Ready : NO" in text
     assert "Waiting for market context." in text
+    assert "Intent : WAIT" in text
+    assert "Reason : Observation layer is not ready." in text
+    assert "Next   : No further processing." in text
     assert "Tick Count: 0" in text
 
 
@@ -130,6 +136,11 @@ def test_render_with_real_market_and_health_values() -> None:
             summary="Observation layer complete.",
             blocking_reason="",
         ),
+        decision_intent=DecisionIntentView(
+            intent="OBSERVE",
+            reason="Observation stable.",
+            next_step="Continue monitoring.",
+        ),
         statistics=StatisticsView(
             tick_count=120,
             tick_rate=37.0,
@@ -159,6 +170,10 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "Volatile market with unstable behavior." in text
     assert "Ready : YES" in text
     assert "Observation layer complete." in text
+    assert "DECISION INTENT" in text
+    assert "Intent : OBSERVE" in text
+    assert "Reason : Observation stable." in text
+    assert "Next   : Continue monitoring." in text
     assert "• DOM connected" in text
 
 

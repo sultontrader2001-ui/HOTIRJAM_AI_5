@@ -72,6 +72,7 @@ class DashboardRenderer:
         behavior = state.market_behavior
         context = state.market_context
         foundation = state.decision_foundation
+        intent = state.decision_intent
         events = list(state.events) if state.events else ["(none)"]
 
         system_rows = [
@@ -135,6 +136,10 @@ class DashboardRenderer:
             "DECISION FOUNDATION",
             f"Ready : {'YES' if foundation.ready else 'NO'}",
             foundation_detail,
+            "DECISION INTENT",
+            f"Intent : {intent.intent}",
+            f"Reason : {intent.reason}",
+            f"Next   : {intent.next_step}",
             "LOG",
         ]
         for event in events:

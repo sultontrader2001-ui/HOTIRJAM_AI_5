@@ -186,6 +186,15 @@ class DecisionFoundationView:
 
 
 @dataclass(frozen=True, slots=True)
+class DecisionIntentView:
+    """DECISION INTENT section (Sprint 12) — workflow controller only."""
+
+    intent: str = "WAIT"
+    reason: str = "Observation layer is not ready."
+    next_step: str = "No further processing."
+
+
+@dataclass(frozen=True, slots=True)
 class DashboardState:
     """Complete snapshot rendered each refresh cycle."""
 
@@ -202,5 +211,6 @@ class DashboardState:
     decision_foundation: DecisionFoundationView = field(
         default_factory=DecisionFoundationView
     )
+    decision_intent: DecisionIntentView = field(default_factory=DecisionIntentView)
     statistics: StatisticsView = field(default_factory=StatisticsView)
     events: Sequence[str] = ()

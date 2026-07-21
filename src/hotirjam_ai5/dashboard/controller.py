@@ -22,6 +22,7 @@ from hotirjam_ai5.dashboard.models import (
     FeedStatus,
     LiveMarketView,
     DecisionFoundationView,
+    DecisionIntentView,
     MarketBehaviorView,
     MarketContextView,
     MarketStateView,
@@ -33,6 +34,7 @@ from hotirjam_ai5.dashboard.models import (
 )
 from hotirjam_ai5.dashboard.statistics import SessionStatistics
 from hotirjam_ai5.decision_foundation import DecisionFoundationEngine
+from hotirjam_ai5.decision_intent import DecisionIntentEngine
 from hotirjam_ai5.live_data.dom import DomSnapshot
 from hotirjam_ai5.live_data.tick import LiveTick
 from hotirjam_ai5.market_behavior import BehaviorInputs, MarketBehaviorEngine
@@ -75,6 +77,7 @@ class DashboardController:
         market_behavior: MarketBehaviorEngine | None = None,
         market_context: MarketContextEngine | None = None,
         decision_foundation: DecisionFoundationEngine | None = None,
+        decision_intent: DecisionIntentEngine | None = None,
         stale_seconds: float = DEFAULT_DISCONNECT_SECONDS,
         stall_seconds: float = DEFAULT_STALL_SECONDS,
         clock: Callable[[], float] | None = None,
@@ -107,6 +110,9 @@ class DashboardController:
             clock=wall_clock or time.time
         )
         self._decision_foundation = decision_foundation or DecisionFoundationEngine(
+            clock=wall_clock or time.time
+        )
+        self._decision_intent = decision_intent or DecisionIntentEngine(
             clock=wall_clock or time.time
         )
         self._previous_market_state: MarketStateSnapshot | None = None
@@ -260,6 +266,7 @@ class DashboardController:
             ),
         )
         decision_foundation = self._decision_foundation.evaluate(market_context)
+        decision_intent = self._decision_intent.evaluate(decision_foundation)
         return DashboardState(
             system=SystemView(
                 engine_status=self._engine_status,
@@ -314,6 +321,11 @@ class DashboardController:
                 ready=decision_foundation.ready,
                 summary=decision_foundation.summary,
                 blocking_reason=decision_foundation.blocking_reason,
+            ),
+            decision_intent=DecisionIntentView(
+                intent=decision_intent.intent.value,
+                reason=decision_intent.reason,
+                next_step=decision_intent.next_step,
             ),
             statistics=StatisticsView(
                 tick_count=tick_count,

@@ -16,6 +16,7 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 8 | Market Behavior Engine v1 | Done |
 | 9 | Market Context Engine v1 | Done |
 | 10 | Decision Foundation v1 | Done |
+| 12 | Decision Intent Engine v1 | Done |
 
 **Out of scope still:** momentum, decision signals, BUY/SELL, AI, risk
 
@@ -25,6 +26,7 @@ Market Transition retrospectively reports state changes; it does not forecast.
 Market Behavior describes how the market is behaving; it does not advise trades.
 Market Context aggregates observation layers into one immutable snapshot.
 Decision Foundation only checks whether observation context is complete enough for a future decision.
+Decision Intent maps foundation readiness to WAIT / OBSERVE / EVALUATE workflow steps only.
 
 ### Requirements
 
@@ -93,6 +95,12 @@ Readiness gate over `MarketContextSnapshot` only.
 Answers whether the observation layer is complete enough for a future decision.
 Does not emit BUY/SELL, signals, confidence, probability, or risk.
 
+### DECISION INTENT section
+
+Workflow controller over `DecisionFoundationSnapshot` only.
+Intents: `WAIT`, `OBSERVE`, `EVALUATE`.
+Does not trade, score, or predict.
+
 ### Test
 
 ```bash
@@ -102,5 +110,5 @@ pytest
 ### Architecture (planned)
 
 ```
-NinjaTrader (NT01/NT04) → Live Data → Physics → Market State → Market Transition → Market Behavior → Market Context → Decision Foundation → Momentum → Decision → Execution
+NinjaTrader (NT01/NT04) → Live Data → Physics → Market State → Market Transition → Market Behavior → Market Context → Decision Foundation → Decision Intent → Momentum → Decision → Execution
 ```
