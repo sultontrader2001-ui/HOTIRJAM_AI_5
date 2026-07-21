@@ -6,6 +6,8 @@ Developer View renders the same report as selection evidence.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from hotirjam_ai5.objective_diagnostics.candidate_report import (
     evaluate_eligibility,
     sort_candidates,
@@ -26,7 +28,30 @@ from hotirjam_ai5.objective_diagnostics.significance_diagnostics import (
 
 
 def audit_objectives(inputs: ObjectiveDiagnosticsInputs) -> ObjectiveAuditReport:
-    """Build ranked diagnostic reports for all confirmed highs and lows."""
+    """Build the Objective report through the currently bound hierarchy.
+
+    Direct callers remain isolated and deterministic: without an explicitly
+    bound live hierarchy, one transient registry handles this single audit.
+    """
+    from hotirjam_ai5.objective_diagnostics.persistent_hierarchy import (
+        PersistentStructuralHierarchy,
+        active_structural_hierarchy,
+    )
+
+    hierarchy = active_structural_hierarchy() or PersistentStructuralHierarchy()
+    report = hierarchy.evaluate(inputs)
+    if report.summary_lines:
+        return report
+    return replace(
+        report,
+        summary_lines=tuple(_format_report(list(report.highs), list(report.lows))),
+    )
+
+
+def audit_objectives_stateless(
+    inputs: ObjectiveDiagnosticsInputs,
+) -> ObjectiveAuditReport:
+    """Legacy whole-input rebuild retained only for differential tests."""
     if inputs.tick_size <= 0.0:
         empty = ObjectiveAuditReport(
             timestamp=inputs.timestamp,

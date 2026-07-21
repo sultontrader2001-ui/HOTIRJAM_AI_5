@@ -11,10 +11,7 @@ from hotirjam_ai5.live_validator.logger import SnapshotLogger
 from hotirjam_ai5.live_validator.models import ValidatorFrame
 from hotirjam_ai5.live_validator.pipeline import ArchitecturePipeline
 from hotirjam_ai5.live_validator.swing_confirmer import SwingConfirmer
-from hotirjam_ai5.objective_diagnostics import (
-    ObjectiveDiagnosticsInputs,
-    audit_objectives,
-)
+from hotirjam_ai5.objective_diagnostics import ObjectiveDiagnosticsInputs
 
 
 class LiveValidatorController:
@@ -80,7 +77,7 @@ class LiveValidatorController:
         # Presentation-only attachment of the same structural classification
         # consumed by Objective Engine V2. This does not re-evaluate or mutate
         # the already-produced engine snapshots.
-        diagnostics = audit_objectives(
+        diagnostics = self._pipeline.audit_objectives(
             ObjectiveDiagnosticsInputs(
                 current_price=self._last_price,
                 tick_size=self._pipeline.tick_size,

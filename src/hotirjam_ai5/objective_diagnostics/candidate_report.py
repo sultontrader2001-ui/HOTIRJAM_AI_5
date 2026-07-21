@@ -36,6 +36,8 @@ def evaluate_eligibility(
         reasons.append("Lifecycle BREACHED")
     if lifecycle is LifecycleState.SUPERSEDED:
         reasons.append("Lifecycle SUPERSEDED")
+    if lifecycle is LifecycleState.ARCHIVED:
+        reasons.append("Lifecycle ARCHIVED")
 
     if category is CandidateCategory.MICRO:
         reasons.append("Insufficient prominence" if prominence < 4.0 else "Category MICRO")
@@ -78,6 +80,7 @@ def sort_candidates(diagnostics: list[SwingDiagnostic]) -> list[SwingDiagnostic]
         LifecycleState.ACTIVE: 0,
         LifecycleState.SUPERSEDED: 1,
         LifecycleState.BREACHED: 2,
+        LifecycleState.ARCHIVED: 3,
     }
     return sorted(
         diagnostics,

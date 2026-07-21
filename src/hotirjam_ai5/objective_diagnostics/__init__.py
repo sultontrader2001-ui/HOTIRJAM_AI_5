@@ -24,6 +24,14 @@ from hotirjam_ai5.objective_diagnostics.objective_audit import (
     audit_objectives,
     format_audit_report,
 )
+from hotirjam_ai5.objective_diagnostics.persistent_hierarchy import (
+    CHECKPOINT_VERSION,
+    PersistentStructuralHierarchy,
+    StructuralHierarchySnapshot,
+    StructuralSwingRecord,
+    StructuralTransition,
+    use_structural_hierarchy,
+)
 from hotirjam_ai5.objective_diagnostics.significance_diagnostics import (
     classify_category,
     compute_persistence,
@@ -33,10 +41,15 @@ from hotirjam_ai5.objective_diagnostics.significance_diagnostics import (
 
 __all__ = [
     "CandidateCategory",
+    "CHECKPOINT_VERSION",
     "HierarchyNode",
     "LifecycleState",
     "ObjectiveAuditReport",
     "ObjectiveDiagnosticsInputs",
+    "PersistentStructuralHierarchy",
+    "StructuralHierarchySnapshot",
+    "StructuralSwingRecord",
+    "StructuralTransition",
     "SwingDiagnostic",
     "SwingSide",
     "audit_objectives",
@@ -48,4 +61,5 @@ __all__ = [
     "format_audit_report",
     "resolve_lifecycle",
     "sort_candidates",
+    "use_structural_hierarchy",
 ]

@@ -5,6 +5,8 @@ Observation only. Decision and execution are never invoked.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from hotirjam_ai5.break_capability import (
     BreakCapabilityInputs,
     BreakCapabilitySnapshot,
@@ -28,6 +30,13 @@ from hotirjam_ai5.objective import (
     ObjectiveInputs,
     ObjectiveSnapshot,
 )
+from hotirjam_ai5.objective_diagnostics import (
+    ObjectiveAuditReport,
+    ObjectiveDiagnosticsInputs,
+    PersistentStructuralHierarchy,
+    audit_objectives,
+    use_structural_hierarchy,
+)
 from hotirjam_ai5.response import (
     ResponseInputs,
     ResponseSnapshot,
@@ -38,16 +47,37 @@ from hotirjam_ai5.response import (
 class ArchitecturePipeline:
     """Run the five frozen architecture engines for one observation frame."""
 
-    def __init__(self, *, tick_size: float = 0.25, symbol: str = "MNQ") -> None:
+    def __init__(
+        self,
+        *,
+        tick_size: float = 0.25,
+        symbol: str = "MNQ",
+        hierarchy_checkpoint_path: Path | None = None,
+        structural_hierarchy: PersistentStructuralHierarchy | None = None,
+    ) -> None:
         if tick_size <= 0.0:
             raise ValueError("tick_size must be positive")
         self._tick_size = tick_size
         self._symbol = symbol
         self._objective_engine = ObjectiveEngine()
+        self._structural_hierarchy = structural_hierarchy or PersistentStructuralHierarchy(
+            checkpoint_path=hierarchy_checkpoint_path
+        )
 
     @property
     def tick_size(self) -> float:
         return self._tick_size
+
+    @property
+    def structural_hierarchy(self) -> PersistentStructuralHierarchy:
+        return self._structural_hierarchy
+
+    def audit_objectives(
+        self, inputs: ObjectiveDiagnosticsInputs
+    ) -> ObjectiveAuditReport:
+        """Render diagnostics from the same hierarchy consumed by Objective."""
+        with use_structural_hierarchy(self._structural_hierarchy):
+            return audit_objectives(inputs)
 
     def evaluate(
         self,
@@ -59,15 +89,16 @@ class ArchitecturePipeline:
         confirmed_lows: tuple[ConfirmedSwing, ...],
     ) -> ValidatorFrame:
         """Evaluate the full observation chain. Never calls Decision/Execution."""
-        objective = self._objective_engine.evaluate(
-            ObjectiveInputs(
-                current_price=current_price,
-                tick_size=self._tick_size,
-                confirmed_highs=confirmed_highs,
-                confirmed_lows=confirmed_lows,
-                timestamp=timestamp,
+        with use_structural_hierarchy(self._structural_hierarchy):
+            objective = self._objective_engine.evaluate(
+                ObjectiveInputs(
+                    current_price=current_price,
+                    tick_size=self._tick_size,
+                    confirmed_highs=confirmed_highs,
+                    confirmed_lows=confirmed_lows,
+                    timestamp=timestamp,
+                )
             )
-        )
         initiative = evaluate_initiative(
             InitiativeInputs(
                 objectives=objective,

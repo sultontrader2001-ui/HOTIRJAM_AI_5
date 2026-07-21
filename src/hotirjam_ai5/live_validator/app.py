@@ -270,7 +270,13 @@ def main(argv: list[str] | None = None) -> int:
     from hotirjam_ai5.live_validator.swing_confirmer import SwingConfirmer
 
     controller = LiveValidatorController(
-        pipeline=ArchitecturePipeline(tick_size=args.tick_size, symbol=args.symbol),
+        pipeline=ArchitecturePipeline(
+            tick_size=args.tick_size,
+            symbol=args.symbol,
+            hierarchy_checkpoint_path=log_path.with_name(
+                f"{args.symbol.lower()}_structural_hierarchy.json"
+            ),
+        ),
         bar_builder=TickBarBuilder(bar_seconds=args.bar_seconds),
         swing_confirmer=SwingConfirmer(),
         logger=logger,

@@ -17,6 +17,7 @@ class LifecycleState(StrEnum):
     ACTIVE = "ACTIVE"
     BREACHED = "BREACHED"
     SUPERSEDED = "SUPERSEDED"
+    ARCHIVED = "ARCHIVED"
 
 
 class CandidateCategory(StrEnum):
@@ -70,3 +71,7 @@ class ObjectiveAuditReport:
     highs: tuple[SwingDiagnostic, ...]
     lows: tuple[SwingDiagnostic, ...]
     summary_lines: tuple[str, ...]
+    hierarchy_version: int = 0
+    registry_size: int = 0
+    transition_count: int = 0
+    checkpoint_version: int = 0

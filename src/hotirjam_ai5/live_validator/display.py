@@ -220,6 +220,15 @@ def _render_structural_diagnostics(report: object | None) -> list[str]:
         lines.append("No diagnostics available.")
         lines.append("====================================")
         return lines
+    lines.extend(
+        [
+            f"Hierarchy Version {report.hierarchy_version}",
+            f"Registry Size     {report.registry_size}",
+            f"Transition Count  {report.transition_count}",
+            f"Checkpoint Version {report.checkpoint_version}",
+            "--------------------------------",
+        ]
+    )
 
     def side_block(title: str, swings: tuple[SwingDiagnostic, ...]) -> list[str]:
         block = [title]
