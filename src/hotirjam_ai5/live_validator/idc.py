@@ -10,6 +10,8 @@ from collections.abc import Mapping, Sequence
 
 from hotirjam_ai5.live_validator.idc_initiative import render_initiative_page
 from hotirjam_ai5.live_validator.idc_objective import render_objective_page
+from hotirjam_ai5.live_validator.idc_performance import render_performance_page
+from hotirjam_ai5.live_validator.loop_timing import LoopTimingSnapshot
 from hotirjam_ai5.live_validator.models import ValidatorFrame
 from hotirjam_ai5.live_validator.presentation_mode import IdcPage
 from hotirjam_ai5.objective_diagnostics.persistent_hierarchy import StructuralTransition
@@ -60,6 +62,7 @@ def render_idc(
     transitions: Sequence[StructuralTransition] | None = None,
     feed_status: str | None = None,
     certifications: Mapping[str, str] | None = None,
+    loop_timing: LoopTimingSnapshot | None = None,
 ) -> str:
     """Render IDC menu, implemented engine pages, or a placeholder page."""
     if page is IdcPage.MENU:
@@ -76,6 +79,11 @@ def render_idc(
             frame,
             feed_status=feed_status,
             certifications=certifications,
+        )
+    if page is IdcPage.PERFORMANCE:
+        return render_performance_page(
+            loop_timing,
+            feed_status=feed_status,
         )
     return render_idc_placeholder(page)
 

@@ -75,7 +75,6 @@ def test_idc_placeholders_for_every_page() -> None:
         IdcPage.MARKET_STATE: "MARKET STATE",
         IdcPage.PHYSICS: "PHYSICS",
         IdcPage.STRUCTURAL_MEMORY: "STRUCTURAL MEMORY",
-        IdcPage.PERFORMANCE: "PERFORMANCE",
         IdcPage.LIVE_AUDIT: "LIVE AUDIT",
         IdcPage.CERTIFICATION: "CERTIFICATION",
         IdcPage.WARNINGS: "WARNINGS",
@@ -101,6 +100,15 @@ def test_initiative_page_is_not_placeholder() -> None:
     assert "INITIATIVE ENGINE" in text
     assert "IMPLEMENTATION PENDING" not in text
     assert "Buyer Initiative" in text
+    assert "Press Q to return" in text
+
+
+def test_performance_page_is_not_placeholder() -> None:
+    text = render_idc(IdcPage.PERFORMANCE)
+    assert "PERFORMANCE" in text
+    assert "IMPLEMENTATION PENDING" not in text
+    assert "MAIN LOOP" in text
+    assert "NOT AVAILABLE" in text
     assert "Press Q to return" in text
 
 

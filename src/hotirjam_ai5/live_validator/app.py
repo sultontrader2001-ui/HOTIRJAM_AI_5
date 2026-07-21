@@ -210,6 +210,7 @@ class LiveValidatorApp:
                 frame=frame,
                 transitions=transitions,
                 feed_status=status,
+                loop_timing=self.loop_timing,
             )
             self._display.render_frame(text)
             return text
