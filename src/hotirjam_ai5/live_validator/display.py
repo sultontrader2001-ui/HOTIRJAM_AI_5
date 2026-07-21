@@ -200,6 +200,8 @@ def render_validator_frame(
     uptime_seconds: float | None = None,
     audit: AuditLog | None = None,
     certifications: Mapping[str, str] | None = None,
+    terminal_width: int | None = None,
+    use_color: bool = False,
 ) -> str:
     """Render observation frame. Default is the Live Certification Dashboard."""
     if developer_mode:
@@ -211,4 +213,6 @@ def render_validator_frame(
         uptime_seconds=uptime_seconds,
         audit=audit,
         certifications=certifications,
+        terminal_width=terminal_width,
+        use_color=use_color,
     )

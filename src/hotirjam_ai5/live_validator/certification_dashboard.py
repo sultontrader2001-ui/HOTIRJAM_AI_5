@@ -1,34 +1,33 @@
-"""Live Certification Dashboard — fixed-layout terminal UI (Sprint 1, UI only).
+"""Live Certification Dashboard V2 — two-column trading terminal UI.
 
 Presentation layer only:
 - Reads existing snapshots from ``ValidatorFrame`` and feed telemetry.
 - Performs no engine calls, no scoring, no new formulas.
-- Every section is always rendered at the same position with the same
-  line count; unavailable values are shown as ``N/A``.
+- Fixed two-column layout; panels never move or change order.
+- Unavailable values are shown as ``N/A``.
 
-Certification fields are placeholders (``N/A``) until real certification
-statuses are wired in a later sprint. PASS/FAIL will occupy the same
-fixed position.
+Certification badges are placeholders (``N/A``) until real certification
+statuses are wired in a later sprint. PASS/FAIL occupy a fixed title slot.
 """
 
 from __future__ import annotations
 
+import re
+import shutil
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from hotirjam_ai5.initiative import InitiativeSide
 from hotirjam_ai5.live_validator.models import ValidatorFrame
 
-_WIDTH = 32
-_LABEL = 18
-_RULE = "=" * _WIDTH
-_SUB_RULE = "-" * _WIDTH
 _NA = "N/A"
-_RECENT_EVENT_LINES = 5
+_MIN_WIDTH = 72
+_DEFAULT_WIDTH = 100
+_LABEL = 14
+_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
 
-# Section keys accepted in the ``certifications`` mapping.
 CERTIFICATION_KEYS = (
     "objective",
     "initiative",
@@ -36,6 +35,12 @@ CERTIFICATION_KEYS = (
     "continuation",
     "break_capability",
 )
+
+_RESET = "\033[0m"
+_GREEN = "\033[32m"
+_RED = "\033[31m"
+_YELLOW = "\033[33m"
+_GRAY = "\033[90m"
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,25 +95,58 @@ class AuditLog:
         return tuple(list(self._events)[-limit:])
 
 
-def _field(label: str, value: str) -> str:
-    return f"{label:<{_LABEL}}{value}"
+def _visible_len(text: str) -> int:
+    return len(_ANSI_RE.sub("", text))
 
 
-def _fmt(value: float | None, *, digits: int = 2, suffix: str = "") -> str:
-    if value is None:
-        return _NA
-    return f"{value:.{digits}f}{suffix}"
+def _pad(text: str, width: int) -> str:
+    """Pad or truncate to ``width`` visible columns (ANSI-safe)."""
+    visible = _visible_len(text)
+    if visible > width:
+        plain = _ANSI_RE.sub("", text)
+        if width <= 1:
+            return plain[:width]
+        return plain[: width - 1] + "…"
+    return text + (" " * (width - visible))
 
 
-def _fmt_text(value: str | None) -> str:
-    if value is None or value == "":
-        return _NA
+def _colorize(text: str, code: str, *, enabled: bool) -> str:
+    if not enabled or text == "":
+        return text
+    return f"{code}{text}{_RESET}"
+
+
+def _style_status(value: str, *, use_color: bool) -> str:
+    """Color PASS / FAIL / WARNING / ERROR / N/A / STALE when supported."""
+    upper = value.upper()
+    if upper == "PASS":
+        return _colorize(value, _GREEN, enabled=use_color)
+    if upper == "LIVE":
+        return _colorize(value, _GREEN, enabled=use_color)
+    if upper in {"FAIL", "ERROR"}:
+        return _colorize(value, _RED, enabled=use_color)
+    if upper in {"WARNING", "STALE"}:
+        return _colorize(value, _YELLOW, enabled=use_color)
+    if upper == _NA:
+        return _colorize(value, _GRAY, enabled=use_color)
     return value
 
 
-def _fmt_uptime(seconds: float | None) -> str:
+def _fmt(value: float | None, *, digits: int = 2, suffix: str = "", use_color: bool = False) -> str:
+    if value is None:
+        return _style_status(_NA, use_color=use_color)
+    return f"{value:.{digits}f}{suffix}"
+
+
+def _fmt_text(value: str | None, *, use_color: bool = False) -> str:
+    if value is None or value == "":
+        return _style_status(_NA, use_color=use_color)
+    return value
+
+
+def _fmt_uptime(seconds: float | None, *, use_color: bool = False) -> str:
     if seconds is None or seconds < 0:
-        return _NA
+        return _style_status(_NA, use_color=use_color)
     total = int(seconds)
     hours, rem = divmod(total, 3600)
     minutes, secs = divmod(rem, 60)
@@ -123,7 +161,6 @@ def _fmt_event_time(timestamp: float) -> str:
 
 
 def _certification(certifications: Mapping[str, str] | None, key: str) -> str:
-    """Fixed-position certification value: PASS, FAIL, or N/A."""
     if not certifications:
         return _NA
     value = certifications.get(key, "").upper()
@@ -141,10 +178,80 @@ def _objective_state(frame: ValidatorFrame) -> str:
     return "NONE"
 
 
-def _truncate(text: str, limit: int = 40) -> str:
-    if len(text) <= limit:
-        return text
-    return text[: limit - 1] + "…"
+def _distance_summary(frame: ValidatorFrame, *, use_color: bool) -> str:
+    """Compact single Distance field (display-only)."""
+    obj = frame.objective
+    high = obj.nearest_high_distance_ticks
+    low = obj.nearest_low_distance_ticks
+    if high is None and low is None:
+        return _style_status(_NA, use_color=use_color)
+    return f"H {_fmt(high, digits=1, use_color=use_color)}  L {_fmt(low, digits=1, use_color=use_color)}"
+
+
+def _resolve_width(terminal_width: int | None) -> int:
+    if terminal_width is not None and terminal_width >= _MIN_WIDTH:
+        width = terminal_width
+    else:
+        try:
+            width = shutil.get_terminal_size(fallback=(_DEFAULT_WIDTH, 24)).columns
+        except OSError:
+            width = _DEFAULT_WIDTH
+        width = max(_MIN_WIDTH, width)
+    # Dual panel: |panel|panel| → width = 2*panel + 3.
+    # Grow (not shrink) so we use the full console when width is off-by-one.
+    if (width - 3) % 2 != 0:
+        width += 1
+    return max(width, _MIN_WIDTH if (_MIN_WIDTH - 3) % 2 == 0 else _MIN_WIDTH + 1)
+
+
+def _field(label: str, value: str, *, inner: int) -> str:
+    label_part = f"{label:<{_LABEL}}"
+    remaining = max(1, inner - _LABEL)
+    return label_part + _pad(value, remaining)
+
+
+def _panel(
+    title: str,
+    fields: Sequence[tuple[str, str]],
+    *,
+    inner: int,
+    badge: str | None = None,
+    use_color: bool = False,
+) -> list[str]:
+    """Title, underline, then field rows. Height normalized later."""
+    if badge is not None:
+        badge_s = _style_status(badge, use_color=use_color)
+        gap = max(1, inner - _visible_len(title) - _visible_len(badge_s))
+        header = _pad(f"{title}{' ' * gap}{badge_s}", inner)
+    else:
+        header = _pad(title, inner)
+    lines = [header, _pad("-" * min(inner, max(8, _visible_len(title) + 2)), inner)]
+    for label, value in fields:
+        lines.append(_field(label, value, inner=inner))
+    return lines
+
+
+def _equalize(panels: Sequence[list[str]], *, inner: int) -> list[list[str]]:
+    height = max(len(p) for p in panels)
+    out: list[list[str]] = []
+    for panel in panels:
+        padded = list(panel)
+        while len(padded) < height:
+            padded.append(_pad("", inner))
+        out.append(padded)
+    return out
+
+
+def _box_row(left: Sequence[str], right: Sequence[str], *, panel: int) -> list[str]:
+    return [f"|{_pad(l, panel)}|{_pad(r, panel)}|" for l, r in zip(left, right, strict=True)]
+
+
+def _full_bar(width: int) -> str:
+    return "+" + ("-" * (width - 2)) + "+"
+
+
+def _dual_bar(panel: int) -> str:
+    return "+" + ("-" * panel) + "+" + ("-" * panel) + "+"
 
 
 def render_certification_dashboard(
@@ -155,117 +262,179 @@ def render_certification_dashboard(
     uptime_seconds: float | None = None,
     audit: AuditLog | None = None,
     certifications: Mapping[str, str] | None = None,
+    terminal_width: int | None = None,
+    use_color: bool = False,
 ) -> str:
-    """Render the fixed-layout Live Certification Dashboard."""
+    """Render the fixed two-column Live Certification Dashboard."""
+    width = _resolve_width(terminal_width)
+    panel_w = (width - 3) // 2
+    inner = panel_w
+    inner_full = width - 2
+
     mkt = market or MarketTelemetry()
     obj = frame.objective
     ini = frame.initiative
     resp = frame.response
     cont = frame.continuation
     brk = frame.break_capability
-    feed = _fmt_text(feed_status)
 
-    # Initiative pressures: existing initiative_score attributed to the
-    # dominant side. No per-side pressure metric exists yet; the other
-    # side is N/A. Relabel only — no computation.
-    buyer_pressure: float | None = None
-    seller_pressure: float | None = None
+    feed_raw = feed_status if feed_status else _NA
+    feed_styled = _style_status(feed_raw, use_color=use_color)
+    runtime = _fmt_uptime(uptime_seconds, use_color=use_color)
+    session = _fmt_text(frame.symbol, use_color=use_color)
+
+    buyer: float | None = None
+    seller: float | None = None
     if ini.initiative_side is InitiativeSide.BUYER:
-        buyer_pressure = ini.initiative_score
+        buyer = ini.initiative_score
     elif ini.initiative_side is InitiativeSide.SELLER:
-        seller_pressure = ini.initiative_score
+        seller = ini.initiative_score
 
-    lines = [
-        _RULE,
-        "HOTIRJAM AI 5",
-        "LIVE CERTIFICATION DASHBOARD",
-        _RULE,
+    market_panel = _panel(
         "MARKET",
-        _SUB_RULE,
-        _field("Symbol", _fmt_text(frame.symbol)),
-        _field("Price", _fmt(frame.current_price)),
-        _field("Bid", _fmt(mkt.bid)),
-        _field("Ask", _fmt(mkt.ask)),
-        _field("Spread", _fmt(mkt.spread)),
-        _field("Tick Rate", _fmt(mkt.tick_rate, digits=1, suffix=" /s")),
-        _field("Feed", feed),
-        _field("Latency", _fmt(mkt.latency_ms, digits=0, suffix=" ms")),
-        _RULE,
-        "OBJECTIVE ENGINE",
-        _SUB_RULE,
-        _field("Current High", _fmt(obj.nearest_high_price)),
-        _field("Current Low", _fmt(obj.nearest_low_price)),
-        # Major High/Low: no certified structural source yet (Sprint 1 UI only).
-        _field("Major High", _NA),
-        _field("Major Low", _NA),
-        _field("Distance High", _fmt(obj.nearest_high_distance_ticks, digits=1)),
-        _field("Distance Low", _fmt(obj.nearest_low_distance_ticks, digits=1)),
-        _field("Objective State", _objective_state(frame)),
-        # ObjectiveSnapshot carries no confidence field.
-        _field("Confidence", _NA),
-        _field("Certification", _certification(certifications, "objective")),
-        _RULE,
-        "INITIATIVE ENGINE",
-        _SUB_RULE,
-        _field("Buyer Pressure", _fmt(buyer_pressure, digits=1)),
-        _field("Seller Pressure", _fmt(seller_pressure, digits=1)),
-        _field("Dominant Side", _fmt_text(ini.initiative_side.value)),
-        _field("Confidence", _fmt(ini.confidence, digits=1)),
-        _field("Reason", _truncate(_fmt_text(ini.reasons[0] if ini.reasons else None))),
-        _field("Certification", _certification(certifications, "initiative")),
-        _RULE,
-        "RESPONSE ENGINE",
-        _SUB_RULE,
-        _field("Response Force", _fmt(resp.response_strength, digits=1)),
-        # No absorption metric exists in ResponseSnapshot.
-        _field("Absorption", _NA),
-        _field("Reaction", _fmt_text(resp.response_state.value)),
-        _field("Confidence", _fmt(resp.confidence, digits=1)),
-        _field("Certification", _certification(certifications, "response")),
-        _RULE,
-        "CONTINUATION ENGINE",
-        _SUB_RULE,
-        _field("Continuation", _fmt(cont.continuation_score, digits=1)),
-        _field("Weakening", _fmt(cont.momentum_decay, digits=1)),
-        # No exhaustion metric exists in ContinuationSnapshot.
-        _field("Exhaustion", _NA),
-        _field("Confidence", _fmt(cont.confidence, digits=1)),
-        _field("Certification", _certification(certifications, "continuation")),
-        _RULE,
-        "BREAK CAPABILITY",
-        _SUB_RULE,
-        _field("Break Probability", _fmt(brk.break_probability, digits=1)),
-        _field("Target", _fmt_text(brk.target_type.value)),
-        _field("Pressure", _fmt(brk.pressure_score, digits=1)),
-        _field("Confidence", _fmt(brk.confidence, digits=1)),
-        _field("Certification", _certification(certifications, "break_capability")),
-        _RULE,
-        "SYSTEM",
-        _SUB_RULE,
-        _field("Decision", _fmt_text(frame.decision)),
-        _field("Execution", "DISABLED"),
-        _field("Feed", feed),
-        _field("Uptime", _fmt_uptime(uptime_seconds)),
-        _RULE,
-        "AUDIT LOG",
-        _SUB_RULE,
-        _field("INFO", str(audit.count("INFO")) if audit else _NA),
-        _field("WARNING", str(audit.count("WARNING")) if audit else _NA),
-        _field("ERROR", str(audit.count("ERROR")) if audit else _NA),
-        "Recent Events",
-    ]
-
-    events = audit.recent(_RECENT_EVENT_LINES) if audit else ()
-    for event in events:
-        line = f"  {_fmt_event_time(event.timestamp)} {event.level:<7} {event.message}"
-        lines.append(_truncate(line, limit=60))
-    for _ in range(_RECENT_EVENT_LINES - len(events)):
-        lines.append(f"  {_NA}")
-
-    lines.extend(
         [
-            _RULE,
-            "Press D — Developer View",
-        ]
+            ("Price", _fmt(frame.current_price, use_color=use_color)),
+            ("Bid", _fmt(mkt.bid, use_color=use_color)),
+            ("Ask", _fmt(mkt.ask, use_color=use_color)),
+            ("Spread", _fmt(mkt.spread, use_color=use_color)),
+            ("Tick Rate", _fmt(mkt.tick_rate, digits=1, suffix=" /s", use_color=use_color)),
+            ("Latency", _fmt(mkt.latency_ms, digits=0, suffix=" ms", use_color=use_color)),
+        ],
+        inner=inner,
+        use_color=use_color,
     )
+    objective_panel = _panel(
+        "OBJECTIVE ENGINE",
+        [
+            ("Current High", _fmt(obj.nearest_high_price, use_color=use_color)),
+            ("Current Low", _fmt(obj.nearest_low_price, use_color=use_color)),
+            ("Major High", _style_status(_NA, use_color=use_color)),
+            ("Major Low", _style_status(_NA, use_color=use_color)),
+            ("Distance", _distance_summary(frame, use_color=use_color)),
+            ("Status", _objective_state(frame)),
+        ],
+        inner=inner,
+        badge=_certification(certifications, "objective"),
+        use_color=use_color,
+    )
+    initiative_panel = _panel(
+        "INITIATIVE ENGINE",
+        [
+            ("Buyer", _fmt(buyer, digits=1, use_color=use_color)),
+            ("Seller", _fmt(seller, digits=1, use_color=use_color)),
+            ("Dominant Side", _fmt_text(ini.initiative_side.value, use_color=use_color)),
+            ("Confidence", _fmt(ini.confidence, digits=1, use_color=use_color)),
+        ],
+        inner=inner,
+        badge=_certification(certifications, "initiative"),
+        use_color=use_color,
+    )
+    response_panel = _panel(
+        "RESPONSE ENGINE",
+        [
+            ("Reaction", _fmt_text(resp.response_state.value, use_color=use_color)),
+            ("Force", _fmt(resp.response_strength, digits=1, use_color=use_color)),
+            ("Confidence", _fmt(resp.confidence, digits=1, use_color=use_color)),
+        ],
+        inner=inner,
+        badge=_certification(certifications, "response"),
+        use_color=use_color,
+    )
+    continuation_panel = _panel(
+        "CONTINUATION ENGINE",
+        [
+            ("Continuation", _fmt(cont.continuation_score, digits=1, use_color=use_color)),
+            ("Weakening", _fmt(cont.momentum_decay, digits=1, use_color=use_color)),
+            ("Confidence", _fmt(cont.confidence, digits=1, use_color=use_color)),
+        ],
+        inner=inner,
+        badge=_certification(certifications, "continuation"),
+        use_color=use_color,
+    )
+    break_panel = _panel(
+        "BREAK CAPABILITY",
+        [
+            ("Target", _fmt_text(brk.target_type.value, use_color=use_color)),
+            ("Break Prob", _fmt(brk.break_probability, digits=1, use_color=use_color)),
+            ("Pressure", _fmt(brk.pressure_score, digits=1, use_color=use_color)),
+        ],
+        inner=inner,
+        badge=_certification(certifications, "break_capability"),
+        use_color=use_color,
+    )
+    system_panel = _panel(
+        "SYSTEM",
+        [
+            ("Decision", _fmt_text(frame.decision, use_color=use_color)),
+            ("Execution", "DISABLED"),
+            ("Feed", feed_styled),
+            ("Uptime", runtime),
+        ],
+        inner=inner,
+        use_color=use_color,
+    )
+
+    if audit is None:
+        info_s = _style_status(_NA, use_color=use_color)
+        warn_s = _style_status(_NA, use_color=use_color)
+        err_s = _style_status(_NA, use_color=use_color)
+        recent_s = _style_status(_NA, use_color=use_color)
+    else:
+        info_s = str(audit.count("INFO"))
+        warn_n = audit.count("WARNING")
+        err_n = audit.count("ERROR")
+        warn_s = _style_status(str(warn_n), use_color=use_color) if warn_n > 0 else str(warn_n)
+        err_s = _colorize(str(err_n), _RED, enabled=use_color) if err_n > 0 else str(err_n)
+        recent = audit.recent(1)
+        if recent:
+            ev = recent[0]
+            recent_s = (
+                f"{_fmt_event_time(ev.timestamp)} "
+                f"{_style_status(ev.level, use_color=use_color)} {ev.message}"
+            )
+        else:
+            recent_s = _style_status(_NA, use_color=use_color)
+
+    audit_panel = _panel(
+        "AUDIT LOG",
+        [
+            ("INFO", info_s),
+            ("WARNING", warn_s),
+            ("ERROR", err_s),
+            ("Recent Event", recent_s),
+        ],
+        inner=inner,
+        use_color=use_color,
+    )
+
+    market_panel, objective_panel = _equalize((market_panel, objective_panel), inner=inner)
+    initiative_panel, response_panel = _equalize(
+        (initiative_panel, response_panel), inner=inner
+    )
+    continuation_panel, break_panel = _equalize(
+        (continuation_panel, break_panel), inner=inner
+    )
+    system_panel, audit_panel = _equalize((system_panel, audit_panel), inner=inner)
+
+    full = _full_bar(width)
+    dual = _dual_bar(panel_w)
+    meta = f"Runtime {runtime}   Session {session}   Feed {feed_styled}"
+
+    lines: list[str] = [
+        full,
+        f"|{_pad('HOTIRJAM AI 5', inner_full)}|",
+        f"|{_pad('LIVE CERTIFICATION DASHBOARD', inner_full)}|",
+        f"|{_pad(meta, inner_full)}|",
+        dual,
+    ]
+    lines.extend(_box_row(market_panel, objective_panel, panel=panel_w))
+    lines.append(dual)
+    lines.extend(_box_row(initiative_panel, response_panel, panel=panel_w))
+    lines.append(dual)
+    lines.extend(_box_row(continuation_panel, break_panel, panel=panel_w))
+    lines.append(dual)
+    lines.extend(_box_row(system_panel, audit_panel, panel=panel_w))
+    lines.append(full)
+    lines.append(f"|{_pad('Press D - Developer View', inner_full)}|")
+    lines.append(full)
     return "\n".join(lines)

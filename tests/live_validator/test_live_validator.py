@@ -140,12 +140,15 @@ def test_display_default_is_certification_dashboard() -> None:
         "AUDIT LOG",
     ):
         assert section in text
-    assert "Decision          DISABLED" in text
-    assert "Execution         DISABLED" in text
+    assert "Decision" in text and "DISABLED" in text
+    assert "Execution" in text and "DISABLED" in text
+    # Two-column trader dashboard, not the old single-column noise.
+    assert text.count("|") > 20
     # Developer noise must stay hidden in the default dashboard.
     assert "Impulse/Mom/Cndl" not in text
     assert "Pressure/Decay" not in text
     assert "Pressure/Resist" not in text
+    assert "Reason" not in text
 
 
 def test_display_developer_view_toggle() -> None:

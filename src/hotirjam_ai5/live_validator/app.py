@@ -155,6 +155,8 @@ class LiveValidatorApp:
             market=market,
             uptime_seconds=self.uptime_seconds(),
             audit=self._audit,
+            terminal_width=self._display.terminal_width(),
+            use_color=self._display.uses_ansi,
         )
         self._display.render_frame(text)
         return text
