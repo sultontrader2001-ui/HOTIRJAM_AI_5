@@ -205,6 +205,16 @@ class DecisionEvaluationView:
 
 
 @dataclass(frozen=True, slots=True)
+class DecisionAssessmentView:
+    """DECISION ASSESSMENT section (Sprint 14) — standardization only."""
+
+    assessment_state: str = "REVIEW"
+    assessment_ready: bool = False
+    reason: str = "Evaluation complete, awaiting final decision."
+    next_stage: str = "Decision Assessment Engine"
+
+
+@dataclass(frozen=True, slots=True)
 class DashboardState:
     """Complete snapshot rendered each refresh cycle."""
 
@@ -224,6 +234,9 @@ class DashboardState:
     decision_intent: DecisionIntentView = field(default_factory=DecisionIntentView)
     decision_evaluation: DecisionEvaluationView = field(
         default_factory=DecisionEvaluationView
+    )
+    decision_assessment: DecisionAssessmentView = field(
+        default_factory=DecisionAssessmentView
     )
     statistics: StatisticsView = field(default_factory=StatisticsView)
     events: Sequence[str] = ()

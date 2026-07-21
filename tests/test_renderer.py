@@ -6,6 +6,7 @@ from hotirjam_ai5.dashboard.models import (
     ConnectionQuality,
     ConnectionStatus,
     DashboardState,
+    DecisionAssessmentView,
     DecisionEvaluationView,
     DecisionFoundationView,
     DecisionIntentView,
@@ -41,6 +42,7 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "DECISION FOUNDATION" in text
     assert "DECISION INTENT" in text
     assert "DECISION EVALUATION" in text
+    assert "DECISION ASSESSMENT" in text
     assert "LOG" in text
     assert "State       :" in text
     assert "Transition  :" in text
@@ -69,6 +71,9 @@ def test_render_shows_placeholder_not_fake_prices() -> None:
     assert "Allowed : NO" in text
     assert "Reason  : Evaluation not started." in text
     assert "Next    : Continue Observation" in text
+    assert "State : REVIEW" in text
+    assert "Reason: Evaluation complete, awaiting final decision." in text
+    assert "Next  : Decision Assessment Engine" in text
     assert "Tick Count: 0" in text
 
 
@@ -154,6 +159,12 @@ def test_render_with_real_market_and_health_values() -> None:
             reason="Evaluation initiated.",
             next_stage="Decision Assessment Engine",
         ),
+        decision_assessment=DecisionAssessmentView(
+            assessment_state="READY",
+            assessment_ready=True,
+            reason="Evaluation completed successfully.",
+            next_stage="Trade Decision Engine",
+        ),
         statistics=StatisticsView(
             tick_count=120,
             tick_rate=37.0,
@@ -192,6 +203,10 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "Allowed : YES" in text
     assert "Reason  : Evaluation initiated." in text
     assert "Next    : Decision Assessment Engine" in text
+    assert "DECISION ASSESSMENT" in text
+    assert "State : READY" in text
+    assert "Reason: Evaluation completed successfully." in text
+    assert "Next  : Trade Decision Engine" in text
     assert "• DOM connected" in text
 
 

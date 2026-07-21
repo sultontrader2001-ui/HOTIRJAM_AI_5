@@ -18,8 +18,9 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 10 | Decision Foundation v1 | Done |
 | 12 | Decision Intent Engine v1 | Done |
 | 13 | Decision Evaluation Engine v1 | Done |
+| 14 | Decision Assessment Engine v1 | Done |
 
-**Out of scope still:** momentum, decision signals, BUY/SELL, AI, risk
+**Out of scope still:** Trade Decision Engine, BUY/SELL, AI, risk
 
 Market/DOM/physics fields show `—` until enough live updates exist. No synthetic data.
 Market State is observation-only (UNKNOWN / QUIET / NORMAL / ACTIVE / TRENDING / VOLATILE).
@@ -29,6 +30,7 @@ Market Context aggregates observation layers into one immutable snapshot.
 Decision Foundation only checks whether observation context is complete enough for a future decision.
 Decision Intent maps foundation readiness to WAIT / OBSERVE / EVALUATE workflow steps only.
 Decision Evaluation maps intent to IDLE / WAITING / EVALUATING lifecycle states only.
+Decision Assessment maps evaluation status to BLOCKED / REVIEW / READY only.
 
 ### Requirements
 
@@ -109,6 +111,12 @@ Evaluation lifecycle over `DecisionIntentSnapshot` only.
 Maps `WAIT` to `WAITING`, `OBSERVE` to `IDLE`, and `EVALUATE` to `EVALUATING`.
 Does not inspect lower layers or produce trading outputs.
 
+### DECISION ASSESSMENT section
+
+Final evaluation standardization over `DecisionEvaluationSnapshot` only.
+Maps `WAITING` to `BLOCKED`, `IDLE` to `REVIEW`, and `EVALUATING` to `READY`.
+Does not emit BUY/SELL, orders, risk, probability, or confidence.
+
 ### Test
 
 ```bash
@@ -118,5 +126,5 @@ pytest
 ### Architecture (planned)
 
 ```
-NinjaTrader (NT01/NT04) → Live Data → Physics → Market State → Market Transition → Market Behavior → Market Context → Decision Foundation → Decision Intent → Decision Evaluation → Momentum → Decision → Execution
+NinjaTrader (NT01/NT04) → Live Data → Physics → Market State → Market Transition → Market Behavior → Market Context → Decision Foundation → Decision Intent → Decision Evaluation → Decision Assessment → Trade Decision → Execution
 ```

@@ -74,6 +74,7 @@ class DashboardRenderer:
         foundation = state.decision_foundation
         intent = state.decision_intent
         evaluation = state.decision_evaluation
+        assessment = state.decision_assessment
         events = list(state.events) if state.events else ["(none)"]
 
         system_rows = [
@@ -146,6 +147,11 @@ class DashboardRenderer:
             f"Allowed : {'YES' if evaluation.evaluation_allowed else 'NO'}",
             f"Reason  : {evaluation.reason}",
             f"Next    : {evaluation.next_stage}",
+            "DECISION ASSESSMENT",
+            f"State : {assessment.assessment_state}",
+            f"Ready : {'YES' if assessment.assessment_ready else 'NO'}",
+            f"Reason: {assessment.reason}",
+            f"Next  : {assessment.next_stage}",
             "LOG",
         ]
         for event in events:

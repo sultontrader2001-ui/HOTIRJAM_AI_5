@@ -15,6 +15,7 @@ from hotirjam_ai5.dashboard.feed_health import (
 from hotirjam_ai5.dashboard.models import (
     ConnectionStatus,
     DashboardState,
+    DecisionAssessmentView,
     DecisionEvaluationView,
     DecisionFoundationView,
     DecisionIntentView,
@@ -34,6 +35,7 @@ from hotirjam_ai5.dashboard.models import (
     SystemView,
 )
 from hotirjam_ai5.dashboard.statistics import SessionStatistics
+from hotirjam_ai5.decision_assessment import DecisionAssessmentEngine
 from hotirjam_ai5.decision_evaluation import DecisionEvaluationEngine
 from hotirjam_ai5.decision_foundation import DecisionFoundationEngine
 from hotirjam_ai5.decision_intent import DecisionIntentEngine
@@ -81,6 +83,7 @@ class DashboardController:
         decision_foundation: DecisionFoundationEngine | None = None,
         decision_intent: DecisionIntentEngine | None = None,
         decision_evaluation: DecisionEvaluationEngine | None = None,
+        decision_assessment: DecisionAssessmentEngine | None = None,
         stale_seconds: float = DEFAULT_DISCONNECT_SECONDS,
         stall_seconds: float = DEFAULT_STALL_SECONDS,
         clock: Callable[[], float] | None = None,
@@ -121,6 +124,10 @@ class DashboardController:
         self._decision_evaluation = (
             decision_evaluation
             or DecisionEvaluationEngine(clock=wall_clock or time.time)
+        )
+        self._decision_assessment = (
+            decision_assessment
+            or DecisionAssessmentEngine(clock=wall_clock or time.time)
         )
         self._previous_market_state: MarketStateSnapshot | None = None
         self._engine_status = EngineStatus.STARTING
@@ -275,6 +282,7 @@ class DashboardController:
         decision_foundation = self._decision_foundation.evaluate(market_context)
         decision_intent = self._decision_intent.evaluate(decision_foundation)
         decision_evaluation = self._decision_evaluation.evaluate(decision_intent)
+        decision_assessment = self._decision_assessment.evaluate(decision_evaluation)
         return DashboardState(
             system=SystemView(
                 engine_status=self._engine_status,
@@ -340,6 +348,12 @@ class DashboardController:
                 evaluation_allowed=decision_evaluation.evaluation_allowed,
                 reason=decision_evaluation.reason,
                 next_stage=decision_evaluation.next_stage,
+            ),
+            decision_assessment=DecisionAssessmentView(
+                assessment_state=decision_assessment.assessment_state.value,
+                assessment_ready=decision_assessment.assessment_ready,
+                reason=decision_assessment.reason,
+                next_stage=decision_assessment.next_stage,
             ),
             statistics=StatisticsView(
                 tick_count=tick_count,
