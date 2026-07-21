@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from hotirjam_ai5.objective import ObjectiveSnapshot
+from hotirjam_ai5.objective import ObjectivePersistenceState, ObjectiveSnapshot
 
 
 def test_empty_snapshot_has_no_objectives() -> None:
@@ -15,6 +15,8 @@ def test_empty_snapshot_has_no_objectives() -> None:
     assert snap.nearest_low_strength is None
     assert snap.current_price == 100.0
     assert snap.timestamp == 1_700_000_000.0
+    assert snap.high_state is None
+    assert snap.low_state is None
     assert not snap.has_high
     assert not snap.has_low
     assert not snap.is_complete
@@ -30,10 +32,14 @@ def test_complete_snapshot_flags() -> None:
         nearest_low_strength=55.0,
         current_price=100.0,
         timestamp=1.0,
+        high_state=ObjectivePersistenceState.NEW,
+        low_state=ObjectivePersistenceState.PERSISTED,
     )
     assert snap.has_high
     assert snap.has_low
     assert snap.is_complete
+    assert snap.high_state is ObjectivePersistenceState.NEW
+    assert snap.low_state is ObjectivePersistenceState.PERSISTED
 
 
 def test_partial_high_only_not_complete() -> None:

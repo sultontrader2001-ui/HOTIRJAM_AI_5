@@ -11,6 +11,7 @@ from hotirjam_ai5.objective import (
     ConfirmedSwing,
     ObjectiveEngine,
     ObjectiveInputs,
+    ObjectivePersistenceState,
     ObjectiveSnapshot,
     evaluate_objectives,
 )
@@ -267,10 +268,138 @@ def test_engine_retains_latest_snapshot() -> None:
     )
     assert engine.snapshot() is first
     assert first.is_complete
+    assert first.high_state is ObjectivePersistenceState.NEW
+    assert first.low_state is ObjectivePersistenceState.NEW
 
     second = engine.evaluate(_inputs(timestamp=11.0))
     assert engine.snapshot() is second
-    assert not second.is_complete
+    assert second.is_complete
+    assert second.nearest_high_price == 106.0
+    assert second.nearest_low_price == 94.0
+    assert second.high_state is ObjectivePersistenceState.PERSISTED
+    assert second.low_state is ObjectivePersistenceState.PERSISTED
+
+
+def test_persistent_low_survives_evaluation_with_no_candidate() -> None:
+    engine = ObjectiveEngine(clock=lambda: 0.0)
+    first = engine.evaluate(
+        _inputs(
+            highs=(_swing(110.0, 90.0, at=1.0),),
+            lows=(_swing(90.0, 80.0, at=1.5),),
+        )
+    )
+    assert first.nearest_low_price == 90.0
+    assert first.low_state is ObjectivePersistenceState.NEW
+
+    second = engine.evaluate(_inputs(timestamp=2.0))
+    assert second.nearest_low_price == 90.0
+    assert second.low_state is ObjectivePersistenceState.PERSISTED
+
+
+def test_new_nearer_active_major_low_replaces_previous() -> None:
+    engine = ObjectiveEngine(clock=lambda: 0.0)
+    first = engine.evaluate(
+        _inputs(
+            highs=(_swing(110.0, 90.0, at=1.0),),
+            lows=(_swing(90.0, 80.0, at=1.5),),
+        )
+    )
+    assert first.nearest_low_price == 90.0
+
+    # Previous LOW is absent from the rolling inputs; a new root MAJOR LOW is
+    # closer. Absence alone does not clear the old objective, but nearer wins.
+    second = engine.evaluate(
+        _inputs(
+            timestamp=2.0,
+            highs=(_swing(110.0, 90.0, at=1.0),),
+            lows=(_swing(94.0, 80.0, at=2.0),),
+        )
+    )
+    assert second.nearest_low_price == 94.0
+    assert second.low_state is ObjectivePersistenceState.REPLACED
+
+
+def test_breached_low_is_removed() -> None:
+    engine = ObjectiveEngine(clock=lambda: 0.0)
+    engine.evaluate(
+        _inputs(
+            highs=(_swing(110.0, 90.0, at=1.0),),
+            lows=(_swing(90.0, 80.0, at=1.5),),
+        )
+    )
+    breached = engine.evaluate(
+        _inputs(
+            price=89.0,
+            timestamp=2.0,
+            highs=(_swing(110.0, 90.0, at=1.0),),
+            lows=(_swing(90.0, 80.0, at=1.5),),
+        )
+    )
+    assert breached.nearest_low_price is None
+    assert breached.low_state is ObjectivePersistenceState.BREACHED
+
+    # A later reclaim must not resurrect the already-breached swing.
+    reclaimed = engine.evaluate(
+        _inputs(
+            price=100.0,
+            timestamp=3.0,
+            highs=(_swing(110.0, 90.0, at=1.0),),
+            lows=(_swing(90.0, 80.0, at=1.5),),
+        )
+    )
+    assert reclaimed.nearest_low_price is None
+
+
+def test_invalid_evaluation_does_not_clear_active_objectives() -> None:
+    engine = ObjectiveEngine(clock=lambda: 0.0)
+    engine.evaluate(
+        _inputs(
+            highs=(_swing(110.0, 90.0, at=1.0),),
+            lows=(_swing(90.0, 80.0, at=1.5),),
+        )
+    )
+    invalid = engine.evaluate(_inputs(tick_size=0.0, timestamp=2.0))
+    assert invalid.nearest_high_price == 110.0
+    assert invalid.nearest_low_price == 90.0
+    assert invalid.high_state is ObjectivePersistenceState.PERSISTED
+    assert invalid.low_state is ObjectivePersistenceState.PERSISTED
+
+
+def test_high_and_low_persistence_are_independent() -> None:
+    engine = ObjectiveEngine(clock=lambda: 0.0)
+    engine.evaluate(
+        _inputs(
+            highs=(_swing(110.0, 90.0, at=1.0),),
+            lows=(_swing(90.0, 80.0, at=1.5),),
+        )
+    )
+    updated = engine.evaluate(_inputs(price=111.0, timestamp=2.0))
+    assert updated.nearest_high_price is None
+    assert updated.high_state is ObjectivePersistenceState.BREACHED
+    assert updated.nearest_low_price == 90.0
+    assert updated.low_state is ObjectivePersistenceState.PERSISTED
+
+
+def test_superseded_low_is_replaced_and_reported() -> None:
+    engine = ObjectiveEngine(clock=lambda: 0.0)
+    engine.evaluate(
+        _inputs(
+            highs=(_swing(110.0, 90.0, at=1.0),),
+            lows=(_swing(90.0, 80.0, at=1.5),),
+        )
+    )
+    updated = engine.evaluate(
+        _inputs(
+            timestamp=2.0,
+            highs=(_swing(110.0, 90.0, at=1.0),),
+            lows=(
+                _swing(90.0, 80.0, at=1.5),
+                _swing(89.75, 85.0, at=2.0),
+            ),
+        )
+    )
+    assert updated.nearest_low_price == 89.75
+    assert updated.low_state is ObjectivePersistenceState.SUPERSEDED
 
 
 def test_evaluate_is_deterministic() -> None:

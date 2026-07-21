@@ -24,9 +24,9 @@ from hotirjam_ai5.initiative import (
 from hotirjam_ai5.live_validator.models import ValidatorFrame
 from hotirjam_ai5.objective import (
     ConfirmedSwing,
+    ObjectiveEngine,
     ObjectiveInputs,
     ObjectiveSnapshot,
-    evaluate_objectives,
 )
 from hotirjam_ai5.response import (
     ResponseInputs,
@@ -43,6 +43,7 @@ class ArchitecturePipeline:
             raise ValueError("tick_size must be positive")
         self._tick_size = tick_size
         self._symbol = symbol
+        self._objective_engine = ObjectiveEngine()
 
     @property
     def tick_size(self) -> float:
@@ -58,7 +59,7 @@ class ArchitecturePipeline:
         confirmed_lows: tuple[ConfirmedSwing, ...],
     ) -> ValidatorFrame:
         """Evaluate the full observation chain. Never calls Decision/Execution."""
-        objective = evaluate_objectives(
+        objective = self._objective_engine.evaluate(
             ObjectiveInputs(
                 current_price=current_price,
                 tick_size=self._tick_size,

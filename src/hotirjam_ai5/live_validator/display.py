@@ -70,10 +70,12 @@ def render_developer_view(
         f"  Price     {_fmt(obj.nearest_high_price)}",
         f"  Distance  {_fmt(obj.nearest_high_distance_ticks)}",
         f"  Strength  {_fmt(obj.nearest_high_strength)}",
+        f"  Objective State {obj.high_state.value if obj.high_state is not None else 'NOT AVAILABLE'}",
         "Low:",
         f"  Price     {_fmt(obj.nearest_low_price)}",
         f"  Distance  {_fmt(obj.nearest_low_distance_ticks)}",
         f"  Strength  {_fmt(obj.nearest_low_strength)}",
+        f"  Objective State {obj.low_state.value if obj.low_state is not None else 'NOT AVAILABLE'}",
     ]
     lines.extend(_render_objective_diagnostics(frame))
     lines.extend(_render_structural_diagnostics(frame.objective_diagnostics))

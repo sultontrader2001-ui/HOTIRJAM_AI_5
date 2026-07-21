@@ -104,6 +104,29 @@ def test_pipeline_runs_all_engines_decision_disabled() -> None:
     assert frame.break_capability.timestamp == 1_700_000_000.0
 
 
+def test_pipeline_uses_stateful_objective_persistence() -> None:
+    from hotirjam_ai5.objective import ConfirmedSwing, ObjectivePersistenceState
+
+    pipeline = ArchitecturePipeline()
+    first = pipeline.evaluate(
+        current_price=100.0,
+        timestamp=1.0,
+        candles=(),
+        confirmed_highs=(ConfirmedSwing(110.0, 90.0, confirmed_at=1.0),),
+        confirmed_lows=(ConfirmedSwing(90.0, 80.0, confirmed_at=1.5),),
+    )
+    second = pipeline.evaluate(
+        current_price=100.0,
+        timestamp=2.0,
+        candles=(),
+        confirmed_highs=(),
+        confirmed_lows=(),
+    )
+    assert first.objective.nearest_low_price == 90.0
+    assert second.objective.nearest_low_price == 90.0
+    assert second.objective.low_state is ObjectivePersistenceState.PERSISTED
+
+
 def test_controller_on_tick_updates_and_never_enables_decision(tmp_path: Path) -> None:
     log_path = tmp_path / "snaps.ndjson"
     controller = LiveValidatorController(
@@ -291,6 +314,33 @@ def test_developer_view_reflects_structural_objective_v2_selection() -> None:
     assert "Category         MAJOR" in high
     assert "Eligible         YES" in high
     assert "Lifecycle        ACTIVE" in high
+
+
+def test_developer_view_shows_independent_objective_states() -> None:
+    from hotirjam_ai5.objective import ConfirmedSwing
+
+    pipeline = ArchitecturePipeline()
+    pipeline.evaluate(
+        current_price=100.0,
+        timestamp=1.0,
+        candles=(),
+        confirmed_highs=(ConfirmedSwing(110.0, 90.0, confirmed_at=1.0),),
+        confirmed_lows=(ConfirmedSwing(90.0, 80.0, confirmed_at=1.5),),
+    )
+    frame = pipeline.evaluate(
+        current_price=111.0,
+        timestamp=2.0,
+        candles=(),
+        confirmed_highs=(),
+        confirmed_lows=(),
+    )
+    text = render_validator_frame(frame, developer_mode=True)
+    current = text.split("CURRENT OBJECTIVE", 1)[1].split(
+        "OBJECTIVE DIAGNOSTICS", 1
+    )[0]
+    high, low = current.split("Low:", 1)
+    assert "Objective State BREACHED" in high
+    assert "Objective State PERSISTED" in low
 
 
 def test_dashboard_view_unchanged_by_diagnostics_section() -> None:

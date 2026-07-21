@@ -3,6 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
+
+
+class ObjectivePersistenceState(StrEnum):
+    """Per-side Objective Engine persistence transition."""
+
+    NEW = "NEW"
+    PERSISTED = "PERSISTED"
+    REPLACED = "REPLACED"
+    BREACHED = "BREACHED"
+    SUPERSEDED = "SUPERSEDED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +32,8 @@ class ObjectiveSnapshot:
     nearest_low_strength: float | None
     current_price: float | None
     timestamp: float
+    high_state: ObjectivePersistenceState | None = None
+    low_state: ObjectivePersistenceState | None = None
 
     @classmethod
     def empty(cls, *, timestamp: float, current_price: float | None = None) -> ObjectiveSnapshot:
@@ -34,6 +47,8 @@ class ObjectiveSnapshot:
             nearest_low_strength=None,
             current_price=current_price,
             timestamp=timestamp,
+            high_state=None,
+            low_state=None,
         )
 
     @property
