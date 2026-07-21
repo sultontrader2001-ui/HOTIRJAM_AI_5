@@ -15,14 +15,15 @@ from hotirjam_ai5.dashboard.feed_health import (
 from hotirjam_ai5.dashboard.models import (
     ConnectionStatus,
     DashboardState,
+    DecisionEvaluationView,
+    DecisionFoundationView,
+    DecisionIntentView,
     DomHealthView,
     DomView,
     EngineStatus,
     FeedHealthView,
     FeedStatus,
     LiveMarketView,
-    DecisionFoundationView,
-    DecisionIntentView,
     MarketBehaviorView,
     MarketContextView,
     MarketStateView,
@@ -33,6 +34,7 @@ from hotirjam_ai5.dashboard.models import (
     SystemView,
 )
 from hotirjam_ai5.dashboard.statistics import SessionStatistics
+from hotirjam_ai5.decision_evaluation import DecisionEvaluationEngine
 from hotirjam_ai5.decision_foundation import DecisionFoundationEngine
 from hotirjam_ai5.decision_intent import DecisionIntentEngine
 from hotirjam_ai5.live_data.dom import DomSnapshot
@@ -78,6 +80,7 @@ class DashboardController:
         market_context: MarketContextEngine | None = None,
         decision_foundation: DecisionFoundationEngine | None = None,
         decision_intent: DecisionIntentEngine | None = None,
+        decision_evaluation: DecisionEvaluationEngine | None = None,
         stale_seconds: float = DEFAULT_DISCONNECT_SECONDS,
         stall_seconds: float = DEFAULT_STALL_SECONDS,
         clock: Callable[[], float] | None = None,
@@ -114,6 +117,10 @@ class DashboardController:
         )
         self._decision_intent = decision_intent or DecisionIntentEngine(
             clock=wall_clock or time.time
+        )
+        self._decision_evaluation = (
+            decision_evaluation
+            or DecisionEvaluationEngine(clock=wall_clock or time.time)
         )
         self._previous_market_state: MarketStateSnapshot | None = None
         self._engine_status = EngineStatus.STARTING
@@ -267,6 +274,7 @@ class DashboardController:
         )
         decision_foundation = self._decision_foundation.evaluate(market_context)
         decision_intent = self._decision_intent.evaluate(decision_foundation)
+        decision_evaluation = self._decision_evaluation.evaluate(decision_intent)
         return DashboardState(
             system=SystemView(
                 engine_status=self._engine_status,
@@ -326,6 +334,12 @@ class DashboardController:
                 intent=decision_intent.intent.value,
                 reason=decision_intent.reason,
                 next_step=decision_intent.next_step,
+            ),
+            decision_evaluation=DecisionEvaluationView(
+                status=decision_evaluation.status.value,
+                evaluation_allowed=decision_evaluation.evaluation_allowed,
+                reason=decision_evaluation.reason,
+                next_stage=decision_evaluation.next_stage,
             ),
             statistics=StatisticsView(
                 tick_count=tick_count,

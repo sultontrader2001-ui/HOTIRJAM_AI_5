@@ -41,6 +41,8 @@ def test_default_state_has_no_fake_prices() -> None:
     assert state.market_context.summary == "Insufficient market context."
     assert state.decision_foundation.ready is False
     assert state.decision_intent.intent == "WAIT"
+    assert state.decision_evaluation.status == "IDLE"
+    assert state.decision_evaluation.evaluation_allowed is False
     assert state.statistics == StatisticsView()
     assert state.events == ()
 

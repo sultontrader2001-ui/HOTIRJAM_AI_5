@@ -6,6 +6,7 @@ from hotirjam_ai5.dashboard.models import (
     ConnectionQuality,
     ConnectionStatus,
     DashboardState,
+    DecisionEvaluationView,
     DecisionFoundationView,
     DecisionIntentView,
     DomHealthView,
@@ -39,12 +40,14 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "CONTEXT" in text
     assert "DECISION FOUNDATION" in text
     assert "DECISION INTENT" in text
+    assert "DECISION EVALUATION" in text
     assert "LOG" in text
     assert "State       :" in text
     assert "Transition  :" in text
     assert "Behavior    :" in text
     assert "Ready :" in text
     assert "Intent :" in text
+    assert "Allowed :" in text
 
 
 def test_render_shows_placeholder_not_fake_prices() -> None:
@@ -62,6 +65,10 @@ def test_render_shows_placeholder_not_fake_prices() -> None:
     assert "Intent : WAIT" in text
     assert "Reason : Observation layer is not ready." in text
     assert "Next   : No further processing." in text
+    assert "Status  : IDLE" in text
+    assert "Allowed : NO" in text
+    assert "Reason  : Evaluation not started." in text
+    assert "Next    : Continue Observation" in text
     assert "Tick Count: 0" in text
 
 
@@ -141,6 +148,12 @@ def test_render_with_real_market_and_health_values() -> None:
             reason="Observation stable.",
             next_step="Continue monitoring.",
         ),
+        decision_evaluation=DecisionEvaluationView(
+            status="EVALUATING",
+            evaluation_allowed=True,
+            reason="Evaluation initiated.",
+            next_stage="Decision Assessment Engine",
+        ),
         statistics=StatisticsView(
             tick_count=120,
             tick_rate=37.0,
@@ -174,6 +187,11 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "Intent : OBSERVE" in text
     assert "Reason : Observation stable." in text
     assert "Next   : Continue monitoring." in text
+    assert "DECISION EVALUATION" in text
+    assert "Status  : EVALUATING" in text
+    assert "Allowed : YES" in text
+    assert "Reason  : Evaluation initiated." in text
+    assert "Next    : Decision Assessment Engine" in text
     assert "• DOM connected" in text
 
 

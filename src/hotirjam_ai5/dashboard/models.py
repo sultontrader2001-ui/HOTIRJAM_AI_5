@@ -195,6 +195,16 @@ class DecisionIntentView:
 
 
 @dataclass(frozen=True, slots=True)
+class DecisionEvaluationView:
+    """DECISION EVALUATION section (Sprint 13) — evaluation lifecycle only."""
+
+    status: str = "IDLE"
+    evaluation_allowed: bool = False
+    reason: str = "Evaluation not started."
+    next_stage: str = "Continue Observation"
+
+
+@dataclass(frozen=True, slots=True)
 class DashboardState:
     """Complete snapshot rendered each refresh cycle."""
 
@@ -212,5 +222,8 @@ class DashboardState:
         default_factory=DecisionFoundationView
     )
     decision_intent: DecisionIntentView = field(default_factory=DecisionIntentView)
+    decision_evaluation: DecisionEvaluationView = field(
+        default_factory=DecisionEvaluationView
+    )
     statistics: StatisticsView = field(default_factory=StatisticsView)
     events: Sequence[str] = ()
