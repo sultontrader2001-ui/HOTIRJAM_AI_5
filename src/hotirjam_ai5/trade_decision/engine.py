@@ -19,7 +19,8 @@ class TradeDecisionEngine:
     """Orchestrates trade decision evaluation via the internal policy.
 
     Consumes DecisionAssessmentSnapshot and MarketContextSnapshot only.
-    Always returns NO_TRADE in Sprint 20. Never places orders or connects to a broker.
+    Uses structured MarketContext fields (state, behavior, feed_status).
+    Always returns NO_TRADE in Sprint 21. Never places orders or connects to a broker.
     """
 
     def __init__(self, *, clock: Callable[[], float] | None = None) -> None:

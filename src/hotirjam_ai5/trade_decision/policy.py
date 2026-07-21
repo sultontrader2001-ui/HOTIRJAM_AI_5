@@ -1,12 +1,14 @@
-"""Trade Decision Policy — BUY Conditions v1.
+"""Trade Decision Policy — Structured BUY Strategy v1.
 
-BUY is eligible when assessment is READY and MarketContext summary is available.
-Sprint 20 still emits NO_TRADE only. SELL remains unavailable.
+BUY is internally eligible when assessment is READY and structured
+MarketContext fields match the Phase-2 strategy. Summary text is never inspected.
+Sprint 21 still emits NO_TRADE only. SELL remains unavailable.
 """
 
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Final
 
 from hotirjam_ai5.decision_assessment import (
     DecisionAssessmentSnapshot,
@@ -25,14 +27,16 @@ class TradeAuthorization(StrEnum):
 
 
 NOT_AUTHORIZED_REASON = "Trading not authorized."
-CONTEXT_UNAVAILABLE_REASON = "Market context unavailable."
-BUY_CONDITIONS_SATISFIED_REASON = "BUY conditions satisfied. Awaiting activation."
+STRATEGY_NOT_SATISFIED_REASON = "BUY strategy not satisfied."
+BUY_STRATEGY_VALIDATED_REASON = "BUY strategy validated. Awaiting release."
 NEXT_ACTION = "Execution Engine"
 
 # Orchestrator default (assessment not READY).
 PENDING_REASON = NOT_AUTHORIZED_REASON
 
-_INSUFFICIENT_CONTEXT = "Insufficient market context."
+_ELIGIBLE_STATES: Final[frozenset[str]] = frozenset({"ACTIVE", "TRENDING"})
+_ELIGIBLE_BEHAVIORS: Final[frozenset[str]] = frozenset({"STABLE", "ACCELERATING"})
+_HEALTHY_FEED: Final[str] = "HEALTHY"
 
 
 def resolve_trade_authorization(
@@ -46,30 +50,33 @@ def resolve_trade_authorization(
     return TradeAuthorization.GRANTED
 
 
-def is_market_context_available(context: MarketContextSnapshot | None) -> bool:
-    """Return True when MarketContext provides a usable summary."""
+def matches_buy_strategy(context: MarketContextSnapshot | None) -> bool:
+    """Return True when structured MarketContext fields match BUY Phase 2.
+
+    Uses context.state, context.behavior, and context.feed_status only.
+    Never inspects summary text.
+    """
     if context is None:
         return False
-    summary = context.summary.strip() if context.summary else ""
-    if not summary:
-        return False
-    if summary == _INSUFFICIENT_CONTEXT:
-        return False
-    return True
+    return (
+        context.feed_status == _HEALTHY_FEED
+        and context.state in _ELIGIBLE_STATES
+        and context.behavior in _ELIGIBLE_BEHAVIORS
+    )
 
 
 def is_buy_eligible(
     assessment: DecisionAssessmentSnapshot,
     context: MarketContextSnapshot | None = None,
 ) -> bool:
-    """BUY eligible only when assessment is READY and context summary is available.
+    """BUY eligible when assessment is READY and structured strategy matches.
 
-    Eligibility does not emit BUY in Sprint 20.
+    Eligibility does not emit BUY in Sprint 21.
     """
     return (
         assessment.assessment_state is DecisionAssessmentState.READY
         and resolve_trade_authorization(assessment) is TradeAuthorization.GRANTED
-        and is_market_context_available(context)
+        and matches_buy_strategy(context)
     )
 
 
@@ -79,19 +86,17 @@ def apply_trade_decision_policy(
     *,
     timestamp: float,
 ) -> TradeDecisionSnapshot:
-    """Apply BUY Phase-1 conditions; emit NO_TRADE only.
+    """Apply structured BUY Phase-2 strategy; emit NO_TRADE only.
 
-    BUY eligible when Assessment == READY and MarketContext summary is available.
-    Even when eligible, output remains NO_TRADE (Awaiting activation).
+    Even when strategy matches, output remains NO_TRADE (Awaiting release).
     """
     if assessment.assessment_state is not DecisionAssessmentState.READY:
         reason = NOT_AUTHORIZED_REASON
-    elif not is_market_context_available(context):
-        reason = CONTEXT_UNAVAILABLE_REASON
+    elif not matches_buy_strategy(context):
+        reason = STRATEGY_NOT_SATISFIED_REASON
     else:
-        # Conditions satisfied — BUY path verified, BUY not emitted yet.
         assert is_buy_eligible(assessment, context)
-        reason = BUY_CONDITIONS_SATISFIED_REASON
+        reason = BUY_STRATEGY_VALIDATED_REASON
 
     return TradeDecisionSnapshot(
         timestamp=timestamp,

@@ -9,7 +9,7 @@ from hotirjam_ai5.trade_decision.policy import (
     TradeAuthorization,
     apply_trade_decision_policy,
     is_buy_eligible,
-    is_market_context_available,
+    matches_buy_strategy,
     resolve_trade_authorization,
 )
 
@@ -21,6 +21,6 @@ __all__ = [
     "apply_trade_decision_policy",
     "evaluate_trade_decision",
     "is_buy_eligible",
-    "is_market_context_available",
+    "matches_buy_strategy",
     "resolve_trade_authorization",
 ]

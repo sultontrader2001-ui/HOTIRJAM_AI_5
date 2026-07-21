@@ -25,6 +25,7 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 18 | Trade Authorization Policy v1 | Done |
 | 19 | First BUY Rule v1 (framework, not emitted) | Done |
 | 20 | BUY Conditions v1 (not emitted) | Done |
+| 21 | Structured BUY Strategy v1 (not emitted) | Done |
 
 **Out of scope still:** emitting BUY, SELL, order execution, broker connectivity, risk
 
@@ -37,7 +38,7 @@ Decision Foundation only checks whether observation context is complete enough f
 Decision Intent maps foundation readiness to WAIT / OBSERVE / EVALUATE workflow steps only.
 Decision Evaluation maps intent to IDLE / WAITING / EVALUATING lifecycle states only.
 Decision Assessment maps evaluation status to BLOCKED / REVIEW / READY only.
-Trade Decision keeps emitting `NO_TRADE`; BUY conditions can be satisfied when assessment is READY and context is available.
+Trade Decision keeps emitting `NO_TRADE`; BUY strategy can validate on structured MarketContext fields when assessment is READY.
 
 ### Requirements
 
@@ -126,9 +127,9 @@ Does not emit BUY/SELL, orders, risk, probability, or confidence.
 
 ### TRADE DECISION section
 
-Emits `NO_TRADE` only. BUY conditions (assessment READY + MarketContext summary)
-may be satisfied and reported as awaiting activation; BUY is not emitted yet.
-SELL remains unavailable.
+Emits `NO_TRADE` only. Structured BUY strategy (READY + healthy feed +
+ACTIVE/TRENDING + STABLE/ACCELERATING) may validate and report awaiting release;
+BUY is not emitted yet. Summary text is never inspected. SELL remains unavailable.
 
 ### Test
 
