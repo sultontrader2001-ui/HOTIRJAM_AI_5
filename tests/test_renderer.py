@@ -1,4 +1,4 @@
-"""Tests for Professional Trading Dashboard v2 renderer (Sprint 45)."""
+"""Tests for Professional Trading Dashboard v2 renderer (Sprint 45/46)."""
 
 from __future__ import annotations
 
@@ -29,7 +29,9 @@ from hotirjam_ai5.dashboard.models import (
     MemoryBandView,
     MemoryPanelView,
     PerformanceView,
+    PeriodStatsView,
     PhysicsView,
+    SignalHistoryRowView,
     StatisticsView,
     SystemPanelView,
     SystemView,
@@ -45,9 +47,13 @@ def test_render_includes_professional_sections() -> None:
     assert "AI STATUS" in text
     assert "TRADE DECISION" in text
     assert "MEMORY" in text
-    assert "PERFORMANCE" in text
-    assert "LAST SIGNAL" in text
+    assert "ACCOUNT STATUS" in text
+    assert "TODAY" in text
+    assert "LIFETIME" in text
+    assert "SIGNAL HISTORY" in text
     assert "SYSTEM" in text
+    assert "PERFORMANCE" not in text
+    assert "LAST SIGNAL" not in text
     assert "Fast Band" in text
     assert "Consensus" in text
     assert "Ticks/sec" in text
@@ -180,6 +186,46 @@ def test_render_with_populated_professional_layout() -> None:
             profit_factor=1.80,
             decision_accuracy=66.7,
         ),
+        today_stats=PeriodStatsView(
+            signals=4,
+            buy_signals=3,
+            sell_signals=1,
+            no_trade=8,
+            wins=2,
+            losses=1,
+            breakeven=1,
+            win_rate=66.7,
+            average_mfe=1.25,
+            average_mae=-0.50,
+            average_rr=2.50,
+            profit_factor=1.80,
+            memory_helped=1,
+            memory_hurt=0,
+            memory_no_effect=3,
+        ),
+        lifetime_stats=PeriodStatsView(
+            signals=4,
+            buy_signals=3,
+            sell_signals=1,
+            wins=2,
+            losses=1,
+            win_rate=66.7,
+            profit_factor=1.80,
+            memory_accuracy=100.0,
+        ),
+        signal_history=(
+            SignalHistoryRowView(
+                index=1,
+                time_label="10:30:00",
+                direction="BUY",
+                entry=28760.0,
+                exit=28761.25,
+                result="WIN",
+                points=1.25,
+                duration_label="5m 00s",
+                memory_effect="HELPED",
+            ),
+        ),
         liquidity=LiquidityView(shift="BUY", imbalance="BUY"),
         display_clock=DisplayClockView(
             new_york="2026-07-21 10:37:15 EDT",
@@ -223,10 +269,7 @@ def test_render_with_populated_professional_layout() -> None:
         ),
         system_panel=SystemPanelView(
             memory_records=400,
-            memory_usage_pct=19.5,
             decision_count=120,
-            append_rate=12.5,
-            average_decision_ms=0.4,
             version="0.1.0",
             git_commit="abc1234",
         ),
@@ -250,8 +293,11 @@ def test_render_with_populated_professional_layout() -> None:
     assert "Average MFE           : +1.25" in text
     assert "Average MAE           : -0.50" in text
     assert "Profit Factor         : 1.80" in text
-    assert "Memory                : HELPED" in text
+    assert "HELPED" in text
     assert "Git Commit            : abc1234" in text
+    assert "TODAY" in text
+    assert "LIFETIME" in text
+    assert "SIGNAL HISTORY" in text
     assert "DECISION EXPLANATION" not in text
 
     verbose = DashboardRenderer(verbose=True).render(state)

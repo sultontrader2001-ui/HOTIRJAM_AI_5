@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 import time
 
 from hotirjam_ai5.dashboard.dom_health import DomHealthMonitor
@@ -12,7 +13,19 @@ from hotirjam_ai5.dashboard.feed_health import (
     DEFAULT_STALL_SECONDS,
     FeedHealthMonitor,
 )
+from hotirjam_ai5.dashboard.lifetime_stats import (
+    LifetimeStatsStore,
+    PeriodStatsSnapshot,
+    default_stats_path,
+)
+from hotirjam_ai5.dashboard.virtual_account import (
+    AccountStatusSnapshot,
+    VirtualAccountConfig,
+    VirtualAccountStore,
+    default_account_path,
+)
 from hotirjam_ai5.dashboard.models import (
+    AccountStatusView,
     ConnectionStatus,
     DashboardState,
     DecisionAssessmentView,
@@ -38,7 +51,9 @@ from hotirjam_ai5.dashboard.models import (
     MemoryBandView,
     MemoryPanelView,
     PerformanceView,
+    PeriodStatsView,
     PhysicsView,
+    SignalHistoryRowView,
     StatisticsView,
     SystemPanelView,
     SystemView,
@@ -121,6 +136,11 @@ class DashboardController:
         performance: PerformanceTracker | None = None,
         entry_timing: EntryTimingAuditor | None = None,
         memory: MarketMemoryStore | None = None,
+        lifetime_stats: LifetimeStatsStore | None = None,
+        lifetime_stats_path: Path | str | None = None,
+        virtual_account: VirtualAccountStore | None = None,
+        virtual_account_path: Path | str | None = None,
+        virtual_account_config: VirtualAccountConfig | None = None,
         stale_seconds: float = DEFAULT_DISCONNECT_SECONDS,
         stall_seconds: float = DEFAULT_STALL_SECONDS,
         clock: Callable[[], float] | None = None,
@@ -181,6 +201,27 @@ class DashboardController:
         )
         # Market Memory is passive — never read by Trade Decision (Sprint 41).
         self._memory = memory or MarketMemoryStore()
+        if lifetime_stats is not None:
+            self._lifetime = lifetime_stats
+        else:
+            path = (
+                Path(lifetime_stats_path)
+                if lifetime_stats_path is not None
+                else default_stats_path()
+            )
+            self._lifetime = LifetimeStatsStore(path)
+        if virtual_account is not None:
+            self._account = virtual_account
+        else:
+            account_path = (
+                Path(virtual_account_path)
+                if virtual_account_path is not None
+                else default_account_path()
+            )
+            self._account = VirtualAccountStore(
+                account_path,
+                config=virtual_account_config,
+            )
         self._wall_clock = wall_clock or time.time
         self._previous_market_state: MarketStateSnapshot | None = None
         self._engine_status = EngineStatus.STARTING
@@ -191,6 +232,7 @@ class DashboardController:
         self._physics_view = PhysicsView()
         self._decision_elapsed_ms: list[float] = []
         self._last_signal_memory_effect: str = "--"
+        self._last_lifetime_decision: str | None = None
 
     @property
     def memory_diagnostics(self) -> MemoryDiagnostics:
@@ -402,7 +444,7 @@ class DashboardController:
                 liquidity=liquidity_snapshot,
             )
         # Analytics only — observes Trade Decision; never modifies it.
-        self._performance.observe(
+        recorded = self._performance.observe(
             trade_decision,
             symbol=self._symbol,
             current_price=self._market.last_price,
@@ -417,13 +459,39 @@ class DashboardController:
             current_price=self._market.last_price,
             timestamp=trade_decision.timestamp,
         )
+        decision_value = trade_decision.decision.value
+        if recorded is not None:
+            side = (
+                "BUY"
+                if trade_decision.decision is TradeDecision.BUY_INTERNAL
+                else "SELL"
+            )
+            effect = _memory_effect_label(trade_decision, side=side)
+            self._lifetime.note_open(recorded.signal_id, effect)
+        # Edge-count NO_TRADE so lifetime counters match signal-style semantics.
+        if (
+            trade_decision.decision is TradeDecision.NO_TRADE
+            and self._last_lifetime_decision != TradeDecision.NO_TRADE.value
+        ):
+            self._lifetime.record_no_trade(trade_decision.timestamp)
+        self._last_lifetime_decision = decision_value
+        self._lifetime.sync_completed(self._performance, self._entry_timing)
+        self._lifetime.flush()
+        self._account.sync_from_signals(self._lifetime.completed_signals)
+        self._account.flush()
+        now_epoch = self._wall_clock()
+        lifetime_views = self._lifetime.build_views(
+            now_epoch=now_epoch,
+            pending_records=self._performance.records,
+        )
+        account_snapshot = self._account.build_snapshot(now_epoch=now_epoch)
         performance = self._performance.snapshot()
         records = self._performance.records
         last_result = "--"
         if records:
             last_result = records[-1].result.value
         timing_summary = self._entry_timing.summary()
-        display_clock = format_multi_zone(self._wall_clock())
+        display_clock = format_multi_zone(now_epoch)
         if liquidity_snapshot is None:
             liquidity_view = LiquidityView()
         else:
@@ -557,28 +625,45 @@ class DashboardController:
                     else None
                 ),
             ),
+            today_stats=_period_stats_view(lifetime_views.today),
+            lifetime_stats=_period_stats_view(lifetime_views.lifetime),
+            signal_history=tuple(
+                SignalHistoryRowView(
+                    index=row.index,
+                    time_label=row.time_label,
+                    direction=row.direction,
+                    entry=row.entry,
+                    exit=row.exit,
+                    result=row.result,
+                    points=row.points,
+                    duration_label=row.duration_label,
+                    memory_effect=row.memory_effect,
+                )
+                for row in lifetime_views.history
+            ),
             liquidity=liquidity_view,
             display_clock=DisplayClockView(
                 new_york=display_clock.new_york,
                 tashkent=display_clock.tashkent,
             ),
             memory_panel=_memory_panel_view(memory_report),
+            account_status=_account_status_view(account_snapshot),
             last_signal=_last_signal_view(
                 records,
                 memory_effect=self._last_signal_memory_effect,
             ),
             system_panel=SystemPanelView(
                 memory_records=store_diag.memory_size,
-                memory_usage_pct=store_diag.ring_buffer_usage,
                 decision_count=(
                     self._statistics.buy_internal_count
                     + self._statistics.sell_internal_count
                     + self._statistics.no_trade_count
                 ),
-                append_rate=store_diag.average_append_rate,
-                average_decision_ms=avg_decision_ms,
                 version=package_version(),
                 git_commit=git_commit_short(),
+                memory_usage_pct=store_diag.ring_buffer_usage,
+                append_rate=store_diag.average_append_rate,
+                average_decision_ms=avg_decision_ms,
             ),
             events=self._event_log.latest(),
         )
@@ -701,6 +786,54 @@ class DashboardController:
             f"liquidity=shift:{shift},imbalance:{imbalance}"
             f"{memory_part}"
         )
+
+
+def _account_status_view(snapshot: AccountStatusSnapshot) -> AccountStatusView:
+    """Map virtual account snapshot into the ACCOUNT STATUS panel."""
+    return AccountStatusView(
+        starting_balance=snapshot.starting_balance,
+        current_balance=snapshot.current_balance,
+        current_equity=snapshot.current_equity,
+        today_pnl=snapshot.today_pnl,
+        lifetime_pnl=snapshot.lifetime_pnl,
+        profit_target=snapshot.profit_target,
+        progress_pct=snapshot.progress_pct,
+        remaining_profit=snapshot.remaining_profit,
+        risk_status=snapshot.risk_status,
+        win_rate=snapshot.win_rate,
+        profit_factor=snapshot.profit_factor,
+    )
+
+
+def _period_stats_view(snapshot: PeriodStatsSnapshot) -> PeriodStatsView:
+    """Map lifetime store aggregates into dashboard view models."""
+    return PeriodStatsView(
+        signals=snapshot.signals,
+        buy_signals=snapshot.buy_signals,
+        sell_signals=snapshot.sell_signals,
+        no_trade=snapshot.no_trade,
+        wins=snapshot.wins,
+        losses=snapshot.losses,
+        breakeven=snapshot.breakeven,
+        win_rate=snapshot.win_rate,
+        average_rr=snapshot.average_rr,
+        average_win=snapshot.average_win,
+        average_loss=snapshot.average_loss,
+        profit_factor=snapshot.profit_factor,
+        average_mfe=snapshot.average_mfe,
+        average_mae=snapshot.average_mae,
+        memory_helped=snapshot.memory_helped,
+        memory_hurt=snapshot.memory_hurt,
+        memory_no_effect=snapshot.memory_no_effect,
+        largest_win=snapshot.largest_win,
+        largest_loss=snapshot.largest_loss,
+        net_points=snapshot.net_points,
+        gross_profit=snapshot.gross_profit,
+        gross_loss=snapshot.gross_loss,
+        average_signals_per_day=snapshot.average_signals_per_day,
+        average_points_per_signal=snapshot.average_points_per_signal,
+        memory_accuracy=snapshot.memory_accuracy,
+    )
 
 
 def _memory_influence_pct(trade_decision: TradeDecisionSnapshot) -> float:

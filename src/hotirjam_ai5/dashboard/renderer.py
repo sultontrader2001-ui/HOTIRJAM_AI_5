@@ -67,6 +67,14 @@ def _format_ms(value: float | None) -> str:
     return f"{value:.1f} ms"
 
 
+def _format_money(value: float | None, *, signed: bool = False) -> str:
+    if value is None:
+        return MISSING
+    if signed:
+        return f"${value:+,.2f}"
+    return f"${value:,.2f}"
+
+
 def _format_runtime(seconds: float) -> str:
     total = max(0, int(seconds))
     hours, rem = divmod(total, 3600)
@@ -130,9 +138,13 @@ class DashboardRenderer:
             SECTION,
             *self._memory_section(state.memory_panel),
             SECTION,
-            *self._performance_section(state),
+            *self._account_status_section(state),
             SECTION,
-            *self._last_signal_section(state),
+            *self._today_section(state),
+            SECTION,
+            *self._lifetime_section(state),
+            SECTION,
+            *self._signal_history_section(state),
             SECTION,
             *self._system_section(state),
         ]
@@ -228,35 +240,112 @@ class DashboardRenderer:
         )
         return lines
 
-    def _performance_section(self, state: DashboardState) -> list[str]:
-        perf = state.performance
+    def _account_status_section(self, state: DashboardState) -> list[str]:
+        acct = state.account_status
         return [
-            "PERFORMANCE",
-            _row("Signals Today", _format_int(perf.signals_today)),
-            _row("BUY Signals", _format_int(perf.buy_signals)),
-            _row("SELL Signals", _format_int(perf.sell_signals)),
-            _row("Winning Signals", _format_int(perf.success_count)),
-            _row("Losing Signals", _format_int(perf.failed_count)),
-            _row("Win Rate", _format_pct(perf.win_rate)),
-            _row("Average MFE", _format_signed_points(perf.average_mfe)),
-            _row("Average MAE", _format_signed_points(perf.average_mae)),
-            _row("Average RR", _format_points(perf.average_rr)),
-            _row("Profit Factor", _format_points(perf.profit_factor)),
-            _row("Decision Accuracy", _format_pct(perf.decision_accuracy)),
+            "ACCOUNT STATUS",
+            _row("Starting Balance", _format_money(acct.starting_balance)),
+            _row("Current Balance", _format_money(acct.current_balance)),
+            _row("Current Equity", _format_money(acct.current_equity)),
+            _row("Today's P/L", _format_money(acct.today_pnl, signed=True)),
+            _row("Lifetime P/L", _format_money(acct.lifetime_pnl, signed=True)),
+            _row("Profit Target", _format_money(acct.profit_target)),
+            _row("Progress %", _format_pct(acct.progress_pct)),
+            _row("Remaining", _format_money(acct.remaining_profit)),
+            _row("Risk Status", acct.risk_status or MISSING),
+            _row("Win Rate", _format_pct(acct.win_rate)),
+            _row("Profit Factor", _format_points(acct.profit_factor)),
         ]
 
-    def _last_signal_section(self, state: DashboardState) -> list[str]:
-        last = state.last_signal
+    def _today_section(self, state: DashboardState) -> list[str]:
+        today = state.today_stats
         return [
-            "LAST SIGNAL",
-            _row("Direction", last.direction or MISSING),
-            _row("Entry Time", last.entry_time or MISSING),
-            _row("Exit Time", last.exit_time or MISSING),
-            _row("Duration", last.duration or MISSING),
-            _row("Result", last.result or MISSING),
-            _row("Points", _format_signed_points(last.points)),
-            _row("Memory", last.memory_effect or MISSING),
+            "TODAY",
+            _row("Signals Today", _format_int(today.signals)),
+            _row("BUY Signals", _format_int(today.buy_signals)),
+            _row("SELL Signals", _format_int(today.sell_signals)),
+            _row("NO TRADE", _format_int(today.no_trade)),
+            _row("Wins", _format_int(today.wins)),
+            _row("Losses", _format_int(today.losses)),
+            _row("Breakeven", _format_int(today.breakeven)),
+            _row("Win Rate", _format_pct(today.win_rate)),
+            _row("Average RR", _format_points(today.average_rr)),
+            _row("Average Win", _format_signed_points(today.average_win)),
+            _row(
+                "Average Loss",
+                _format_signed_points(
+                    None if today.average_loss is None else -abs(today.average_loss)
+                ),
+            ),
+            _row("Profit Factor", _format_points(today.profit_factor)),
+            _row("Average MFE", _format_signed_points(today.average_mfe)),
+            _row("Average MAE", _format_signed_points(today.average_mae)),
+            _row("Memory Helped", _format_int(today.memory_helped)),
+            _row("Memory Hurt", _format_int(today.memory_hurt)),
+            _row("Memory No Effect", _format_int(today.memory_no_effect)),
         ]
+
+    def _lifetime_section(self, state: DashboardState) -> list[str]:
+        life = state.lifetime_stats
+        return [
+            "LIFETIME",
+            _row("Total Signals", _format_int(life.signals)),
+            _row("BUY Signals", _format_int(life.buy_signals)),
+            _row("SELL Signals", _format_int(life.sell_signals)),
+            _row("NO TRADE", _format_int(life.no_trade)),
+            _row("Total Wins", _format_int(life.wins)),
+            _row("Total Losses", _format_int(life.losses)),
+            _row("Breakeven", _format_int(life.breakeven)),
+            _row("Overall Win Rate", _format_pct(life.win_rate)),
+            _row("Overall Profit Factor", _format_points(life.profit_factor)),
+            _row("Average RR", _format_points(life.average_rr)),
+            _row("Average Win", _format_signed_points(life.average_win)),
+            _row(
+                "Average Loss",
+                _format_signed_points(
+                    None if life.average_loss is None else -abs(life.average_loss)
+                ),
+            ),
+            _row("Average MFE", _format_signed_points(life.average_mfe)),
+            _row("Average MAE", _format_signed_points(life.average_mae)),
+            _row("Largest Win", _format_signed_points(life.largest_win)),
+            _row("Largest Loss", _format_signed_points(life.largest_loss)),
+            _row("Net Points", _format_signed_points(life.net_points)),
+            _row("Gross Profit", _format_signed_points(life.gross_profit)),
+            _row(
+                "Gross Loss",
+                _format_signed_points(
+                    None if life.gross_loss is None else -abs(life.gross_loss)
+                ),
+            ),
+            _row("Avg Signals/Day", _format_points(life.average_signals_per_day)),
+            _row("Avg Points/Signal", _format_signed_points(life.average_points_per_signal)),
+            _row("Memory Helped", _format_int(life.memory_helped)),
+            _row("Memory Hurt", _format_int(life.memory_hurt)),
+            _row("Memory No Effect", _format_int(life.memory_no_effect)),
+            _row("Memory Accuracy", _format_pct(life.memory_accuracy)),
+        ]
+
+    def _signal_history_section(self, state: DashboardState) -> list[str]:
+        lines = ["SIGNAL HISTORY"]
+        if not state.signal_history:
+            lines.append(_row("Latest", MISSING))
+            return lines
+        # Compact table header
+        lines.append(
+            f"{'#':>2} {'Time':<8} {'Side':<4} {'Entry':>9} {'Exit':>9} "
+            f"{'Result':<10} {'Pts':>7} {'Dur':<10} Memory"
+        )
+        for row in state.signal_history:
+            entry = MISSING if row.entry is None else f"{row.entry:.2f}"
+            exit_ = MISSING if row.exit is None else f"{row.exit:.2f}"
+            pts = MISSING if row.points is None else f"{row.points:+.2f}"
+            lines.append(
+                f"{row.index:>2} {row.time_label:<8} {row.direction:<4} "
+                f"{entry:>9} {exit_:>9} {row.result:<10} {pts:>7} "
+                f"{row.duration_label:<10} {row.memory_effect}"
+            )
+        return lines
 
     def _system_section(self, state: DashboardState) -> list[str]:
         stats = state.statistics
@@ -265,17 +354,7 @@ class DashboardRenderer:
             "SYSTEM",
             _row("Runtime", _format_runtime(stats.running_time_seconds)),
             _row("Memory Records", _format_int(panel.memory_records)),
-            _row("Memory Usage", _format_pct(panel.memory_usage_pct)),
             _row("Decision Count", _format_int(panel.decision_count)),
-            _row(
-                "Append Rate",
-                (
-                    MISSING
-                    if panel.append_rate is None
-                    else f"{panel.append_rate:.2f}/s"
-                ),
-            ),
-            _row("Average Decision Time", _format_ms(panel.average_decision_ms)),
             _row("Version", panel.version or MISSING),
             _row("Git Commit", panel.git_commit or MISSING),
         ]

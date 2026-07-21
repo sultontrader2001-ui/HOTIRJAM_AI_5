@@ -114,9 +114,13 @@ def test_app_runs_limited_frames_without_fake_market_data() -> None:
     assert "AI STATUS" in output
     assert "TRADE DECISION" in output
     assert "MEMORY" in output
-    assert "PERFORMANCE" in output
-    assert "LAST SIGNAL" in output
+    assert "ACCOUNT STATUS" in output
+    assert "TODAY" in output
+    assert "LIFETIME" in output
+    assert "SIGNAL HISTORY" in output
     assert "SYSTEM" in output
+    assert "PERFORMANCE" not in output
+    assert "LAST SIGNAL" not in output
     assert "DECISION FOUNDATION" not in output
 
 

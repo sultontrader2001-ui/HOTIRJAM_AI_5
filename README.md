@@ -50,6 +50,8 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 43 | Market Memory Diagnostics | Done |
 | 44 | Market Memory Decision Integration v1 | Done |
 | 45 | Professional Trading Dashboard v2 | Done |
+| 46 | Lifetime Performance Dashboard | Done |
+| 47 | Virtual 50K Prop Account Dashboard | Done |
 
 **Out of scope still:** tradable BUY, SELL, order execution, broker connectivity,
 positions, risk
@@ -88,7 +90,13 @@ Market Memory Decision Integration v1 (Sprint 44): capped secondary BUY/SELL sco
 adjustment from Memory Diagnostics (max boost ±5 / oppose ±3). Primary category
 thresholds unchanged. Memory never invents decisions.
 Professional Trading Dashboard v2 (Sprint 45): visualization-only LIVE monitor with
-MARKET / AI STATUS / TRADE DECISION / MEMORY / PERFORMANCE / LAST SIGNAL / SYSTEM.
+MARKET / AI STATUS / TRADE DECISION / MEMORY panels.
+Lifetime Performance Dashboard (Sprint 46): TODAY / LIFETIME / SIGNAL HISTORY / SYSTEM
+statistics persisted to `logs/lifetime_performance.json` (survives restart; Today rolls
+on the America/New_York calendar day). Visualization only — no trading-logic changes.
+Virtual 50K Prop Account (Sprint 47): ACCOUNT STATUS panel driven by completed
+observation trades (MNQ $2/pt default). Persists to `logs/virtual_account.json`.
+Configurable starting balance / target / max drawdown. No broker. Statistics only.
 
 ### Requirements
 
@@ -185,21 +193,24 @@ Internal activations are counted on the dashboard and appended to
 shows only current dashboard state. They never reach orders, positions,
 execution, or a broker. Tradable BUY and SELL remain unavailable.
 
-### PERFORMANCE section
+### PERFORMANCE / LIFETIME stats
 
 Analytics-only observer of `BUY_INTERNAL` / `SELL_INTERNAL`. Records each
-activation (edge-triggered), evaluates price move after 5 minutes, and shows
-success/failed/win rate/average points plus last-signal times in UTC,
-America/New_York, and Asia/Tashkent. Completed evaluations append to
-`logs/performance_log.jsonl`. Never connects to a broker or modifies Trade
-Decision. Runs all day — not limited to the New York session.
+activation (edge-triggered), evaluates price move after 5 minutes, and appends
+completed evaluations to `logs/performance_log.jsonl`. Sprint 46 persists
+TODAY / LIFETIME aggregates and the latest completed signal history to
+`logs/lifetime_performance.json` (survives restart; Today rolls on the
+America/New_York calendar day). Sprint 47 maps completed trades into a virtual
+prop account (`logs/virtual_account.json`, default $50K / $2 per MNQ point).
+Never connects to a broker or modifies Trade Decision.
 
 ### Live Dashboard v2
 
 Default terminal layout is trading-focused: MARKET, AI STATUS, TRADE DECISION
-(emphasized), PERFORMANCE, and SYSTEM. NY/UZ wall times are always visible.
-Pipeline internals (foundation, intent, evaluation, reasons, explanation, LOG)
-appear only with `--verbose`. Refresh/poll cadence is unchanged.
+(emphasized), MEMORY, ACCOUNT STATUS, TODAY, LIFETIME, SIGNAL HISTORY, and SYSTEM.
+NY/UZ wall times are always visible. Pipeline internals (foundation, intent,
+evaluation, reasons, explanation, LOG) appear only with `--verbose`. Refresh/poll
+cadence is unchanged.
 
 ### Test
 

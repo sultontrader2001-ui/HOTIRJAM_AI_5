@@ -307,7 +307,7 @@ class MemoryPanelView:
 
 @dataclass(frozen=True, slots=True)
 class LastSignalView:
-    """LAST SIGNAL section — presentation only."""
+    """LAST SIGNAL section — presentation only (retained for verbose / compat)."""
 
     direction: str = "--"
     entry_time: str = "--"
@@ -320,7 +320,7 @@ class LastSignalView:
 
 @dataclass(frozen=True, slots=True)
 class PerformanceView:
-    """PERFORMANCE section — analytics presentation (Sprint 32/45)."""
+    """Legacy PERFORMANCE snapshot (Sprint 32/45) — kept for verbose / compat."""
 
     buy_signals: int = 0
     sell_signals: int = 0
@@ -333,7 +333,6 @@ class PerformanceView:
     last_signal_utc: str = "--"
     last_signal_new_york: str = "--"
     last_signal_tashkent: str = "--"
-    # Sprint 45 presentation fields (derived from existing analytics only).
     signals_today: int = 0
     average_mfe: float | None = None
     average_mae: float | None = None
@@ -343,16 +342,80 @@ class PerformanceView:
 
 
 @dataclass(frozen=True, slots=True)
+class PeriodStatsView:
+    """TODAY or LIFETIME panel — None fields render as ``--`` (Sprint 46)."""
+
+    signals: int | None = None
+    buy_signals: int | None = None
+    sell_signals: int | None = None
+    no_trade: int | None = None
+    wins: int | None = None
+    losses: int | None = None
+    breakeven: int | None = None
+    win_rate: float | None = None
+    average_rr: float | None = None
+    average_win: float | None = None
+    average_loss: float | None = None
+    profit_factor: float | None = None
+    average_mfe: float | None = None
+    average_mae: float | None = None
+    memory_helped: int | None = None
+    memory_hurt: int | None = None
+    memory_no_effect: int | None = None
+    largest_win: float | None = None
+    largest_loss: float | None = None
+    net_points: float | None = None
+    gross_profit: float | None = None
+    gross_loss: float | None = None
+    average_signals_per_day: float | None = None
+    average_points_per_signal: float | None = None
+    memory_accuracy: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SignalHistoryRowView:
+    """One SIGNAL HISTORY row (Sprint 46)."""
+
+    index: int = 0
+    time_label: str = "--"
+    direction: str = "--"
+    entry: float | None = None
+    exit: float | None = None
+    result: str = "--"
+    points: float | None = None
+    duration_label: str = "--"
+    memory_effect: str = "--"
+
+
+@dataclass(frozen=True, slots=True)
 class SystemPanelView:
-    """SYSTEM section extras (Sprint 45 presentation)."""
+    """SYSTEM section (Sprint 46 — compact operational strip)."""
 
     memory_records: int = 0
-    memory_usage_pct: float | None = None
     decision_count: int = 0
-    append_rate: float | None = None
-    average_decision_ms: float | None = None
     version: str = "--"
     git_commit: str = "--"
+    # Retained for verbose / older call sites.
+    memory_usage_pct: float | None = None
+    append_rate: float | None = None
+    average_decision_ms: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AccountStatusView:
+    """ACCOUNT STATUS section — virtual prop account (Sprint 47)."""
+
+    starting_balance: float | None = None
+    current_balance: float | None = None
+    current_equity: float | None = None
+    today_pnl: float | None = None
+    lifetime_pnl: float | None = None
+    profit_target: float | None = None
+    progress_pct: float | None = None
+    remaining_profit: float | None = None
+    risk_status: str | None = None
+    win_rate: float | None = None
+    profit_factor: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -398,9 +461,13 @@ class DashboardState:
     trade_decision: TradeDecisionView = field(default_factory=TradeDecisionView)
     statistics: StatisticsView = field(default_factory=StatisticsView)
     performance: PerformanceView = field(default_factory=PerformanceView)
+    today_stats: PeriodStatsView = field(default_factory=PeriodStatsView)
+    lifetime_stats: PeriodStatsView = field(default_factory=PeriodStatsView)
+    signal_history: tuple[SignalHistoryRowView, ...] = ()
     liquidity: LiquidityView = field(default_factory=LiquidityView)
     display_clock: DisplayClockView = field(default_factory=DisplayClockView)
     memory_panel: MemoryPanelView = field(default_factory=MemoryPanelView)
+    account_status: AccountStatusView = field(default_factory=AccountStatusView)
     last_signal: LastSignalView = field(default_factory=LastSignalView)
     system_panel: SystemPanelView = field(default_factory=SystemPanelView)
     events: Sequence[str] = ()
