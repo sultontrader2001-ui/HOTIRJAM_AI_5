@@ -178,9 +178,21 @@ class LiveValidatorApp:
         self._last_feed_status = status
 
     def render_once(self) -> str:
-        # IDC is presentation-only: never reads ValidatorFrame, never evaluate().
+        # IDC is presentation-only: never calls evaluate(); engine pages
+        # observe the latest frame / journal already produced by the runtime.
         if self._presentation_mode is PresentationMode.IDC:
-            text = render_idc(self._idc_page)
+            status = self.feed_status()
+            self._track_feed_transition(status)
+            frame = self._controller.latest
+            transitions = None
+            if self._idc_page is IdcPage.OBJECTIVE:
+                transitions = self._controller.structural_transition_journal
+            text = render_idc(
+                self._idc_page,
+                frame=frame,
+                transitions=transitions,
+                feed_status=status,
+            )
             self._display.render_frame(text)
             return text
 

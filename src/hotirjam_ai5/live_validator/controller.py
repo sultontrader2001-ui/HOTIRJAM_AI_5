@@ -12,6 +12,7 @@ from hotirjam_ai5.live_validator.models import ValidatorFrame
 from hotirjam_ai5.live_validator.pipeline import ArchitecturePipeline
 from hotirjam_ai5.live_validator.swing_confirmer import SwingConfirmer
 from hotirjam_ai5.objective_diagnostics import ObjectiveDiagnosticsInputs
+from hotirjam_ai5.objective_diagnostics.persistent_hierarchy import StructuralTransition
 
 
 class LiveValidatorController:
@@ -45,6 +46,11 @@ class LiveValidatorController:
     @property
     def evaluations(self) -> int:
         return self._evaluations
+
+    @property
+    def structural_transition_journal(self) -> tuple[StructuralTransition, ...]:
+        """Read-only view of the existing hierarchy journal. Never mutates."""
+        return self._pipeline.structural_hierarchy.journal
 
     def on_tick(self, tick: LiveTick) -> ValidatorFrame:
         """Ingest one live tick, update candles/swings, re-evaluate engines."""

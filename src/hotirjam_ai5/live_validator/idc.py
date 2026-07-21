@@ -1,12 +1,18 @@
-"""Internal Diagnostics Console — framework rendering (H-6.6.1).
+"""Internal Diagnostics Console — framework rendering.
 
-Read-only presentation. No engine data, no snapshots, no checkpoints.
-Engine pages are placeholders until later sprints.
+Read-only presentation. Engine pages are added per sprint; others remain
+placeholders. Never mutates engines, frames, or checkpoints.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
+from hotirjam_ai5.live_validator.idc_initiative import render_initiative_page
+from hotirjam_ai5.live_validator.idc_objective import render_objective_page
+from hotirjam_ai5.live_validator.models import ValidatorFrame
 from hotirjam_ai5.live_validator.presentation_mode import IdcPage
+from hotirjam_ai5.objective_diagnostics.persistent_hierarchy import StructuralTransition
 
 _PLACEHOLDER_TITLES: dict[IdcPage, str] = {
     IdcPage.OBJECTIVE: "OBJECTIVE ENGINE",
@@ -47,10 +53,30 @@ def idc_page_for_key(ch: str) -> IdcPage | None:
     return _MENU_KEY_TO_PAGE.get(ch)
 
 
-def render_idc(page: IdcPage) -> str:
-    """Render the IDC main menu or a placeholder page. No engine reads."""
+def render_idc(
+    page: IdcPage,
+    *,
+    frame: ValidatorFrame | None = None,
+    transitions: Sequence[StructuralTransition] | None = None,
+    feed_status: str | None = None,
+    certifications: Mapping[str, str] | None = None,
+) -> str:
+    """Render IDC menu, implemented engine pages, or a placeholder page."""
     if page is IdcPage.MENU:
         return render_idc_main_menu()
+    if page is IdcPage.OBJECTIVE:
+        return render_objective_page(
+            frame,
+            transitions=transitions,
+            feed_status=feed_status,
+            certifications=certifications,
+        )
+    if page is IdcPage.INITIATIVE:
+        return render_initiative_page(
+            frame,
+            feed_status=feed_status,
+            certifications=certifications,
+        )
     return render_idc_placeholder(page)
 
 

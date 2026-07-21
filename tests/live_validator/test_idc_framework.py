@@ -69,8 +69,6 @@ def test_idc_main_menu_content() -> None:
 
 def test_idc_placeholders_for_every_page() -> None:
     expected = {
-        IdcPage.OBJECTIVE: "OBJECTIVE ENGINE",
-        IdcPage.INITIATIVE: "INITIATIVE ENGINE",
         IdcPage.RESPONSE: "RESPONSE ENGINE",
         IdcPage.CONTINUATION: "CONTINUATION ENGINE",
         IdcPage.BREAK_CAPABILITY: "BREAK CAPABILITY",
@@ -89,6 +87,23 @@ def test_idc_placeholders_for_every_page() -> None:
         assert "Press Q to return" in text
 
 
+def test_objective_page_is_not_placeholder() -> None:
+    text = render_idc(IdcPage.OBJECTIVE)
+    assert "OBJECTIVE ENGINE" in text
+    assert "IMPLEMENTATION PENDING" not in text
+    assert "CURRENT SNAPSHOT" in text
+    assert "NOT AVAILABLE" in text
+    assert "Press Q to return" in text
+
+
+def test_initiative_page_is_not_placeholder() -> None:
+    text = render_idc(IdcPage.INITIATIVE)
+    assert "INITIATIVE ENGINE" in text
+    assert "IMPLEMENTATION PENDING" not in text
+    assert "Buyer Initiative" in text
+    assert "Press Q to return" in text
+
+
 def test_menu_keys_map_to_pages() -> None:
     assert idc_page_for_key("1") is IdcPage.OBJECTIVE
     assert idc_page_for_key("5") is IdcPage.BREAK_CAPABILITY
@@ -99,7 +114,7 @@ def test_menu_keys_map_to_pages() -> None:
 
 
 def test_acceptance_navigation_path() -> None:
-    """Dashboard → I → Menu → 1 → Placeholder → Q → Menu → Q → Dashboard."""
+    """Dashboard → I → Menu → 1 → Objective page → Q → Menu → Q → Dashboard."""
     app = LiveValidatorApp(
         controller=LiveValidatorController(),
         keyboard=_FakeKeyboard(["I", "1", "Q", "Q"]),  # type: ignore[arg-type]
@@ -118,7 +133,8 @@ def test_acceptance_navigation_path() -> None:
     assert app.idc_page is IdcPage.OBJECTIVE
     text = app.render_once()
     assert "OBJECTIVE ENGINE" in text
-    assert "IMPLEMENTATION PENDING" in text
+    assert "CURRENT SNAPSHOT" in text
+    assert "IMPLEMENTATION PENDING" not in text
 
     assert app._poll_keyboard_toggle() is True
     assert app.presentation_mode is PresentationMode.IDC
