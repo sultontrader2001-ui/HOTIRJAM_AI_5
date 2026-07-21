@@ -1,4 +1,4 @@
-"""Objective Engine (Module 01) — nearest confirmed battlefield objectives.
+"""Objective Engine V2 — nearest eligible structural battlefield objectives.
 
 Independent architecture module. Not wired to Decision or trading logic.
 """

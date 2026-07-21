@@ -1,14 +1,11 @@
-"""Objective diagnostics models — read-only structural evidence.
-
-Does not alter Objective Engine selection or snapshots.
-"""
+"""Objective structural evidence models shared by selection and diagnostics."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
 
-from hotirjam_ai5.objective import ConfirmedSwing
+from hotirjam_ai5.objective.objective_models import ConfirmedSwing
 
 
 class SwingSide(StrEnum):

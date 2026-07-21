@@ -1,6 +1,7 @@
-"""Objective Structural Diagnostics — read-only evidence layer.
+"""Objective structural classification and read-only evidence layer.
 
-Does not modify Objective Engine, selection, or ObjectiveSnapshot.
+Objective Engine V2 consumes the same classification report used by Developer
+View. This package remains deterministic and does not mutate engine state.
 """
 
 from hotirjam_ai5.objective_diagnostics.candidate_report import (

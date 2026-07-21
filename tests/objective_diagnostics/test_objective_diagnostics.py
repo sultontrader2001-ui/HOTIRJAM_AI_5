@@ -1,4 +1,4 @@
-"""Tests for Objective Structural Diagnostics (read-only)."""
+"""Tests for shared Objective structural classification and diagnostics."""
 
 from __future__ import annotations
 
@@ -102,11 +102,11 @@ def test_superseded_lifecycle() -> None:
     assert early.lifecycle is LifecycleState.SUPERSEDED
 
 
-def test_diagnostics_do_not_change_objective_engine() -> None:
-    """Guard: Objective Engine still selects nearest, ignoring diagnostics."""
+def test_objective_engine_uses_shared_diagnostic_eligibility() -> None:
+    """Guard: the nearer ineligible swing must not become the objective."""
     highs = (
         _h(110.0, 90.0, at=1.0),
-        _h(101.0, 40.0, at=2.0),  # nearer — engine still picks this today
+        _h(101.0, 40.0, at=2.0),  # nearer but nested/ineligible
     )
     lows = (_l(99.0, 50.0, at=1.0),)
     snap = evaluate_objectives(
@@ -118,7 +118,7 @@ def test_diagnostics_do_not_change_objective_engine() -> None:
             timestamp=1.0,
         )
     )
-    assert snap.nearest_high_price == 101.0
+    assert snap.nearest_high_price == 110.0
 
     report = audit_objectives(
         ObjectiveDiagnosticsInputs(
@@ -129,10 +129,10 @@ def test_diagnostics_do_not_change_objective_engine() -> None:
             timestamp=1.0,
         )
     )
-    # Diagnostics may mark nearer as ineligible, but engine output unchanged.
     nearer = next(d for d in report.highs if d.price == 101.0)
     assert nearer.side is SwingSide.HIGH
-    assert snap.nearest_high_price == 101.0
+    assert nearer.eligible is False
+    assert snap.nearest_high_price == 110.0
 
 
 def test_each_diagnostic_has_required_fields() -> None:

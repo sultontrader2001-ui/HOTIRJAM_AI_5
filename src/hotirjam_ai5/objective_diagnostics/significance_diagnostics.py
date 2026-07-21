@@ -1,7 +1,6 @@
-"""Significance / lifecycle diagnostics for confirmed swings.
+"""Significance / lifecycle classification for confirmed swings.
 
-Labels only. Does not change Objective Engine behavior.
-Thresholds are provisional diagnostic defaults for evidence collection.
+Objective Engine V2 and Developer View consume the same deterministic labels.
 """
 
 from __future__ import annotations
@@ -13,7 +12,7 @@ from hotirjam_ai5.objective_diagnostics.models import (
     SwingSide,
 )
 
-# Provisional diagnostic cutoffs — evidence only, not engine calibration.
+# Existing audited structural cutoffs shared by selection and diagnostics.
 _MICRO_PROMINENCE_TICKS = 4.0
 _MAJOR_PROMINENCE_TICKS = 12.0
 _MAJOR_PERSISTENCE_MIN = 55.0

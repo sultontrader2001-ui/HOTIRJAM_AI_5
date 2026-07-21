@@ -1,4 +1,4 @@
-"""ObjectiveSnapshot — nearest confirmed objectives at one moment."""
+"""ObjectiveSnapshot — nearest eligible structural objectives at one moment."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class ObjectiveSnapshot:
-    """Nearest confirmed Swing High and Swing Low relative to price.
+    """Nearest eligible structural Swing High and Swing Low relative to price.
 
     Observation only. Never encodes trade direction or decisions.
     Missing objectives use ``None`` (empty / invalid / insufficient swings).

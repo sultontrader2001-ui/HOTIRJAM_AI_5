@@ -77,8 +77,9 @@ class LiveValidatorController:
             confirmed_highs=highs,
             confirmed_lows=lows,
         )
-        # Presentation-only: attach existing structural diagnostics.
-        # Does not alter Objective Engine selection or any engine scores.
+        # Presentation-only attachment of the same structural classification
+        # consumed by Objective Engine V2. This does not re-evaluate or mutate
+        # the already-produced engine snapshots.
         diagnostics = audit_objectives(
             ObjectiveDiagnosticsInputs(
                 current_price=self._last_price,

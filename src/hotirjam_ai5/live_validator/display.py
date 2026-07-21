@@ -75,6 +75,7 @@ def render_developer_view(
         f"  Distance  {_fmt(obj.nearest_low_distance_ticks)}",
         f"  Strength  {_fmt(obj.nearest_low_strength)}",
     ]
+    lines.extend(_render_objective_diagnostics(frame))
     lines.extend(_render_structural_diagnostics(frame.objective_diagnostics))
     lines.extend(
         [
@@ -118,6 +119,87 @@ def render_developer_view(
         ]
     )
     return "\n".join(lines)
+
+
+def _render_objective_diagnostics(frame: ValidatorFrame) -> list[str]:
+    """Explain WHY the current objective was selected. Read-only over the
+    attached ObjectiveAuditReport; never invents values."""
+    from hotirjam_ai5.objective_diagnostics import ObjectiveAuditReport, SwingDiagnostic
+
+    header = [
+        "====================================",
+        "OBJECTIVE DIAGNOSTICS",
+        "------------------------------------",
+    ]
+    report = frame.objective_diagnostics
+    if report is None or not isinstance(report, ObjectiveAuditReport):
+        return [*header, "NOT AVAILABLE", "===================================="]
+
+    def find_selected(
+        swings: tuple[SwingDiagnostic, ...], price: float | None
+    ) -> SwingDiagnostic | None:
+        if price is None:
+            return None
+        for d in swings:
+            if d.price == price:
+                return d
+        return None
+
+    def detail_block(title: str, d: SwingDiagnostic | None) -> list[str]:
+        block = [title]
+        if d is None:
+            block.append("NOT AVAILABLE")
+            block.append("------------------------------------")
+            return block
+        reasons = " | ".join(d.rejection_reasons) if d.rejection_reasons else "--"
+        block.extend(
+            [
+                f"ID               {d.swing_id}",
+                f"Category         {d.category.value}",
+                f"Eligible         {'YES' if d.eligible else 'NO'}",
+                f"Lifecycle        {d.lifecycle.value}",
+                f"Parent ID        {d.parent_swing_id if d.parent_swing_id is not None else '--'}",
+                f"Hierarchy Depth  {d.hierarchy_depth}",
+                f"Persistence      {_fmt(d.persistence)}",
+                f"Prominence       {_fmt(d.prominence)}",
+                f"Rejection Reason {reasons}",
+                "------------------------------------",
+            ]
+        )
+        return block
+
+    def next_eligible(swings: tuple[SwingDiagnostic, ...]) -> SwingDiagnostic | None:
+        eligible = [d for d in swings if d.eligible]
+        if not eligible:
+            return None
+        return min(eligible, key=lambda d: (d.distance_ticks, d.swing_id))
+
+    def eligible_block(title: str, d: SwingDiagnostic | None) -> list[str]:
+        block = [title]
+        if d is None:
+            block.append("NOT AVAILABLE")
+            return block
+        reasons = " | ".join(d.rejection_reasons) if d.rejection_reasons else "--"
+        block.extend(
+            [
+                f"ID               {d.swing_id}",
+                f"Category         {d.category.value}",
+                f"Distance         {_fmt(d.distance_ticks, digits=1)}",
+                f"Eligible         {'YES' if d.eligible else 'NO'}",
+                f"Reason           {reasons}",
+            ]
+        )
+        return block
+
+    obj = frame.objective
+    lines = list(header)
+    lines.extend(detail_block("CURRENT HIGH", find_selected(report.highs, obj.nearest_high_price)))
+    lines.extend(detail_block("CURRENT LOW", find_selected(report.lows, obj.nearest_low_price)))
+    lines.append("NEXT ELIGIBLE STRUCTURAL OBJECTIVE")
+    lines.extend(eligible_block("High", next_eligible(report.highs)))
+    lines.extend(eligible_block("Low", next_eligible(report.lows)))
+    lines.append("====================================")
+    return lines
 
 
 def _render_structural_diagnostics(report: object | None) -> list[str]:

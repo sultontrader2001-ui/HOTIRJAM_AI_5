@@ -1,6 +1,7 @@
-"""Objective audit — assemble the full structural landscape report.
+"""Objective audit — assemble the shared structural landscape report.
 
-Read-only. Does not call or modify Objective Engine selection.
+Read-only and deterministic. Objective Engine V2 consumes its classifications;
+Developer View renders the same report as selection evidence.
 """
 
 from __future__ import annotations

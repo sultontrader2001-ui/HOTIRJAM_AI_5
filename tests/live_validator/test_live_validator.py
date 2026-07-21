@@ -201,6 +201,105 @@ def test_developer_view_shows_attached_diagnostics() -> None:
     assert "STRUCTURAL OBJECTIVE DIAGNOSTICS" not in trader
 
 
+def test_developer_view_objective_diagnostics_not_available() -> None:
+    frame = Pipeline.empty_frame(timestamp=1_700_000_000.0)
+    text = render_validator_frame(frame, developer_mode=True)
+    assert "OBJECTIVE DIAGNOSTICS" in text
+    section = text.split("OBJECTIVE DIAGNOSTICS", 1)[1]
+    assert "NOT AVAILABLE" in section
+
+
+def test_developer_view_objective_diagnostics_explains_selection() -> None:
+    from dataclasses import replace
+
+    from hotirjam_ai5.live_validator.controller import LiveValidatorController
+    from hotirjam_ai5.live_validator.candle_builder import TickBarBuilder
+
+    controller = LiveValidatorController(bar_builder=TickBarBuilder(bar_seconds=1.0))
+    # Build swings around price so the engine selects a nearest high and low.
+    prices = [100.0, 100.5, 101.5, 100.8, 100.2, 99.0, 99.5, 99.6, 100.0, 100.4]
+    frame = None
+    for i, price in enumerate(prices):
+        frame = controller.on_tick(_tick(price, ts=float(i)))
+    assert frame is not None
+    text = render_validator_frame(frame, developer_mode=True)
+    assert "OBJECTIVE DIAGNOSTICS" in text
+    section = text.split("OBJECTIVE DIAGNOSTICS", 1)[1].split("STRUCTURAL OBJECTIVE DIAGNOSTICS", 1)[0]
+    assert "CURRENT HIGH" in section
+    assert "CURRENT LOW" in section
+    assert "NEXT ELIGIBLE STRUCTURAL OBJECTIVE" in section
+    # Selected objective sides have full diagnostic records (or NOT AVAILABLE).
+    if frame.objective.has_high:
+        high_block = section.split("CURRENT HIGH", 1)[1].split("CURRENT LOW", 1)[0]
+        assert "Category" in high_block
+        assert "Lifecycle" in high_block
+        assert "Hierarchy Depth" in high_block
+        assert "Persistence" in high_block
+        assert "Prominence" in high_block
+        assert "Rejection Reason" in high_block
+    # Never invented: eligible sides either show a record or NOT AVAILABLE.
+    next_part = section.split("NEXT ELIGIBLE STRUCTURAL OBJECTIVE", 1)[1]
+    assert "High" in next_part and "Low" in next_part
+    assert ("Distance" in next_part) or ("NOT AVAILABLE" in next_part)
+
+
+def test_developer_view_reflects_structural_objective_v2_selection() -> None:
+    """Nearest ineligible swing is rejected in both snapshot and explanation."""
+    from dataclasses import replace
+
+    from hotirjam_ai5.objective import ConfirmedSwing
+    from hotirjam_ai5.objective_diagnostics import (
+        ObjectiveDiagnosticsInputs,
+        audit_objectives,
+    )
+
+    highs = (
+        ConfirmedSwing(110.0, 90.0, confirmed_at=1.0),
+        ConfirmedSwing(101.0, 40.0, confirmed_at=2.0),
+    )
+    lows = (ConfirmedSwing(90.0, 80.0, confirmed_at=1.5),)
+    frame = ArchitecturePipeline().evaluate(
+        current_price=100.0,
+        timestamp=10.0,
+        candles=(),
+        confirmed_highs=highs,
+        confirmed_lows=lows,
+    )
+    diagnostics = audit_objectives(
+        ObjectiveDiagnosticsInputs(
+            current_price=100.0,
+            tick_size=0.25,
+            confirmed_highs=highs,
+            confirmed_lows=lows,
+            timestamp=10.0,
+        )
+    )
+    frame = replace(frame, objective_diagnostics=diagnostics)
+
+    assert frame.objective.nearest_high_price == 110.0
+    assert frame.objective.nearest_high_price != 101.0
+    text = render_validator_frame(frame, developer_mode=True)
+    current = text.split("CURRENT OBJECTIVE", 1)[1].split(
+        "OBJECTIVE DIAGNOSTICS", 1
+    )[0]
+    assert "110.00" in current
+    assert "101.00" not in current
+    explanation = text.split("OBJECTIVE DIAGNOSTICS", 1)[1].split(
+        "STRUCTURAL OBJECTIVE DIAGNOSTICS", 1
+    )[0]
+    high = explanation.split("CURRENT HIGH", 1)[1].split("CURRENT LOW", 1)[0]
+    assert "Category         MAJOR" in high
+    assert "Eligible         YES" in high
+    assert "Lifecycle        ACTIVE" in high
+
+
+def test_dashboard_view_unchanged_by_diagnostics_section() -> None:
+    frame = Pipeline.empty_frame(timestamp=1_700_000_000.0)
+    text = render_validator_frame(frame, developer_mode=False)
+    assert "OBJECTIVE DIAGNOSTICS" not in text
+    assert "NEXT ELIGIBLE STRUCTURAL OBJECTIVE" not in text
+
+
 def test_app_poll_and_render_without_decision(tmp_path: Path) -> None:
     class FakeIngress:
         def __init__(self) -> None:

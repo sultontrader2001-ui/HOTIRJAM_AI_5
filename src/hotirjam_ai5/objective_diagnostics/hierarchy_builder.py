@@ -1,13 +1,13 @@
 """Hierarchy builder — parent/child nesting among confirmed swings.
 
-Read-only diagnostics. Does not filter Objective Engine candidates.
+Pure structural classification shared by Objective Engine V2 and diagnostics.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from hotirjam_ai5.objective import ConfirmedSwing
+from hotirjam_ai5.objective.objective_models import ConfirmedSwing
 from hotirjam_ai5.objective_diagnostics.models import SwingSide
 
 
@@ -35,7 +35,7 @@ def build_hierarchy(
 ) -> tuple[HierarchyNode, ...]:
     """Assign parent and depth for each confirmed swing.
 
-    Rule (deterministic, diagnostic):
+    Rule (deterministic):
     - Sort by confirmed_at ascending (missing → -inf), then by swing_id.
     - A HIGH's parent is the nearest earlier HIGH with a strictly higher price
       that has not been closed by an intervening higher HIGH.

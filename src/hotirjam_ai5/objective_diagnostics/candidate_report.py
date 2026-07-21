@@ -1,7 +1,6 @@
-"""Candidate eligibility report — diagnostic reasons only.
+"""Candidate eligibility report — shared structural selection evidence.
 
-Eligibility labels proposed Structural Objective rules for evidence.
-They are NOT applied to Objective Engine selection.
+Objective Engine V2 applies these labels; Developer View explains them.
 """
 
 from __future__ import annotations
