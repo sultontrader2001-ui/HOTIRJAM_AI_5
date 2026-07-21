@@ -265,10 +265,27 @@ class PerformanceView:
     failed_count: int = 0
     win_rate: float = 0.0
     average_points: float = 0.0
+    last_result: str = "—"
     last_signal_decision: str = "—"
     last_signal_utc: str = "—"
     last_signal_new_york: str = "—"
     last_signal_tashkent: str = "—"
+
+
+@dataclass(frozen=True, slots=True)
+class LiquidityView:
+    """Liquidity summary for AI STATUS (presentation only)."""
+
+    shift: str = "—"
+    imbalance: str = "—"
+
+
+@dataclass(frozen=True, slots=True)
+class DisplayClockView:
+    """Wall-clock times for MARKET section (presentation only)."""
+
+    new_york: str = "—"
+    tashkent: str = "—"
 
 
 @dataclass(frozen=True, slots=True)
@@ -298,4 +315,6 @@ class DashboardState:
     trade_decision: TradeDecisionView = field(default_factory=TradeDecisionView)
     statistics: StatisticsView = field(default_factory=StatisticsView)
     performance: PerformanceView = field(default_factory=PerformanceView)
+    liquidity: LiquidityView = field(default_factory=LiquidityView)
+    display_clock: DisplayClockView = field(default_factory=DisplayClockView)
     events: Sequence[str] = ()

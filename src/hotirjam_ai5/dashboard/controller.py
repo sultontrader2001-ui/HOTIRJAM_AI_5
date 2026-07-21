@@ -22,10 +22,12 @@ from hotirjam_ai5.dashboard.models import (
     DecisionIntentView,
     DomHealthView,
     DomView,
+    DisplayClockView,
     EngineStatus,
     FeedHealthView,
     FeedStatus,
     LiveMarketView,
+    LiquidityView,
     MarketBehaviorView,
     MarketContextView,
     MarketStateView,
@@ -58,7 +60,7 @@ from hotirjam_ai5.market_state import (
     MarketStateSnapshot,
 )
 from hotirjam_ai5.market_transition import MarketTransitionEngine
-from hotirjam_ai5.performance import PerformanceTracker
+from hotirjam_ai5.performance import PerformanceTracker, format_multi_zone
 from hotirjam_ai5.physics.engine import PhysicsEngine
 from hotirjam_ai5.physics.measurements import PhysicsSnapshot
 from hotirjam_ai5.trade_decision import TradeDecisionEngine
@@ -153,6 +155,7 @@ class DashboardController:
         self._performance = performance or PerformanceTracker(
             clock=wall_clock or time.time
         )
+        self._wall_clock = wall_clock or time.time
         self._previous_market_state: MarketStateSnapshot | None = None
         self._engine_status = EngineStatus.STARTING
         self._connection_status = ConnectionStatus.DISCONNECTED
@@ -345,6 +348,18 @@ class DashboardController:
             timestamp=trade_decision.timestamp,
         )
         performance = self._performance.snapshot()
+        last_result = "—"
+        records = self._performance.records
+        if records:
+            last_result = records[-1].result.value
+        display_clock = format_multi_zone(self._wall_clock())
+        if liquidity_snapshot is None:
+            liquidity_view = LiquidityView()
+        else:
+            liquidity_view = LiquidityView(
+                shift=str(liquidity_snapshot.liquidity_shift),
+                imbalance=str(liquidity_snapshot.dom_imbalance),
+            )
         return DashboardState(
             system=SystemView(
                 engine_status=self._engine_status,
@@ -453,10 +468,16 @@ class DashboardController:
                 failed_count=performance.failed_count,
                 win_rate=performance.win_rate,
                 average_points=performance.average_points,
+                last_result=last_result,
                 last_signal_decision=performance.last_signal_decision,
                 last_signal_utc=performance.last_signal_utc,
                 last_signal_new_york=performance.last_signal_new_york,
                 last_signal_tashkent=performance.last_signal_tashkent,
+            ),
+            liquidity=liquidity_view,
+            display_clock=DisplayClockView(
+                new_york=display_clock.new_york,
+                tashkent=display_clock.tashkent,
             ),
             events=self._event_log.latest(),
         )

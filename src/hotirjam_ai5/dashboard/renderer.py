@@ -1,12 +1,17 @@
-"""Pure string renderer for the terminal dashboard."""
+"""Pure string renderer for the terminal dashboard (Live Dashboard v2).
+
+UI/UX only — no trading logic. Default layout is trading-focused; pass
+``verbose=True`` (or ``--verbose``) for developer/pipeline details.
+"""
 
 from __future__ import annotations
 
 from hotirjam_ai5.dashboard.models import DashboardState
 
-SEPARATOR = "═" * 62
+SEPARATOR = "═" * 60
+SECTION = "─" * 60
 MISSING = "—"
-LEFT_WIDTH = 26
+LABEL_WIDTH = 18
 
 
 def _format_price(value: float | None) -> str:
@@ -39,160 +44,232 @@ def _format_physics(value: float | None, *, digits: int = 2) -> str:
     return f"{value:.{digits}f}"
 
 
-def _title_case_status(value: str) -> str:
-    return value[:1].upper() + value[1:].lower() if value else MISSING
+def _format_runtime(seconds: float) -> str:
+    total = max(0, int(seconds))
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m {secs:02d}s"
+    if minutes:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
 
 
-def _pair(left: str, right: str = "") -> str:
-    return f"{left:<{LEFT_WIDTH}}{right}".rstrip()
+def _row(label: str, value: str) -> str:
+    return f"{label:<{LABEL_WIDTH}}: {value}"
 
 
-def _zip_columns(left_rows: list[str], right_rows: list[str]) -> list[str]:
-    height = max(len(left_rows), len(right_rows))
-    lines: list[str] = []
-    for index in range(height):
-        left = left_rows[index] if index < len(left_rows) else ""
-        right = right_rows[index] if index < len(right_rows) else ""
-        lines.append(_pair(left, right))
-    return lines
+def _emphasize_decision(decision: str) -> list[str]:
+    """Make the active decision the largest, easiest line to see."""
+    if decision == "BUY_INTERNAL":
+        banner = ">>>  BUY_INTERNAL  <<<"
+    elif decision == "SELL_INTERNAL":
+        banner = ">>>  SELL_INTERNAL  <<<"
+    else:
+        banner = f"Decision : {decision}"
+    pad = max(0, (60 - len(banner)) // 2)
+    centered = f"{' ' * pad}{banner}"
+    return ["", centered, ""]
 
 
 class DashboardRenderer:
-    """Converts a DashboardState into the compact terminal layout."""
+    """Converts a DashboardState into the Live Dashboard v2 layout."""
+
+    def __init__(self, *, verbose: bool = False) -> None:
+        self._verbose = verbose
+
+    @property
+    def verbose(self) -> bool:
+        return self._verbose
 
     def render(self, state: DashboardState) -> str:
         """Return the full dashboard text."""
+        lines = [
+            SEPARATOR,
+            "HOTIRJAM AI 5 LIVE".center(60),
+            SEPARATOR,
+            "",
+            *self._market_section(state),
+            SECTION,
+            *self._ai_status_section(state),
+            SECTION,
+            *self._trade_decision_section(state),
+            SECTION,
+            *self._performance_section(state),
+            SECTION,
+            *self._system_section(state),
+        ]
+        if self._verbose:
+            lines.extend([SECTION, *self._verbose_section(state)])
+        return "\n".join(lines)
+
+    def _market_section(self, state: DashboardState) -> list[str]:
         market = state.market
+        clock = state.display_clock
+        return [
+            "MARKET",
+            _row("Symbol", market.symbol),
+            _row("Price", _format_price(market.last_price)),
+            _row("Bid", _format_price(market.bid)),
+            _row("Ask", _format_price(market.ask)),
+            _row("Spread", _format_price(market.spread)),
+            _row("Market Status", state.system.market_status.value),
+            _row("NY Time", clock.new_york),
+            _row("UZ Time", clock.tashkent),
+            _row("Feed Health", state.feed_health.feed_status.value),
+            _row("DOM Health", state.dom_health.feed_status.value),
+        ]
+
+    def _ai_status_section(self, state: DashboardState) -> list[str]:
+        physics = state.physics
+        liquidity = state.liquidity
+        trade = state.trade_decision
+        physics_text = (
+            f"v={_format_physics(physics.tick_velocity)}  "
+            f"a={_format_physics(physics.tick_acceleration)}"
+        )
+        liquidity_text = (
+            f"{liquidity.shift} / {liquidity.imbalance}"
+            if liquidity.shift != MISSING or liquidity.imbalance != MISSING
+            else MISSING
+        )
+        readiness = (
+            f"BUY {trade.decision_readiness} / SELL {trade.sell_decision_readiness}"
+        )
+        return [
+            "AI STATUS",
+            _row("Market State", state.market_state.state),
+            _row("Behavior", state.market_behavior.behavior),
+            _row("Physics", physics_text),
+            _row("Liquidity", liquidity_text),
+            _row("Assessment", state.decision_assessment.assessment_state),
+            _row("Decision Readiness", readiness),
+        ]
+
+    def _trade_decision_section(self, state: DashboardState) -> list[str]:
+        trade = state.trade_decision
+        stability = (
+            f"BUY {trade.signal_stability} / SELL {trade.sell_signal_stability}"
+        )
+        return [
+            "TRADE DECISION",
+            *_emphasize_decision(trade.decision),
+            _row("BUY Score", f"{trade.buy_score} / 100"),
+            _row("BUY Confidence", f"{trade.buy_confidence} %"),
+            _row("SELL Score", f"{trade.sell_score} / 100"),
+            _row("SELL Confidence", f"{trade.sell_confidence} %"),
+            _row("Signal Stability", stability),
+        ]
+
+    def _performance_section(self, state: DashboardState) -> list[str]:
+        perf = state.performance
+        return [
+            "PERFORMANCE",
+            _row("BUY Signals", _format_int(perf.buy_signals)),
+            _row("SELL Signals", _format_int(perf.sell_signals)),
+            _row("Win Rate", f"{perf.win_rate:.1f}%"),
+            _row("Success", _format_int(perf.success_count)),
+            _row("Failed", _format_int(perf.failed_count)),
+            _row("Average Points", _format_physics(perf.average_points)),
+            _row("Last Result", perf.last_result),
+            _row("Last Signal", perf.last_signal_decision),
+            _row("NY Time", perf.last_signal_new_york),
+            _row("UZ Time", perf.last_signal_tashkent),
+        ]
+
+    def _system_section(self, state: DashboardState) -> list[str]:
         stats = state.statistics
         health = state.feed_health
-        dom_health = state.dom_health
-        physics = state.physics
-        market_state = state.market_state
-        transition = state.market_transition
-        behavior = state.market_behavior
-        context = state.market_context
+        latency = health.tick_delay_ms
+        if latency is None:
+            latency = health.last_tick_age_ms
+        return [
+            "SYSTEM",
+            _row("Tick Rate", _format_rate(stats.tick_rate)),
+            _row("DOM Rate", _format_rate(state.dom_health.update_rate)),
+            _row("Latency", _format_ms(latency)),
+            _row("Runtime", _format_runtime(stats.running_time_seconds)),
+            _row("Connection", state.system.connection_status.value),
+        ]
+
+    def _verbose_section(self, state: DashboardState) -> list[str]:
+        """Developer / pipeline details — hidden in default live mode."""
         foundation = state.decision_foundation
         intent = state.decision_intent
         evaluation = state.decision_evaluation
         assessment = state.decision_assessment
         trade = state.trade_decision
-        performance = state.performance
+        transition = state.market_transition
+        context = state.market_context
         events = list(state.events) if state.events else ["(none)"]
-
-        system_rows = [
-            "SYSTEM",
-            f"Status : {state.system.engine_status.value}",
-            f"Conn   : {state.system.connection_status.value}",
-            f"Market : {state.system.market_status.value}",
-        ]
-        market_rows = [
-            "LIVE MARKET",
-            f"Symbol : {market.symbol}",
-            f"Price  : {_format_price(market.last_price)}",
-            f"Bid    : {_format_price(market.bid)}",
-            f"Ask    : {_format_price(market.ask)}",
-            f"Spread : {_format_price(market.spread)}",
-        ]
-        feed_rows = [
-            "FEED HEALTH",
-            _title_case_status(health.feed_status.value),
-            f"Quality : {health.connection_quality.value}",
-            f"TickAge : {_format_ms(health.last_tick_age_ms)}",
-            f"Rate    : {_format_rate(health.average_tick_rate)}",
-        ]
-        dom_rows = [
-            "DOM HEALTH",
-            _title_case_status(dom_health.feed_status.value),
-            f"Quality : {dom_health.connection_quality.value}",
-            f"DOMAge  : {_format_ms(dom_health.last_update_age_ms)}",
-            f"Rate    : {_format_rate(dom_health.update_rate)}",
-        ]
-        physics_rows = [
-            "PHYSICS",
-            f"Velocity : {_format_physics(physics.tick_velocity)}",
-            f"Accel    : {_format_physics(physics.tick_acceleration)}",
-            f"Spread   : {_format_physics(physics.spread, digits=2)}",
-        ]
-        stats_rows = [
-            "STATISTICS",
-            f"Tick Rate : {_format_rate(stats.tick_rate)}",
-            f"Tick Count: {_format_int(stats.tick_count)}",
-            f"BUY_INTERNAL : {stats.buy_internal_count} ({stats.buy_internal_frequency:.1f}%)",
-            f"SELL_INTERNAL: {stats.sell_internal_count} ({stats.sell_internal_frequency:.1f}%)",
-            f"NO_TRADE     : {stats.no_trade_count} ({stats.no_trade_frequency:.1f}%)",
-        ]
-
         foundation_detail = (
             foundation.summary
             if foundation.ready
             else (foundation.blocking_reason or foundation.summary)
         )
-
         lines = [
-            "HOTIRJAM AI 5",
-            SEPARATOR,
-            *_zip_columns(system_rows, market_rows),
-            *_zip_columns(feed_rows, dom_rows),
-            *_zip_columns(physics_rows, stats_rows),
-            "MARKET ANALYSIS",
-            f"State       : {market_state.state}",
-            f"Transition  : {transition.transition}",
-            f"Behavior    : {behavior.behavior}",
-            "CONTEXT",
-            context.summary,
+            "VERBOSE",
+            "OBSERVATION LAYER",
+            _row("Transition", transition.transition),
+            _row("Context", context.summary),
             "DECISION FOUNDATION",
-            f"Ready : {'YES' if foundation.ready else 'NO'}",
+            _row("Ready", "YES" if foundation.ready else "NO"),
             foundation_detail,
             "DECISION INTENT",
-            f"Intent : {intent.intent}",
-            f"Reason : {intent.reason}",
-            f"Next   : {intent.next_step}",
+            _row("Intent", intent.intent),
+            _row("Reason", intent.reason),
+            _row("Next", intent.next_step),
             "DECISION EVALUATION",
-            f"Status  : {evaluation.status}",
-            f"Allowed : {'YES' if evaluation.evaluation_allowed else 'NO'}",
-            f"Reason  : {evaluation.reason}",
-            f"Next    : {evaluation.next_stage}",
+            _row("Status", evaluation.status),
+            _row("Allowed", "YES" if evaluation.evaluation_allowed else "NO"),
+            _row("Reason", evaluation.reason),
+            _row("Next", evaluation.next_stage),
             "DECISION ASSESSMENT",
-            f"State : {assessment.assessment_state}",
-            f"Ready : {'YES' if assessment.assessment_ready else 'NO'}",
-            f"Reason: {assessment.reason}",
-            f"Next  : {assessment.next_stage}",
-            "TRADE DECISION",
-            f"BUY Score          : {trade.buy_score} / 100",
-            f"BUY Confidence     : {trade.buy_confidence} %",
-            f"SELL Score         : {trade.sell_score} / 100",
-            f"SELL Confidence    : {trade.sell_confidence} %",
-            f"BUY Stability      : {trade.signal_stability}",
-            f"SELL Stability     : {trade.sell_signal_stability}",
-            f"BUY Readiness      : {trade.decision_readiness}",
-            f"SELL Readiness     : {trade.sell_decision_readiness}",
-            f"Decision: {trade.decision}",
+            _row("State", assessment.assessment_state),
+            _row("Ready", "YES" if assessment.assessment_ready else "NO"),
+            _row("Reason", assessment.reason),
+            _row("Next", assessment.next_stage),
+            "TRADE DECISION DETAIL",
+            _row("Reason", trade.reason),
+            _row("Next", trade.next_action),
+            _row("BUY Readiness", trade.decision_readiness),
+            _row("SELL Readiness", trade.sell_decision_readiness),
             "Explanation",
-            f"Assessment : {trade.explanation.assessment}",
-            f"Feed       : {trade.explanation.feed}",
-            f"State      : {trade.explanation.market_state}",
-            f"Behavior   : {trade.explanation.behavior}",
-            f"Physics    : {trade.explanation.physics}",
-            f"Liquidity  : {trade.explanation.liquidity}",
-            f"Stability  : {trade.explanation.signal_stability}",
-            f"Readiness  : {trade.explanation.readiness}",
+            _row("Assessment", trade.explanation.assessment),
+            _row("Feed", trade.explanation.feed),
+            _row("State", trade.explanation.market_state),
+            _row("Behavior", trade.explanation.behavior),
+            _row("Physics", trade.explanation.physics),
+            _row("Liquidity", trade.explanation.liquidity),
+            _row("Stability", trade.explanation.signal_stability),
+            _row("Readiness", trade.explanation.readiness),
             "Summary",
             trade.explanation.summary,
-            f"Next    : {trade.next_action}",
-            "PERFORMANCE",
-            f"BUY Signals    : {performance.buy_signals}",
-            f"SELL Signals   : {performance.sell_signals}",
-            f"Success        : {performance.success_count}",
-            f"Failed         : {performance.failed_count}",
-            f"Win Rate       : {performance.win_rate:.1f}%",
-            f"Average Points : {_format_physics(performance.average_points)}",
-            "Last Signal",
-            f"Decision : {performance.last_signal_decision}",
-            f"UTC      : {performance.last_signal_utc}",
-            f"New York : {performance.last_signal_new_york}",
-            f"Tashkent : {performance.last_signal_tashkent}",
+            "STATISTICS",
+            _row("Tick Count", _format_int(state.statistics.tick_count)),
+            _row(
+                "BUY_INTERNAL",
+                (
+                    f"{state.statistics.buy_internal_count} "
+                    f"({state.statistics.buy_internal_frequency:.1f}%)"
+                ),
+            ),
+            _row(
+                "SELL_INTERNAL",
+                (
+                    f"{state.statistics.sell_internal_count} "
+                    f"({state.statistics.sell_internal_frequency:.1f}%)"
+                ),
+            ),
+            _row(
+                "NO_TRADE",
+                (
+                    f"{state.statistics.no_trade_count} "
+                    f"({state.statistics.no_trade_frequency:.1f}%)"
+                ),
+            ),
             "LOG",
         ]
         for event in events:
             lines.append(f"• {event}")
-        return "\n".join(lines)
+        return lines

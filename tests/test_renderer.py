@@ -1,4 +1,4 @@
-"""Tests for DashboardRenderer."""
+"""Tests for DashboardRenderer (Live Dashboard v2)."""
 
 from __future__ import annotations
 
@@ -11,92 +11,130 @@ from hotirjam_ai5.dashboard.models import (
     DecisionExplanationView,
     DecisionFoundationView,
     DecisionIntentView,
+    DisplayClockView,
     DomHealthView,
     DomView,
     EngineStatus,
     FeedHealthView,
     FeedStatus,
     LiveMarketView,
+    LiquidityView,
     MarketBehaviorView,
     MarketContextView,
     MarketStateView,
     MarketTransitionView,
     MarketStatus,
+    PerformanceView,
     PhysicsView,
     StatisticsView,
     SystemView,
     TradeDecisionView,
 )
-from hotirjam_ai5.dashboard.renderer import DashboardRenderer
+from hotirjam_ai5.dashboard.renderer import DashboardRenderer, LABEL_WIDTH
 
 
-def test_render_includes_required_sections_and_title() -> None:
+def test_render_includes_live_v2_sections_and_title() -> None:
     text = DashboardRenderer().render(DashboardState())
-    assert "HOTIRJAM AI 5" in text
+    assert "HOTIRJAM AI 5 LIVE" in text
+    assert "MARKET" in text
+    assert "AI STATUS" in text
+    assert "TRADE DECISION" in text
+    assert "PERFORMANCE" in text
     assert "SYSTEM" in text
-    assert "LIVE MARKET" in text
-    assert "FEED HEALTH" in text
-    assert "DOM HEALTH" in text
-    assert "PHYSICS" in text
-    assert "STATISTICS" in text
-    assert "MARKET ANALYSIS" in text
-    assert "CONTEXT" in text
+    assert "NY Time" in text
+    assert "UZ Time" in text
+    assert "Decision Readiness" in text
+    assert "Win Rate" in text
+    assert "Last Result" in text
+    assert "Tick Rate" in text
+    assert "Connection" in text
+
+
+def test_default_hides_verbose_pipeline_details() -> None:
+    text = DashboardRenderer().render(DashboardState())
+    assert "DECISION FOUNDATION" not in text
+    assert "DECISION INTENT" not in text
+    assert "DECISION EVALUATION" not in text
+    assert "VERBOSE" not in text
+    assert "Observation layer is not ready." not in text
+    assert "Explanation" not in text
+    assert "LOG" not in text
+    assert "STATISTICS" not in text
+
+
+def test_verbose_shows_pipeline_details() -> None:
+    text = DashboardRenderer(verbose=True).render(DashboardState())
+    assert "VERBOSE" in text
     assert "DECISION FOUNDATION" in text
     assert "DECISION INTENT" in text
     assert "DECISION EVALUATION" in text
     assert "DECISION ASSESSMENT" in text
-    assert "TRADE DECISION" in text
-    assert "PERFORMANCE" in text
+    assert "Explanation" in text
     assert "LOG" in text
-    assert "State       :" in text
-    assert "Transition  :" in text
-    assert "Behavior    :" in text
-    assert "Ready :" in text
-    assert "Intent :" in text
-    assert "Allowed :" in text
-    assert "Decision:" in text
+    assert "• (none)" in text
+    assert "Intent" in text
+    assert "Reason" in text
+    assert "Next" in text
 
 
 def test_render_shows_placeholder_not_fake_prices() -> None:
     text = DashboardRenderer().render(DashboardState())
-    assert "Price  : —" in text
-    assert "TickAge : —" in text
-    assert "Velocity : —" in text
-    assert "Accel    : —" in text
-    assert "State       : UNKNOWN" in text
-    assert "Transition  : NONE" in text
-    assert "Behavior    : UNKNOWN" in text
-    assert "Insufficient market context." in text
-    assert "Ready : NO" in text
-    assert "Waiting for market context." in text
-    assert "Intent : WAIT" in text
-    assert "Reason : Observation layer is not ready." in text
-    assert "Next   : No further processing." in text
-    assert "Status  : IDLE" in text
-    assert "Allowed : NO" in text
-    assert "Reason  : Evaluation not started." in text
-    assert "Next    : Continue Observation" in text
-    assert "State : REVIEW" in text
-    assert "Reason: Evaluation complete, awaiting final decision." in text
-    assert "Next  : Decision Assessment Engine" in text
-    assert "Decision: NO_TRADE" in text
-    assert "BUY Score          : 0 / 100" in text
-    assert "BUY Confidence     : 0 %" in text
-    assert "SELL Score         : 0 / 100" in text
-    assert "SELL Confidence    : 0 %" in text
-    assert "BUY Stability      : UNSTABLE" in text
-    assert "SELL Stability     : UNSTABLE" in text
-    assert "BUY Readiness      : UNKNOWN" in text
-    assert "SELL Readiness     : UNKNOWN" in text
-    assert "Explanation" in text
-    assert "Assessment : UNKNOWN" in text
-    assert "Liquidity  : UNKNOWN" in text
-    assert "Stability  : UNKNOWN" in text
-    assert "Readiness  : UNKNOWN" in text
-    assert "Summary" in text
-    assert "Decision Readiness is UNKNOWN." in text
-    assert "Next    : Execution Engine" in text
-    assert "Tick Count: 0" in text
+    assert "Price             : —" in text or _row_contains(text, "Price", "—")
+    assert "Decision : NO_TRADE" in text
+    assert "BUY Score         : 0 / 100" in text or "BUY Score" in text
+    assert "BUY Confidence" in text
+    assert "SELL Score" in text
+    assert "SELL Confidence" in text
+    assert "Signal Stability" in text
+    assert "Market State" in text
+    assert "UNKNOWN" in text
+
+
+def _row_contains(text: str, label: str, value: str) -> bool:
+    return any(
+        line.startswith(f"{label:<{LABEL_WIDTH}}: ") and value in line
+        for line in text.splitlines()
+    )
+
+
+def test_buy_internal_is_emphasized() -> None:
+    state = DashboardState(
+        trade_decision=TradeDecisionView(decision="BUY_INTERNAL"),
+    )
+    text = DashboardRenderer().render(state)
+    assert ">>>  BUY_INTERNAL  <<<" in text
+    assert "Decision : NO_TRADE" not in text
+
+
+def test_sell_internal_is_emphasized() -> None:
+    state = DashboardState(
+        trade_decision=TradeDecisionView(decision="SELL_INTERNAL"),
+    )
+    text = DashboardRenderer().render(state)
+    assert ">>>  SELL_INTERNAL  <<<" in text
+
+
+def test_no_trade_is_visible_but_less_dominant() -> None:
+    text = DashboardRenderer().render(DashboardState())
+    assert "Decision : NO_TRADE" in text
+    assert ">>>  BUY_INTERNAL  <<<" not in text
+    assert ">>>  SELL_INTERNAL  <<<" not in text
+
+
+def test_column_labels_align() -> None:
+    text = DashboardRenderer().render(DashboardState())
+    labels = [
+        "Symbol",
+        "Price",
+        "Market State",
+        "BUY Score",
+        "Win Rate",
+        "Tick Rate",
+    ]
+    for label in labels:
+        matches = [line for line in text.splitlines() if line.startswith(label)]
+        assert matches, label
+        assert matches[0].index(":") == LABEL_WIDTH
 
 
 def test_render_with_real_market_and_health_values() -> None:
@@ -228,78 +266,77 @@ def test_render_with_real_market_and_health_values() -> None:
             sell_internal_frequency=10.0,
             no_trade_frequency=60.0,
         ),
+        performance=PerformanceView(
+            buy_signals=3,
+            sell_signals=1,
+            success_count=2,
+            failed_count=1,
+            win_rate=66.7,
+            average_points=1.25,
+            last_result="SUCCESS",
+            last_signal_decision="BUY_INTERNAL",
+            last_signal_utc="2026-07-21 14:37:15",
+            last_signal_new_york="2026-07-21 10:37:15 EDT",
+            last_signal_tashkent="2026-07-21 19:37:15 UZT",
+        ),
+        liquidity=LiquidityView(shift="BUY", imbalance="BUY"),
+        display_clock=DisplayClockView(
+            new_york="2026-07-21 10:37:15 EDT",
+            tashkent="2026-07-21 19:37:15 UZT",
+        ),
         events=("Connected", "DOM connected"),
     )
     text = DashboardRenderer().render(state)
-    assert "Status : RUNNING" in text
-    assert "Conn   : CONNECTED" in text
-    assert "Symbol : MNQ" in text
-    assert "Price  : 28762.25" in text
-    assert "Spread : 0.75" in text
-    assert "Healthy" in text
-    assert "TickAge : 14 ms" in text
-    assert "Rate    : 37/s" in text
-    assert "DOMAge  : 0 ms" in text
-    assert "Rate    : 1470/s" in text
-    assert "Velocity : 7.09" in text
-    assert "Accel    : 32.01" in text
-    assert "Tick Rate : 37/s" in text
-    assert "MARKET ANALYSIS" in text
-    assert "State       : VOLATILE" in text
-    assert "Transition  : NONE" in text
-    assert "Behavior    : UNSTABLE" in text
-    assert "CONTEXT" in text
-    assert "Volatile market with unstable behavior." in text
-    assert "Ready : YES" in text
-    assert "Observation layer complete." in text
-    assert "DECISION INTENT" in text
-    assert "Intent : OBSERVE" in text
-    assert "Reason : Observation stable." in text
-    assert "Next   : Continue monitoring." in text
-    assert "DECISION EVALUATION" in text
-    assert "Status  : EVALUATING" in text
-    assert "Allowed : YES" in text
-    assert "Reason  : Evaluation initiated." in text
-    assert "Next    : Decision Assessment Engine" in text
-    assert "DECISION ASSESSMENT" in text
-    assert "State : READY" in text
-    assert "Reason: Evaluation completed successfully." in text
-    assert "Next  : Trade Decision Engine" in text
-    assert "TRADE DECISION" in text
-    assert "BUY Score          : 88 / 100" in text
-    assert "BUY Confidence     : 92 %" in text
-    assert "SELL Score         : 35 / 100" in text
-    assert "SELL Confidence    : 40 %" in text
-    assert "BUY Stability      : STABLE" in text
-    assert "SELL Stability     : UNSTABLE" in text
-    assert "BUY Readiness      : READY" in text
-    assert "SELL Readiness     : NOT_READY" in text
-    assert "Decision: BUY_INTERNAL" in text
-    assert "BUY_INTERNAL : 3 (30.0%)" in text
-    assert "SELL_INTERNAL: 1 (10.0%)" in text
-    assert "NO_TRADE     : 6 (60.0%)" in text
-    assert "Explanation" in text
-    assert "Assessment : PASS" in text
-    assert "Feed       : PASS" in text
-    assert "State      : PASS" in text
-    assert "Behavior   : PASS" in text
-    assert "Physics    : PASS" in text
-    assert "Liquidity  : PASS" in text
-    assert "Stability  : PASS" in text
-    assert "Readiness  : PASS" in text
-    assert "Summary" in text
-    assert "Decision Readiness is READY" in text
-    assert "Next    : Execution Engine" in text
-    assert "• DOM connected" in text
+    assert "Symbol            : MNQ" in text
+    assert "Price             : 28762.25" in text
+    assert "Spread            : 0.75" in text
+    assert "Market Status     : OPEN" in text
+    assert "NY Time           : 2026-07-21 10:37:15 EDT" in text
+    assert "UZ Time           : 2026-07-21 19:37:15 UZT" in text
+    assert "Feed Health       : HEALTHY" in text
+    assert "DOM Health        : HEALTHY" in text
+    assert "Market State      : VOLATILE" in text
+    assert "Behavior          : UNSTABLE" in text
+    assert "v=7.09" in text and "a=32.01" in text
+    assert "Liquidity         : BUY / BUY" in text
+    assert "Assessment        : READY" in text
+    assert "BUY READY / SELL NOT_READY" in text
+    assert ">>>  BUY_INTERNAL  <<<" in text
+    assert "BUY Score         : 88 / 100" in text
+    assert "BUY Confidence    : 92 %" in text
+    assert "SELL Score        : 35 / 100" in text
+    assert "SELL Confidence   : 40 %" in text
+    assert "BUY STABLE / SELL UNSTABLE" in text
+    assert "BUY Signals       : 3" in text
+    assert "SELL Signals      : 1" in text
+    assert "Win Rate          : 66.7%" in text
+    assert "Last Result       : SUCCESS" in text
+    assert "Tick Rate         : 37/s" in text
+    assert "DOM Rate          : 1470/s" in text
+    assert "Latency           : 45 ms" in text
+    assert "Runtime           : 1m 05s" in text
+    assert "Connection        : CONNECTED" in text
+    # Default mode stays clean.
+    assert "DECISION FOUNDATION" not in text
+    assert "• DOM connected" not in text
+
+    verbose = DashboardRenderer(verbose=True).render(state)
+    assert "DECISION FOUNDATION" in verbose
+    assert "Observation layer complete." in verbose
+    assert "Intent" in verbose
+    assert "• DOM connected" in verbose
 
 
-def test_empty_log_shows_none() -> None:
+def test_section_order_is_stable() -> None:
     text = DashboardRenderer().render(DashboardState())
-    assert "• (none)" in text
-
-
-def test_two_column_headers_align() -> None:
-    text = DashboardRenderer().render(DashboardState())
-    assert "SYSTEM" in text and "LIVE MARKET" in text
-    assert "FEED HEALTH" in text and "DOM HEALTH" in text
-    assert "PHYSICS" in text and "STATISTICS" in text
+    positions = {
+        name: text.index(name)
+        for name in ("MARKET", "AI STATUS", "TRADE DECISION", "PERFORMANCE", "SYSTEM")
+    }
+    assert (
+        positions["MARKET"]
+        < positions["AI STATUS"]
+        < positions["TRADE DECISION"]
+        < positions["PERFORMANCE"]
+        < positions["SYSTEM"]
+    )

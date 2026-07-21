@@ -44,6 +44,7 @@ class DashboardApp:
         poll_seconds: float = DEFAULT_POLL_SECONDS,
         sleep_fn: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        verbose: bool = False,
     ) -> None:
         self._refresh_seconds = clamp_refresh_seconds(refresh_seconds)
         if poll_seconds <= 0:
@@ -51,7 +52,7 @@ class DashboardApp:
         self._controller = controller or DashboardController()
         self._ingress = ingress
         self._dom_ingress = dom_ingress
-        self._renderer = renderer or DashboardRenderer()
+        self._renderer = renderer or DashboardRenderer(verbose=verbose)
         self._display = display or TerminalDisplay()
         self._poll_seconds = poll_seconds
         self._sleep = sleep_fn
@@ -178,6 +179,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=DEFAULT_STALE_SECONDS,
         help=f"Seconds without updates before connection lost (default: {DEFAULT_STALE_SECONDS})",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show developer/pipeline details on the dashboard",
+    )
     return parser
 
 
@@ -197,6 +203,7 @@ def main(argv: list[str] | None = None) -> int:
         dom_ingress=LiveDomIngress(dom_path, expected_symbol=args.symbol),
         refresh_seconds=args.refresh,
         poll_seconds=args.poll,
+        verbose=args.verbose,
     )
     return app.run()
 

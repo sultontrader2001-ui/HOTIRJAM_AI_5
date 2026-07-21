@@ -107,12 +107,15 @@ def test_app_runs_limited_frames_without_fake_market_data() -> None:
     code = app.run(max_frames=2)
     assert code == 0
     output = buffer.getvalue()
-    assert "HOTIRJAM AI 5" in output
-    assert "Price  : —" in output
-    assert "Conn   : CONNECTING" in output
-    assert "FEED HEALTH" in output
-    assert "DOM HEALTH" in output
-    assert "MARKET ANALYSIS" in output
+    assert "HOTIRJAM AI 5 LIVE" in output
+    assert "Price             : —" in output
+    assert "Connection        : CONNECTING" in output
+    assert "MARKET" in output
+    assert "AI STATUS" in output
+    assert "TRADE DECISION" in output
+    assert "PERFORMANCE" in output
+    assert "SYSTEM" in output
+    assert "DECISION FOUNDATION" not in output
 
 
 def test_app_updates_from_live_ingress(tmp_path: Path) -> None:
@@ -148,11 +151,11 @@ def test_app_updates_from_live_ingress(tmp_path: Path) -> None:
     code = app.run(max_frames=1)
     assert code == 0
     output = buffer.getvalue()
-    assert "Conn   : CONNECTED" in output
-    assert "Healthy" in output
-    assert "Price  : 20110.00" in output
-    assert "Tick Count: 1" in output
-    assert "Connected" in output
+    assert "Connection        : CONNECTED" in output
+    assert "Feed Health       : HEALTHY" in output
+    assert "Price             : 20110.00" in output
+    assert ">>>  " not in output or "Decision : NO_TRADE" in output
+    assert "DECISION FOUNDATION" not in output
     assert "Tick received" not in output
 
 
@@ -201,6 +204,12 @@ def test_cli_parser_defaults() -> None:
     assert args.dom_file is None
     assert args.stall_seconds == 2.0
     assert args.stale_seconds == 5.0
+    assert args.verbose is False
+
+
+def test_cli_parser_verbose_flag() -> None:
+    args = build_arg_parser().parse_args(["--verbose"])
+    assert args.verbose is True
 
 
 def test_main_runs_one_frame_via_monkeypatch(monkeypatch: pytest.MonkeyPatch) -> None:

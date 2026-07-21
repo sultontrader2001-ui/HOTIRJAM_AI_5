@@ -37,6 +37,7 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 30 | Internal BUY Activation (observation only) | Done |
 | 31 | Internal SELL Activation (observation only) | Done |
 | 32 | Performance Tracker + Multi-Timezone Logging | Done |
+| 33 | Professional Live Dashboard v2 | Done |
 
 **Out of scope still:** tradable BUY, SELL, order execution, broker connectivity,
 positions, risk
@@ -155,6 +156,13 @@ success/failed/win rate/average points plus last-signal times in UTC,
 America/New_York, and Asia/Tashkent. Completed evaluations append to
 `logs/performance_log.jsonl`. Never connects to a broker or modifies Trade
 Decision. Runs all day — not limited to the New York session.
+
+### Live Dashboard v2
+
+Default terminal layout is trading-focused: MARKET, AI STATUS, TRADE DECISION
+(emphasized), PERFORMANCE, and SYSTEM. NY/UZ wall times are always visible.
+Pipeline internals (foundation, intent, evaluation, reasons, explanation, LOG)
+appear only with `--verbose`. Refresh/poll cadence is unchanged.
 
 ### Test
 
