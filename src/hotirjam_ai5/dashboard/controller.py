@@ -289,7 +289,10 @@ class DashboardController:
         decision_intent = self._decision_intent.evaluate(decision_foundation)
         decision_evaluation = self._decision_evaluation.evaluate(decision_intent)
         decision_assessment = self._decision_assessment.evaluate(decision_evaluation)
-        trade_decision = self._trade_decision.evaluate(decision_assessment)
+        trade_decision = self._trade_decision.evaluate(
+            decision_assessment,
+            market_context,
+        )
         return DashboardState(
             system=SystemView(
                 engine_status=self._engine_status,

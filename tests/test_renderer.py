@@ -173,7 +173,7 @@ def test_render_with_real_market_and_health_values() -> None:
         ),
         trade_decision=TradeDecisionView(
             decision="NO_TRADE",
-            reason="BUY rule framework initialized.",
+            reason="BUY conditions satisfied. Awaiting activation.",
             next_action="Execution Engine",
         ),
         statistics=StatisticsView(
@@ -220,7 +220,7 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "Next  : Trade Decision Engine" in text
     assert "TRADE DECISION" in text
     assert "Decision: NO_TRADE" in text
-    assert "Reason  : BUY rule framework initialized." in text
+    assert "Reason  : BUY conditions satisfied. Awaiting activation." in text
     assert "Next    : Execution Engine" in text
     assert "• DOM connected" in text
 

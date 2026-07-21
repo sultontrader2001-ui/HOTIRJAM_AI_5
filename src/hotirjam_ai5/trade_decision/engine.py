@@ -6,6 +6,7 @@ import time
 from collections.abc import Callable
 
 from hotirjam_ai5.decision_assessment import DecisionAssessmentSnapshot
+from hotirjam_ai5.market_context import MarketContextSnapshot
 from hotirjam_ai5.trade_decision.models import TradeDecision, TradeDecisionSnapshot
 from hotirjam_ai5.trade_decision.policy import (
     NEXT_ACTION,
@@ -17,8 +18,8 @@ from hotirjam_ai5.trade_decision.policy import (
 class TradeDecisionEngine:
     """Orchestrates trade decision evaluation via the internal policy.
 
-    Consumes only DecisionAssessmentSnapshot.
-    Always returns NO_TRADE. Never places orders or connects to a broker.
+    Consumes DecisionAssessmentSnapshot and MarketContextSnapshot only.
+    Always returns NO_TRADE in Sprint 20. Never places orders or connects to a broker.
     """
 
     def __init__(self, *, clock: Callable[[], float] | None = None) -> None:
@@ -33,9 +34,14 @@ class TradeDecisionEngine:
     def evaluate(
         self,
         assessment: DecisionAssessmentSnapshot,
+        context: MarketContextSnapshot | None = None,
     ) -> TradeDecisionSnapshot:
         """Delegate decision logic to the internal policy."""
-        self._latest = evaluate_trade_decision(assessment, timestamp=self._clock())
+        self._latest = evaluate_trade_decision(
+            assessment,
+            context,
+            timestamp=self._clock(),
+        )
         return self._latest
 
     def snapshot(self) -> TradeDecisionSnapshot:
@@ -45,8 +51,9 @@ class TradeDecisionEngine:
 
 def evaluate_trade_decision(
     assessment: DecisionAssessmentSnapshot,
+    context: MarketContextSnapshot | None = None,
     *,
     timestamp: float,
 ) -> TradeDecisionSnapshot:
     """Orchestration entry point that delegates to Decision Policy."""
-    return apply_trade_decision_policy(assessment, timestamp=timestamp)
+    return apply_trade_decision_policy(assessment, context, timestamp=timestamp)
