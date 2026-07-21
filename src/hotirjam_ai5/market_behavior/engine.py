@@ -6,6 +6,7 @@ import time
 from collections.abc import Callable
 
 from hotirjam_ai5.market_behavior.models import (
+    BehaviorDirection,
     BehaviorInputs,
     BehaviorSnapshot,
     MarketBehavior,
@@ -42,12 +43,28 @@ class MarketBehaviorEngine:
             behavior=behavior,
             reason=reason,
             timestamp=self._clock(),
+            direction=resolve_behavior_direction(behavior, inputs.tick_velocity),
         )
         return self._latest
 
     def snapshot(self) -> BehaviorSnapshot:
         """Return the latest behavior observation without re-evaluating."""
         return self._latest
+
+
+def resolve_behavior_direction(
+    behavior: MarketBehavior,
+    tick_velocity: float | None,
+) -> BehaviorDirection:
+    """Sign the behavior from tick velocity (Sprint 35).
+
+    UNKNOWN/UNSTABLE behaviors stay NEUTRAL — direction is meaningless there.
+    """
+    if behavior in (MarketBehavior.UNKNOWN, MarketBehavior.UNSTABLE):
+        return BehaviorDirection.NEUTRAL
+    if tick_velocity is None or tick_velocity == 0:
+        return BehaviorDirection.NEUTRAL
+    return BehaviorDirection.BUY if tick_velocity > 0 else BehaviorDirection.SELL
 
 
 def classify_behavior(inputs: BehaviorInputs) -> tuple[MarketBehavior, str]:

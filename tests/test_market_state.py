@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from hotirjam_ai5.market_state import (
+    MarketDirection,
     MarketState,
     MarketStateEngine,
     MarketStateInputs,
+    resolve_market_direction,
 )
 from hotirjam_ai5.market_state.classifier import classify_market_state
 
@@ -156,3 +158,23 @@ def test_classification_never_emits_trading_words() -> None:
         lowered = reason.lower()
         for word in banned:
             assert word.lower() not in lowered
+
+
+# --- Sprint 35 — signed market direction ---
+
+
+def test_direction_up_from_positive_velocity() -> None:
+    engine = MarketStateEngine(clock=lambda: 1.0)
+    snap = engine.evaluate(_inputs(tick_velocity=2.5))
+    assert snap.direction is MarketDirection.UP
+
+
+def test_direction_down_from_negative_velocity() -> None:
+    engine = MarketStateEngine(clock=lambda: 1.0)
+    snap = engine.evaluate(_inputs(tick_velocity=-2.5))
+    assert snap.direction is MarketDirection.DOWN
+
+
+def test_direction_neutral_when_velocity_missing_or_flat() -> None:
+    assert resolve_market_direction(None) is MarketDirection.NEUTRAL
+    assert resolve_market_direction(0.0) is MarketDirection.NEUTRAL

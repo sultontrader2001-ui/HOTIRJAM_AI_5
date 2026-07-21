@@ -36,3 +36,6 @@ class MarketContextSnapshot:
     tick_rate: float
     spread: float | None
     summary: str
+    # Sprint 35 — signed directions (UP/DOWN/NEUTRAL and BUY/SELL/NEUTRAL).
+    state_direction: str = "NEUTRAL"
+    behavior_direction: str = "NEUTRAL"

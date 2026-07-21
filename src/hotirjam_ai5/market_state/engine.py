@@ -7,10 +7,18 @@ from collections.abc import Callable
 
 from hotirjam_ai5.market_state.classifier import classify_market_state
 from hotirjam_ai5.market_state.models import (
+    MarketDirection,
     MarketState,
     MarketStateInputs,
     MarketStateSnapshot,
 )
+
+
+def resolve_market_direction(tick_velocity: float | None) -> MarketDirection:
+    """Sign the market state from tick velocity (Sprint 35)."""
+    if tick_velocity is None or tick_velocity == 0:
+        return MarketDirection.NEUTRAL
+    return MarketDirection.UP if tick_velocity > 0 else MarketDirection.DOWN
 
 
 class MarketStateEngine:
@@ -34,6 +42,7 @@ class MarketStateEngine:
             state=state,
             reason=reason,
             timestamp=self._clock(),
+            direction=resolve_market_direction(inputs.tick_velocity),
         )
         return self._latest
 

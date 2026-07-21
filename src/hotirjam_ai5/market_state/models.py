@@ -20,6 +20,17 @@ class MarketState(StrEnum):
     VOLATILE = "VOLATILE"
 
 
+class MarketDirection(StrEnum):
+    """Signed direction of the current market state (Sprint 35).
+
+    Derived from tick velocity sign. NEUTRAL when velocity is missing or flat.
+    """
+
+    UP = "UP"
+    DOWN = "DOWN"
+    NEUTRAL = "NEUTRAL"
+
+
 @dataclass(frozen=True, slots=True)
 class MarketStateInputs:
     """Read-only observation inputs from existing dashboard snapshots."""
@@ -42,3 +53,4 @@ class MarketStateSnapshot:
     state: MarketState
     reason: str
     timestamp: float
+    direction: MarketDirection = MarketDirection.NEUTRAL

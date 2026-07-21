@@ -38,12 +38,17 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 31 | Internal SELL Activation (observation only) | Done |
 | 32 | Performance Tracker + Multi-Timezone Logging | Done |
 | 33 | Professional Live Dashboard v2 | Done |
+| 34 | Full Decision Architecture Audit (audit only) | Done |
+| 35 | Signed Market State & Behavior | Done |
 
 **Out of scope still:** tradable BUY, SELL, order execution, broker connectivity,
 positions, risk
 
 Market/DOM/physics fields show `—` until enough live updates exist. No synthetic data.
-Market State is observation-only (UNKNOWN / QUIET / NORMAL / ACTIVE / TRENDING / VOLATILE).
+Market State is observation-only (UNKNOWN / QUIET / NORMAL / ACTIVE / TRENDING / VOLATILE)
+with a signed direction (UP / DOWN / NEUTRAL) derived from tick velocity (Sprint 35).
+Market Behavior carries a signed direction (BUY / SELL / NEUTRAL); directional
+state/behavior award score points to one side only — NEUTRAL awards neither.
 Market Transition retrospectively reports state changes; it does not forecast.
 Market Behavior describes how the market is behaving; it does not advise trades.
 Market Context aggregates observation layers into one immutable snapshot.

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from hotirjam_ai5.market_behavior import (
+    BehaviorDirection,
     BehaviorInputs,
     MarketBehavior,
     MarketBehaviorEngine,
     classify_behavior,
+    resolve_behavior_direction,
 )
 from hotirjam_ai5.market_state import MarketState
 
@@ -171,3 +173,53 @@ def test_behavior_never_emits_trading_words() -> None:
         lowered = reason.lower()
         for word in banned:
             assert word.lower() not in lowered
+
+
+# --- Sprint 35 — signed behavior direction ---
+
+
+def test_behavior_direction_buy_from_positive_velocity() -> None:
+    engine = MarketBehaviorEngine(clock=lambda: 1.0)
+    snap = engine.evaluate(
+        _inputs(
+            market_state=MarketState.ACTIVE,
+            tick_rate=6.0,
+            tick_velocity=1.5,
+            tick_acceleration=1.2,
+        )
+    )
+    assert snap.behavior is MarketBehavior.ACCELERATING
+    assert snap.direction is BehaviorDirection.BUY
+
+
+def test_behavior_direction_sell_from_negative_velocity() -> None:
+    engine = MarketBehaviorEngine(clock=lambda: 1.0)
+    snap = engine.evaluate(
+        _inputs(
+            market_state=MarketState.ACTIVE,
+            tick_rate=6.0,
+            tick_velocity=-1.5,
+            tick_acceleration=1.2,
+        )
+    )
+    assert snap.behavior is MarketBehavior.ACCELERATING
+    assert snap.direction is BehaviorDirection.SELL
+
+
+def test_behavior_direction_neutral_for_unstable_or_flat() -> None:
+    assert (
+        resolve_behavior_direction(MarketBehavior.UNSTABLE, 5.0)
+        is BehaviorDirection.NEUTRAL
+    )
+    assert (
+        resolve_behavior_direction(MarketBehavior.UNKNOWN, 5.0)
+        is BehaviorDirection.NEUTRAL
+    )
+    assert (
+        resolve_behavior_direction(MarketBehavior.STABLE, None)
+        is BehaviorDirection.NEUTRAL
+    )
+    assert (
+        resolve_behavior_direction(MarketBehavior.STABLE, 0.0)
+        is BehaviorDirection.NEUTRAL
+    )

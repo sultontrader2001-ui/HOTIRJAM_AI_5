@@ -22,6 +22,17 @@ class MarketBehavior(StrEnum):
     UNSTABLE = "UNSTABLE"
 
 
+class BehaviorDirection(StrEnum):
+    """Signed direction of the current behavior (Sprint 35).
+
+    Derived from tick velocity sign. NEUTRAL when velocity is missing or flat.
+    """
+
+    BUY = "BUY"
+    SELL = "SELL"
+    NEUTRAL = "NEUTRAL"
+
+
 @dataclass(frozen=True, slots=True)
 class BehaviorInputs:
     """Read-only inputs assembled from existing snapshots."""
@@ -46,3 +57,4 @@ class BehaviorSnapshot:
     behavior: MarketBehavior
     reason: str
     timestamp: float
+    direction: BehaviorDirection = BehaviorDirection.NEUTRAL

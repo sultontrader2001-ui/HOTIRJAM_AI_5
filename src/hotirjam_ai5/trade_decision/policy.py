@@ -83,6 +83,36 @@ _HEALTHY_FEED: Final[str] = "HEALTHY"
 _BUY_BIAS: Final[str] = LiquidityBias.BUY.value
 _SELL_BIAS: Final[str] = LiquidityBias.SELL.value
 
+# Sprint 35 — signed direction values from Market State / Behavior.
+_STATE_DIRECTION_UP: Final[str] = "UP"
+_STATE_DIRECTION_DOWN: Final[str] = "DOWN"
+_BEHAVIOR_DIRECTION_BUY: Final[str] = "BUY"
+_BEHAVIOR_DIRECTION_SELL: Final[str] = "SELL"
+
+
+def _state_qualifies(context: MarketContextSnapshot, *, side: str) -> bool:
+    """Directional market-state check (Sprint 35).
+
+    Eligible regime AND matching sign. NEUTRAL direction awards neither side.
+    """
+    if context.state not in _ELIGIBLE_STATES:
+        return False
+    expected = _STATE_DIRECTION_DOWN if side == "SELL" else _STATE_DIRECTION_UP
+    return context.state_direction == expected
+
+
+def _behavior_qualifies(context: MarketContextSnapshot, *, side: str) -> bool:
+    """Directional behavior check (Sprint 35).
+
+    Eligible behavior AND matching sign. NEUTRAL direction awards neither side.
+    """
+    if context.behavior not in _ELIGIBLE_BEHAVIORS:
+        return False
+    expected = (
+        _BEHAVIOR_DIRECTION_SELL if side == "SELL" else _BEHAVIOR_DIRECTION_BUY
+    )
+    return context.behavior_direction == expected
+
 
 def format_buy_score_reason(score: int) -> str:
     """Format the NO_TRADE reason for a computed BUY score."""
@@ -228,9 +258,9 @@ def compute_buy_score(
     if context is not None:
         if context.feed_status == _HEALTHY_FEED:
             feed_pts = POINTS_FEED_HEALTH
-        if context.state in _ELIGIBLE_STATES:
+        if _state_qualifies(context, side="BUY"):
             state_pts = POINTS_MARKET_STATE
-        if context.behavior in _ELIGIBLE_BEHAVIORS:
+        if _behavior_qualifies(context, side="BUY"):
             behavior_pts = POINTS_BEHAVIOR
 
     physics_pts = 0
@@ -284,9 +314,8 @@ def compute_buy_confidence(
     if context is not None:
         if context.feed_status == _HEALTHY_FEED:
             feed_pts = CONF_FEED_RELIABILITY
-        if (
-            context.state in _ELIGIBLE_STATES
-            and context.behavior in _ELIGIBLE_BEHAVIORS
+        if _state_qualifies(context, side="BUY") and _behavior_qualifies(
+            context, side="BUY"
         ):
             market_pts = CONF_MARKET_STABILITY
 
@@ -338,9 +367,9 @@ def compute_sell_score(
     if context is not None:
         if context.feed_status == _HEALTHY_FEED:
             feed_pts = POINTS_FEED_HEALTH
-        if context.state in _ELIGIBLE_STATES:
+        if _state_qualifies(context, side="SELL"):
             state_pts = POINTS_MARKET_STATE
-        if context.behavior in _ELIGIBLE_BEHAVIORS:
+        if _behavior_qualifies(context, side="SELL"):
             behavior_pts = POINTS_BEHAVIOR
 
     physics_pts = 0
@@ -391,9 +420,8 @@ def compute_sell_confidence(
     if context is not None:
         if context.feed_status == _HEALTHY_FEED:
             feed_pts = CONF_FEED_RELIABILITY
-        if (
-            context.state in _ELIGIBLE_STATES
-            and context.behavior in _ELIGIBLE_BEHAVIORS
+        if _state_qualifies(context, side="SELL") and _behavior_qualifies(
+            context, side="SELL"
         ):
             market_pts = CONF_MARKET_STABILITY
 
@@ -451,8 +479,8 @@ def build_decision_explanation(
         behavior_status = ExplanationStatus.UNKNOWN
     else:
         feed_status = _status_from_bool(context.feed_status == _HEALTHY_FEED)
-        state_status = _status_from_bool(context.state in _ELIGIBLE_STATES)
-        behavior_status = _status_from_bool(context.behavior in _ELIGIBLE_BEHAVIORS)
+        state_status = _status_from_bool(_state_qualifies(context, side=side))
+        behavior_status = _status_from_bool(_behavior_qualifies(context, side=side))
 
     if physics is None:
         physics_status = ExplanationStatus.UNKNOWN
@@ -587,8 +615,8 @@ def matches_buy_strategy(
         return False
     return (
         context.feed_status == _HEALTHY_FEED
-        and context.state in _ELIGIBLE_STATES
-        and context.behavior in _ELIGIBLE_BEHAVIORS
+        and _state_qualifies(context, side="BUY")
+        and _behavior_qualifies(context, side="BUY")
         and velocity > 0
         and acceleration > 0
         and liquidity.liquidity_shift == _BUY_BIAS
@@ -610,8 +638,8 @@ def matches_sell_strategy(
         return False
     return (
         context.feed_status == _HEALTHY_FEED
-        and context.state in _ELIGIBLE_STATES
-        and context.behavior in _ELIGIBLE_BEHAVIORS
+        and _state_qualifies(context, side="SELL")
+        and _behavior_qualifies(context, side="SELL")
         and velocity < 0
         and acceleration < 0
         and liquidity.liquidity_shift == _SELL_BIAS

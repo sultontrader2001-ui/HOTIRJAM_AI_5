@@ -73,6 +73,8 @@ class MarketContextEngine:
             tick_rate=statistics.tick_rate,
             spread=physics.spread,
             summary=summary,
+            state_direction=market_state.direction.value,
+            behavior_direction=behavior.direction.value,
         )
         return self._latest
 

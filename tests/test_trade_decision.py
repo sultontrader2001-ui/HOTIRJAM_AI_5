@@ -16,6 +16,8 @@ from hotirjam_ai5.trade_decision import (
     build_decision_explanation,
     compute_buy_confidence,
     compute_buy_score,
+    compute_sell_confidence,
+    compute_sell_score,
     evaluate_trade_decision,
     is_buy_eligible,
 )
@@ -53,6 +55,8 @@ def _context(
     state: str = "ACTIVE",
     behavior: str = "STABLE",
     feed_status: str = "HEALTHY",
+    state_direction: str = "UP",
+    behavior_direction: str = "BUY",
 ) -> MarketContextSnapshot:
     return MarketContextSnapshot(
         timestamp=100.0,
@@ -70,6 +74,23 @@ def _context(
         tick_rate=8.0,
         spread=0.25,
         summary="ACTIVE market with STABLE behavior.",
+        state_direction=state_direction,
+        behavior_direction=behavior_direction,
+    )
+
+
+def _sell_context(
+    *,
+    state: str = "ACTIVE",
+    behavior: str = "STABLE",
+    feed_status: str = "HEALTHY",
+) -> MarketContextSnapshot:
+    return _context(
+        state=state,
+        behavior=behavior,
+        feed_status=feed_status,
+        state_direction="DOWN",
+        behavior_direction="SELL",
     )
 
 
@@ -578,7 +599,7 @@ def test_sell_ready_returns_sell_internal() -> None:
     history = ((88, 92), (90, 90))
     snap = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.READY),
-        _context(),
+        _sell_context(),
         _physics(velocity=-1.5, acceleration=-0.3),
         _liquidity(
             liquidity_shift=LiquidityBias.SELL.value,
@@ -599,7 +620,7 @@ def test_sell_ready_returns_sell_internal() -> None:
 def test_sell_not_ready_returns_no_trade() -> None:
     snap = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.READY),
-        _context(),
+        _sell_context(),
         _physics(velocity=-1.0, acceleration=-0.2),
         _liquidity(
             liquidity_shift=LiquidityBias.SELL.value,
@@ -630,7 +651,7 @@ def test_buy_vs_sell_priority_prefers_ready_sell() -> None:
     history = ((90, 90), (91, 91))
     snap = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.READY),
-        _context(),
+        _sell_context(),
         _physics(velocity=-2.0, acceleration=-0.4),
         _liquidity(
             liquidity_shift=LiquidityBias.SELL.value,
@@ -658,7 +679,7 @@ def test_buy_and_sell_cannot_both_be_ready() -> None:
     )
     sell_snap = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.READY),
-        _context(),
+        _sell_context(),
         _physics(velocity=-1.0, acceleration=-0.2),
         _liquidity(
             liquidity_shift=LiquidityBias.SELL.value,
@@ -671,3 +692,101 @@ def test_buy_and_sell_cannot_both_be_ready() -> None:
     assert buy_snap.sell_decision_readiness.value != "READY"
     assert sell_snap.sell_decision_readiness.value == "READY"
     assert sell_snap.decision_readiness.value != "READY"
+
+
+# --- Sprint 35 — signed Market State & Behavior ---
+
+
+def test_up_trend_awards_buy_only() -> None:
+    assessment = _assessment(DecisionAssessmentState.BLOCKED)
+    context = _context(
+        state="TRENDING",
+        behavior="UNSTABLE",
+        state_direction="UP",
+    )
+    buy = compute_buy_score(assessment, context)
+    sell = compute_sell_score(assessment, context)
+    assert buy.market_state == POINTS_MARKET_STATE
+    assert sell.market_state == 0
+
+
+def test_down_trend_awards_sell_only() -> None:
+    assessment = _assessment(DecisionAssessmentState.BLOCKED)
+    context = _context(
+        state="TRENDING",
+        behavior="UNSTABLE",
+        state_direction="DOWN",
+    )
+    buy = compute_buy_score(assessment, context)
+    sell = compute_sell_score(assessment, context)
+    assert buy.market_state == 0
+    assert sell.market_state == POINTS_MARKET_STATE
+
+
+def test_buy_accelerating_awards_buy_only() -> None:
+    assessment = _assessment(DecisionAssessmentState.BLOCKED)
+    context = _context(
+        state="QUIET",
+        behavior="ACCELERATING",
+        behavior_direction="BUY",
+    )
+    buy = compute_buy_score(assessment, context)
+    sell = compute_sell_score(assessment, context)
+    assert buy.behavior == POINTS_BEHAVIOR
+    assert sell.behavior == 0
+
+
+def test_sell_accelerating_awards_sell_only() -> None:
+    assessment = _assessment(DecisionAssessmentState.BLOCKED)
+    context = _context(
+        state="QUIET",
+        behavior="ACCELERATING",
+        behavior_direction="SELL",
+    )
+    buy = compute_buy_score(assessment, context)
+    sell = compute_sell_score(assessment, context)
+    assert buy.behavior == 0
+    assert sell.behavior == POINTS_BEHAVIOR
+
+
+def test_neutral_direction_awards_neither_side() -> None:
+    assessment = _assessment(DecisionAssessmentState.BLOCKED)
+    context = _context(
+        state="TRENDING",
+        behavior="STABLE",
+        state_direction="NEUTRAL",
+        behavior_direction="NEUTRAL",
+    )
+    buy = compute_buy_score(assessment, context)
+    sell = compute_sell_score(assessment, context)
+    assert buy.market_state == 0
+    assert buy.behavior == 0
+    assert sell.market_state == 0
+    assert sell.behavior == 0
+
+
+def test_directional_context_separates_buy_and_sell_scores() -> None:
+    """Sprint 34 finding: shared regime no longer produces equal full scores."""
+    assessment = _assessment(DecisionAssessmentState.READY)
+    context = _context(state_direction="UP", behavior_direction="BUY")
+    physics = _physics(velocity=1.0, acceleration=0.2)
+    liquidity = _liquidity()
+    buy = compute_buy_score(assessment, context, physics, liquidity)
+    sell = compute_sell_score(assessment, context, physics, liquidity)
+    assert buy.total == 100
+    assert sell.total == 35  # assessment + feed only
+    assert buy.total != sell.total
+
+
+def test_confidence_market_stability_is_directional() -> None:
+    assessment = _assessment(DecisionAssessmentState.BLOCKED)
+    up = _context(state_direction="UP", behavior_direction="BUY")
+    down = _context(state_direction="DOWN", behavior_direction="SELL")
+    assert compute_buy_confidence(assessment, up).market_stability == (
+        CONF_MARKET_STABILITY
+    )
+    assert compute_sell_confidence(assessment, up).market_stability == 0
+    assert compute_buy_confidence(assessment, down).market_stability == 0
+    assert compute_sell_confidence(assessment, down).market_stability == (
+        CONF_MARKET_STABILITY
+    )
