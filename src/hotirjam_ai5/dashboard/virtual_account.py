@@ -16,6 +16,7 @@ from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from hotirjam_ai5.dashboard.lifetime_stats import PersistedSignal, trading_day_ny
+from hotirjam_ai5.trade_planning.models import TradePlan, TradePlanStatus
 
 NEW_YORK = ZoneInfo("America/New_York")
 UTC = timezone.utc
@@ -138,6 +139,29 @@ class AccountTrade:
             pnl_usd=config.points_to_pnl(signal.points),
             result=signal.result,
             duration_seconds=signal.duration_seconds,
+        )
+
+    @classmethod
+    def from_trade_plan(cls, plan: TradePlan, config: VirtualAccountConfig) -> AccountTrade:
+        """Build an account trade from a CLOSED Trade Plan (TP/SL outcome)."""
+        if plan.status is not TradePlanStatus.CLOSED:
+            raise ValueError("only CLOSED trade plans can update the virtual account")
+        if plan.closed_at is None or plan.points is None:
+            raise ValueError("closed plan requires closed_at and points")
+        result = plan.result.value if plan.result.value in ("WIN", "LOSS") else "BREAKEVEN"
+        entry_epoch = plan.activated_at if plan.activated_at is not None else plan.created_at
+        return cls(
+            signal_id=f"plan:{plan.plan_id}",
+            trading_day=trading_day_ny(entry_epoch),
+            trading_week=trading_week_ny(entry_epoch),
+            trading_month=trading_month_ny(entry_epoch),
+            direction=plan.direction.value,
+            entry_time_epoch=entry_epoch,
+            exit_time_epoch=plan.closed_at,
+            points=float(plan.points),
+            pnl_usd=config.points_to_pnl(float(plan.points)),
+            result=result,
+            duration_seconds=max(0.0, plan.closed_at - entry_epoch),
         )
 
 
@@ -343,8 +367,24 @@ class VirtualAccountStore:
             for signal in signals:
                 if signal.signal_id in self._trade_ids:
                     continue
-                # Skip pure breakeven-zero if desired? Keep all completed results.
                 trade = AccountTrade.from_signal(signal, self._config)
+                self._trades.append(trade)
+                self._trade_ids.add(trade.signal_id)
+                changed = True
+            if changed:
+                self._dirty = True
+
+    def sync_from_trade_plans(self, plans: Sequence[TradePlan]) -> None:
+        """Append CLOSED trade plans (TP/SL) as virtual dollar trades."""
+        with self._lock:
+            changed = False
+            for plan in plans:
+                if plan.status is not TradePlanStatus.CLOSED:
+                    continue
+                trade_id = f"plan:{plan.plan_id}"
+                if trade_id in self._trade_ids:
+                    continue
+                trade = AccountTrade.from_trade_plan(plan, self._config)
                 self._trades.append(trade)
                 self._trade_ids.add(trade.signal_id)
                 changed = True

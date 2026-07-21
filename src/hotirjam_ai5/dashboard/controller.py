@@ -24,6 +24,10 @@ from hotirjam_ai5.dashboard.virtual_account import (
     VirtualAccountStore,
     default_account_path,
 )
+from hotirjam_ai5.trade_planning import TradePlanningEngine, TradePlanningConfig
+from hotirjam_ai5.trade_planning.models import TradePlan, TradePlanStatus
+from hotirjam_ai5.position_lock import PositionLockManager
+from hotirjam_ai5.position_lock.models import PositionLockSnapshot
 from hotirjam_ai5.dashboard.models import (
     AccountStatusView,
     ConnectionStatus,
@@ -58,6 +62,8 @@ from hotirjam_ai5.dashboard.models import (
     SystemPanelView,
     SystemView,
     TradeDecisionView,
+    TradePlanView,
+    PositionStatusView,
 )
 from hotirjam_ai5.dashboard.signal_log import SignalLogWriter
 from hotirjam_ai5.dashboard.statistics import SessionStatistics
@@ -141,6 +147,11 @@ class DashboardController:
         virtual_account: VirtualAccountStore | None = None,
         virtual_account_path: Path | str | None = None,
         virtual_account_config: VirtualAccountConfig | None = None,
+        trade_planning: TradePlanningEngine | None = None,
+        trade_planning_path: Path | str | None = None,
+        trade_planning_config: TradePlanningConfig | None = None,
+        position_lock: PositionLockManager | None = None,
+        blocked_signals_path: Path | str | None = None,
         stale_seconds: float = DEFAULT_DISCONNECT_SECONDS,
         stall_seconds: float = DEFAULT_STALL_SECONDS,
         clock: Callable[[], float] | None = None,
@@ -222,7 +233,28 @@ class DashboardController:
                 account_path,
                 config=virtual_account_config,
             )
+        if trade_planning is not None:
+            self._trade_planning = trade_planning
+        else:
+            plan_path = (
+                Path(trade_planning_path)
+                if trade_planning_path is not None
+                else Path("logs") / "trade_plans.json"
+            )
+            self._trade_planning = TradePlanningEngine(
+                config=trade_planning_config,
+                clock=wall_clock or time.time,
+                path=plan_path,
+            )
+        self._position_lock = position_lock or PositionLockManager(
+            clock=wall_clock or time.time,
+            blocked_log_path=blocked_signals_path,
+        )
+        # Re-sync lock with any restored ACTIVE plan from disk.
+        if self._trade_planning.active_plan is not None:
+            self._position_lock.on_plan_activated(self._trade_planning.active_plan)
         self._wall_clock = wall_clock or time.time
+        self._last_planning_decision: str | None = None
         self._previous_market_state: MarketStateSnapshot | None = None
         self._engine_status = EngineStatus.STARTING
         self._connection_status = ConnectionStatus.DISCONNECTED
@@ -278,6 +310,14 @@ class DashboardController:
         PhysicsAdapter.record(
             self._memory, physics, timestamp=tick.timestamp
         )
+        self._trade_planning.record_price(
+            tick.last_price, velocity=physics.tick_velocity
+        )
+        closed = self._trade_planning.update_price(
+            current_price=tick.last_price, timestamp=tick.timestamp
+        )
+        for plan in closed:
+            self._position_lock.on_plan_closed(plan, timestamp=tick.timestamp)
         self._statistics.record_tick()
         self._connection_status = ConnectionStatus.CONNECTED
         self._market_status = MarketStatus.OPEN
@@ -459,7 +499,56 @@ class DashboardController:
             current_price=self._market.last_price,
             timestamp=trade_decision.timestamp,
         )
+        # Close ACTIVE plans on TP/SL before gating a new plan.
+        closed_now = self._trade_planning.update_price(
+            current_price=self._market.last_price,
+            timestamp=trade_decision.timestamp,
+        )
+        for closed_plan in closed_now:
+            self._position_lock.on_plan_closed(
+                closed_plan, timestamp=trade_decision.timestamp
+            )
+        # Position Lock gates new Trade Plans; market analysis continues.
         decision_value = trade_decision.decision.value
+        allow_new = self._position_lock.allows_new_plan()
+        is_edge = decision_value != self._last_planning_decision
+        if (
+            decision_value
+            in (
+                TradeDecision.BUY_INTERNAL.value,
+                TradeDecision.SELL_INTERNAL.value,
+            )
+            and is_edge
+            and not allow_new
+        ):
+            active = self._trade_planning.active_plan
+            active_id = (
+                active.plan_id
+                if active is not None
+                else (self._position_lock.active_trade_id or "--")
+            )
+            direction = (
+                "BUY"
+                if trade_decision.decision is TradeDecision.BUY_INTERNAL
+                else "SELL"
+            )
+            self._position_lock.record_blocked(
+                direction=direction,
+                active_trade_id=active_id,
+                timestamp=trade_decision.timestamp,
+            )
+        planned = self._trade_planning.observe(
+            trade_decision,
+            current_price=self._market.last_price,
+            timestamp=trade_decision.timestamp,
+            velocity=physics_snapshot.tick_velocity,
+            allow_new=allow_new,
+        )
+        self._last_planning_decision = decision_value
+        if planned is not None and planned.status is TradePlanStatus.ACTIVE:
+            self._position_lock.on_plan_activated(
+                planned, timestamp=trade_decision.timestamp
+            )
         if recorded is not None:
             side = (
                 "BUY"
@@ -477,7 +566,8 @@ class DashboardController:
         self._last_lifetime_decision = decision_value
         self._lifetime.sync_completed(self._performance, self._entry_timing)
         self._lifetime.flush()
-        self._account.sync_from_signals(self._lifetime.completed_signals)
+        # Virtual account updates from Trade Plan TP/SL closes (Sprint 49).
+        self._account.sync_from_trade_plans(self._trade_planning.closed_plans)
         self._account.flush()
         now_epoch = self._wall_clock()
         lifetime_views = self._lifetime.build_views(
@@ -647,6 +737,14 @@ class DashboardController:
                 tashkent=display_clock.tashkent,
             ),
             memory_panel=_memory_panel_view(memory_report),
+            trade_plan=_trade_plan_view(self._trade_planning.current_view_plan()),
+            position_status=_position_status_view(
+                self._position_lock.snapshot(
+                    plan=self._trade_planning.active_plan,
+                    current_price=self._market.last_price,
+                    now=now_epoch,
+                )
+            ),
             account_status=_account_status_view(account_snapshot),
             last_signal=_last_signal_view(
                 records,
@@ -786,6 +884,52 @@ class DashboardController:
             f"liquidity=shift:{shift},imbalance:{imbalance}"
             f"{memory_part}"
         )
+
+
+def _format_lock_duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "--"
+    total = max(0, int(round(seconds)))
+    minutes, secs = divmod(total, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m {secs:02d}s"
+    if minutes:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
+
+
+def _position_status_view(snapshot: PositionLockSnapshot) -> PositionStatusView:
+    return PositionStatusView(
+        status=snapshot.display_status.value,
+        current_trade_id=snapshot.active_trade_id or "--",
+        entry=snapshot.entry,
+        current_pnl=snapshot.current_pnl,
+        duration=_format_lock_duration(snapshot.duration_seconds),
+        distance_to_sl=snapshot.distance_to_sl,
+        distance_to_tp=snapshot.distance_to_tp,
+        new_signals=snapshot.new_signals.value,
+        blocked_signals=snapshot.blocked_signals,
+        blocked_buy=snapshot.blocked_buy,
+        blocked_sell=snapshot.blocked_sell,
+        average_active_duration=_format_lock_duration(snapshot.average_active_duration),
+    )
+
+
+def _trade_plan_view(plan: TradePlan | None) -> TradePlanView:
+    """Map an active/latest Trade Plan into the TRADE PLAN panel."""
+    if plan is None:
+        return TradePlanView()
+    return TradePlanView(
+        direction=plan.direction.value,
+        entry=plan.entry_price,
+        stop_loss=plan.stop_loss,
+        take_profit=plan.take_profit,
+        risk=plan.risk_points,
+        reward=plan.reward_points,
+        risk_reward=plan.risk_reward,
+        status=plan.status.value,
+    )
 
 
 def _account_status_view(snapshot: AccountStatusSnapshot) -> AccountStatusView:

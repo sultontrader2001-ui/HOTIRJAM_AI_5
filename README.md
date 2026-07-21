@@ -53,6 +53,8 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 46 | Lifetime Performance Dashboard | Done |
 | 47 | Virtual 50K Prop Account Dashboard | Done |
 | 48 | Professional Dual Column Dashboard | Done |
+| 49 | Trade Planning Engine v1 | Done |
+| 50 | Position Lock Manager | Done |
 
 **Out of scope still:** tradable BUY, SELL, order execution, broker connectivity,
 positions, risk
@@ -102,6 +104,12 @@ Professional Dual-Column Dashboard (Sprint 48): layout-only redesign. Terminal w
 ≥160 → two columns (MARKET/AI/TRADE/MEMORY | TODAY/LIFETIME/ACCOUNT/SYSTEM) with
 SIGNAL HISTORY full-width below; narrower terminals keep single-column fallback.
 Unicode box drawing; no trading-logic changes.
+Trade Planning Engine v1 (Sprint 49): after BUY_INTERNAL / SELL_INTERNAL, builds a
+Trade Plan (entry / SL / TP / RR) for the dashboard. Closes on TP→Win or SL→Loss and
+updates the virtual account. No broker, no order placement. Decision Engine unchanged.
+Position Lock Manager (Sprint 50): at most one ACTIVE Trade Plan. New INTERNAL signals
+are blocked (logged) while a plan is ACTIVE; unlocks to IDLE after TP/SL. Dashboard
+POSITION STATUS panel. Decision / Memory / Physics / Liquidity unchanged.
 
 ### Requirements
 
@@ -211,11 +219,11 @@ Never connects to a broker or modifies Trade Decision.
 
 ### Live Dashboard v2
 
-Default terminal layout (Sprint 48): dual-column when width ≥160 — left MARKET /
-AI STATUS / TRADE DECISION / MEMORY; right TODAY / LIFETIME / ACCOUNT STATUS /
-SYSTEM; SIGNAL HISTORY full width at the bottom. Narrower terminals use a single
-column stack. Unicode box panels; NY/UZ wall times always visible. Pipeline
-internals appear only with `--verbose`.
+Default terminal layout (Sprint 48–50): dual-column when width ≥160 — left MARKET /
+AI STATUS / TRADE DECISION / TRADE PLAN / POSITION STATUS / MEMORY; right TODAY /
+LIFETIME / ACCOUNT STATUS / SYSTEM; SIGNAL HISTORY full width at the bottom.
+Narrower terminals use a single column stack. Unicode box panels; NY/UZ wall times
+always visible. Pipeline internals appear only with `--verbose`.
 
 ### Test
 

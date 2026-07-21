@@ -239,6 +239,8 @@ class DashboardRenderer:
                 self._market_panel(state, col_w),
                 self._ai_status_panel(state, col_w),
                 self._trade_decision_panel(state, col_w),
+                self._trade_plan_panel(state, col_w),
+                self._position_status_panel(state, col_w),
                 self._memory_panel(state.memory_panel, col_w),
             ]
         )
@@ -261,6 +263,8 @@ class DashboardRenderer:
                 self._market_panel(state, cols),
                 self._ai_status_panel(state, cols),
                 self._trade_decision_panel(state, cols),
+                self._trade_plan_panel(state, cols),
+                self._position_status_panel(state, cols),
                 self._memory_panel(state.memory_panel, cols),
                 self._today_panel(state, cols),
                 self._lifetime_panel(state, cols),
@@ -365,6 +369,44 @@ class DashboardRenderer:
                 ("Memory Agreement %", _format_pct(trade.memory_agreement)),
                 ("Memory Persistence %", _format_pct(trade.memory_persistence)),
                 ("Signal Stability", stability),
+            ],
+            width,
+        )
+
+    def _trade_plan_panel(self, state: DashboardState, width: int) -> list[str]:
+        plan = state.trade_plan
+        return _panel(
+            "TRADE PLAN",
+            [
+                ("Direction", plan.direction or MISSING),
+                ("Entry", _format_price(plan.entry)),
+                ("Stop Loss", _format_price(plan.stop_loss)),
+                ("Take Profit", _format_price(plan.take_profit)),
+                ("Risk", _format_points(plan.risk)),
+                ("Reward", _format_points(plan.reward)),
+                ("RR", _format_points(plan.risk_reward)),
+                ("Trade Status", plan.status or MISSING),
+            ],
+            width,
+        )
+
+    def _position_status_panel(self, state: DashboardState, width: int) -> list[str]:
+        pos = state.position_status
+        return _panel(
+            "POSITION STATUS",
+            [
+                ("Status", pos.status or MISSING),
+                ("Current Trade", pos.current_trade_id or MISSING),
+                ("Entry", _format_price(pos.entry)),
+                ("Current P/L", _format_signed_points(pos.current_pnl)),
+                ("Duration", pos.duration or MISSING),
+                ("Distance to SL", _format_signed_points(pos.distance_to_sl)),
+                ("Distance to TP", _format_signed_points(pos.distance_to_tp)),
+                ("New Signals", pos.new_signals or MISSING),
+                ("Blocked Signals", _format_int(pos.blocked_signals)),
+                ("Blocked BUY", _format_int(pos.blocked_buy)),
+                ("Blocked SELL", _format_int(pos.blocked_sell)),
+                ("Avg Active Duration", pos.average_active_duration or MISSING),
             ],
             width,
         )

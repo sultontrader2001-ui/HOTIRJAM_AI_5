@@ -206,6 +206,8 @@ def test_render_includes_professional_sections() -> None:
     assert "MARKET" in text
     assert "AI STATUS" in text
     assert "TRADE DECISION" in text
+    assert "TRADE PLAN" in text
+    assert "POSITION STATUS" in text
     assert "MEMORY" in text
     assert "ACCOUNT STATUS" in text
     assert "TODAY" in text

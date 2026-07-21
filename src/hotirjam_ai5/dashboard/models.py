@@ -421,6 +421,38 @@ class AccountStatusView:
 
 
 @dataclass(frozen=True, slots=True)
+class PositionStatusView:
+    """POSITION STATUS section — lock / active trade (Sprint 50)."""
+
+    status: str = "IDLE"  # IDLE | ACTIVE | BLOCKED
+    current_trade_id: str = "--"
+    entry: float | None = None
+    current_pnl: float | None = None
+    duration: str = "--"
+    distance_to_sl: float | None = None
+    distance_to_tp: float | None = None
+    new_signals: str = "ALLOWED"  # ALLOWED | BLOCKED
+    blocked_signals: int = 0
+    blocked_buy: int = 0
+    blocked_sell: int = 0
+    average_active_duration: str = "--"
+
+
+@dataclass(frozen=True, slots=True)
+class TradePlanView:
+    """TRADE PLAN section — presentation only (Sprint 49)."""
+
+    direction: str = "--"
+    entry: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    risk: float | None = None
+    reward: float | None = None
+    risk_reward: float | None = None
+    status: str = "--"
+
+
+@dataclass(frozen=True, slots=True)
 class LiquidityView:
     """Liquidity summary for AI STATUS (presentation only)."""
 
@@ -469,6 +501,8 @@ class DashboardState:
     liquidity: LiquidityView = field(default_factory=LiquidityView)
     display_clock: DisplayClockView = field(default_factory=DisplayClockView)
     memory_panel: MemoryPanelView = field(default_factory=MemoryPanelView)
+    trade_plan: TradePlanView = field(default_factory=TradePlanView)
+    position_status: PositionStatusView = field(default_factory=PositionStatusView)
     account_status: AccountStatusView = field(default_factory=AccountStatusView)
     last_signal: LastSignalView = field(default_factory=LastSignalView)
     system_panel: SystemPanelView = field(default_factory=SystemPanelView)
