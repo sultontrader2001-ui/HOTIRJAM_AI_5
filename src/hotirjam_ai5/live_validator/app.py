@@ -3,11 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import select
-import sys
-import termios
 import time
-import tty
 from collections.abc import Callable
 from pathlib import Path
 
@@ -16,6 +12,7 @@ from hotirjam_ai5.live_data.ingress import LiveTickIngress
 from hotirjam_ai5.live_data.paths import default_tick_path
 from hotirjam_ai5.live_validator.controller import LiveValidatorController
 from hotirjam_ai5.live_validator.display import render_validator_frame
+from hotirjam_ai5.live_validator.keyboard_input import KeyboardInput
 from hotirjam_ai5.live_validator.logger import SnapshotLogger
 from hotirjam_ai5.live_validator.pipeline import ArchitecturePipeline
 
@@ -58,6 +55,7 @@ class LiveValidatorApp:
         self._developer_mode = False
         self._last_tick_wall: float | None = None
         self._ticks_seen = 0
+        self._keyboard = KeyboardInput()
 
     @property
     def developer_mode(self) -> bool:
@@ -101,19 +99,8 @@ class LiveValidatorApp:
         return text
 
     def _poll_keyboard_toggle(self) -> None:
-        """Non-blocking D / d toggle when stdin is a TTY."""
-        if not sys.stdin.isatty():
-            return
-        try:
-            ready, _, _ = select.select([sys.stdin], [], [], 0)
-        except (OSError, ValueError):
-            return
-        if not ready:
-            return
-        try:
-            ch = sys.stdin.read(1)
-        except OSError:
-            return
+        """Non-blocking D / d toggle (cross-platform)."""
+        ch = self._keyboard.poll_key()
         if ch in {"d", "D"}:
             self.toggle_developer_mode()
 
@@ -122,13 +109,7 @@ class LiveValidatorApp:
         self._display.prepare()
         frames = 0
         last_render_at: float | None = None
-        old_term: list | None = None
-        if sys.stdin.isatty():
-            try:
-                old_term = termios.tcgetattr(sys.stdin)
-                tty.setcbreak(sys.stdin.fileno())
-            except (termios.error, OSError):
-                old_term = None
+        self._keyboard.enable()
         try:
             while max_frames is None or frames < max_frames:
                 self.poll_once()
@@ -146,11 +127,7 @@ class LiveValidatorApp:
         except KeyboardInterrupt:
             pass
         finally:
-            if old_term is not None:
-                try:
-                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_term)
-                except (termios.error, OSError):
-                    pass
+            self._keyboard.disable()
             self._display.shutdown()
         return 0
 
