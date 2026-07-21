@@ -167,6 +167,16 @@ class MarketBehaviorView:
 
 
 @dataclass(frozen=True, slots=True)
+class MarketContextView:
+    """MARKET CONTEXT section (Sprint 9) — aggregator only."""
+
+    summary: str = "Insufficient market context."
+    state: str = "UNKNOWN"
+    behavior: str = "UNKNOWN"
+    transition: str = "NONE"
+
+
+@dataclass(frozen=True, slots=True)
 class DashboardState:
     """Complete snapshot rendered each refresh cycle."""
 
@@ -179,5 +189,6 @@ class DashboardState:
     market_state: MarketStateView = field(default_factory=MarketStateView)
     market_transition: MarketTransitionView = field(default_factory=MarketTransitionView)
     market_behavior: MarketBehaviorView = field(default_factory=MarketBehaviorView)
+    market_context: MarketContextView = field(default_factory=MarketContextView)
     statistics: StatisticsView = field(default_factory=StatisticsView)
     events: Sequence[str] = ()

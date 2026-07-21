@@ -38,6 +38,7 @@ def test_default_state_has_no_fake_prices() -> None:
     assert state.market_transition.transition == "NONE"
     assert state.market_transition.changed is False
     assert state.market_behavior.behavior == "UNKNOWN"
+    assert state.market_context.summary == "Insufficient market context."
     assert state.statistics == StatisticsView()
     assert state.events == ()
 

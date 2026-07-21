@@ -71,6 +71,7 @@ class DashboardRenderer:
         market_state = state.market_state
         transition = state.market_transition
         behavior = state.market_behavior
+        context = state.market_context
         events = list(state.events) if state.events else ["(none)"]
 
         lines = [
@@ -125,6 +126,8 @@ class DashboardRenderer:
             "MARKET BEHAVIOR",
             f"- Behavior: {behavior.behavior}",
             f"- Reason: {behavior.reason}",
+            "MARKET CONTEXT",
+            f"- Summary: {context.summary}",
             "STATISTICS",
             f"- Tick Count: {stats.tick_count}",
             f"- Tick Rate: {_format_rate(stats.tick_rate)}",

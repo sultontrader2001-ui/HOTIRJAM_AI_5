@@ -14,6 +14,7 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 6 | Market State Engine v1 | Done |
 | 7 | Market Transition Engine v1 | Done |
 | 8 | Market Behavior Engine v1 | Done |
+| 9 | Market Context Engine v1 | Done |
 
 **Out of scope still:** momentum, decision, BUY/SELL, AI, risk
 
@@ -21,6 +22,7 @@ Market/DOM/physics fields show `—` until enough live updates exist. No synthet
 Market State is observation-only (UNKNOWN / QUIET / NORMAL / ACTIVE / TRENDING / VOLATILE).
 Market Transition retrospectively reports state changes; it does not forecast.
 Market Behavior describes how the market is behaving; it does not advise trades.
+Market Context aggregates observation layers into one immutable snapshot.
 
 ### Requirements
 
@@ -77,6 +79,12 @@ Observation-only description from existing state, transition, physics, and healt
 Behaviors: `UNKNOWN`, `STABLE`, `ACCELERATING`, `DECELERATING`, `BALANCED`, `UNSTABLE`.
 Does not emit BUY/SELL, entries, exits, risk, or confidence.
 
+### MARKET CONTEXT section
+
+Aggregates existing state, transition, behavior, health, physics, and statistics snapshots
+into one immutable `MarketContextSnapshot` with a concise descriptive summary.
+Does not predict, score, or recommend trades.
+
 ### Test
 
 ```bash
@@ -86,5 +94,5 @@ pytest
 ### Architecture (planned)
 
 ```
-NinjaTrader (NT01/NT04) → Live Data → Physics → Market State → Market Transition → Market Behavior → Momentum → Decision → Execution
+NinjaTrader (NT01/NT04) → Live Data → Physics → Market State → Market Transition → Market Behavior → Market Context → Momentum → Decision → Execution
 ```

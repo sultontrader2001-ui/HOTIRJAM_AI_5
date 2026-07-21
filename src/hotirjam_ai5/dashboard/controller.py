@@ -22,6 +22,7 @@ from hotirjam_ai5.dashboard.models import (
     FeedStatus,
     LiveMarketView,
     MarketBehaviorView,
+    MarketContextView,
     MarketStateView,
     MarketTransitionView,
     MarketStatus,
@@ -33,6 +34,10 @@ from hotirjam_ai5.dashboard.statistics import SessionStatistics
 from hotirjam_ai5.live_data.dom import DomSnapshot
 from hotirjam_ai5.live_data.tick import LiveTick
 from hotirjam_ai5.market_behavior import BehaviorInputs, MarketBehaviorEngine
+from hotirjam_ai5.market_context import (
+    MarketContextEngine,
+    StatisticsSnapshot as ContextStatisticsSnapshot,
+)
 from hotirjam_ai5.market_state import (
     MarketStateEngine,
     MarketStateInputs,
@@ -40,6 +45,7 @@ from hotirjam_ai5.market_state import (
 )
 from hotirjam_ai5.market_transition import MarketTransitionEngine
 from hotirjam_ai5.physics.engine import PhysicsEngine
+from hotirjam_ai5.physics.measurements import PhysicsSnapshot
 
 # Backward-compatible alias used by CLI / older call sites.
 DEFAULT_STALE_SECONDS = DEFAULT_DISCONNECT_SECONDS
@@ -65,6 +71,7 @@ class DashboardController:
         market_state: MarketStateEngine | None = None,
         market_transition: MarketTransitionEngine | None = None,
         market_behavior: MarketBehaviorEngine | None = None,
+        market_context: MarketContextEngine | None = None,
         stale_seconds: float = DEFAULT_DISCONNECT_SECONDS,
         stall_seconds: float = DEFAULT_STALL_SECONDS,
         clock: Callable[[], float] | None = None,
@@ -91,6 +98,9 @@ class DashboardController:
         self._market_state = market_state or MarketStateEngine(clock=wall_clock or time.time)
         self._market_transition = market_transition or MarketTransitionEngine()
         self._market_behavior = market_behavior or MarketBehaviorEngine(
+            clock=wall_clock or time.time
+        )
+        self._market_context = market_context or MarketContextEngine(
             clock=wall_clock or time.time
         )
         self._previous_market_state: MarketStateSnapshot | None = None
@@ -223,6 +233,26 @@ class DashboardController:
                 dom_update_rate=dom_health.update_rate,
             )
         )
+        physics_snapshot = PhysicsSnapshot(
+            spread=self._physics_view.spread,
+            mid_price=self._physics_view.mid_price,
+            tick_velocity=self._physics_view.tick_velocity,
+            tick_acceleration=self._physics_view.tick_acceleration,
+            tick_count=tick_count,
+        )
+        market_context = self._market_context.evaluate(
+            market_state=market_state,
+            transition=market_transition,
+            behavior=market_behavior,
+            feed_health=health,
+            dom_health=dom_health,
+            physics=physics_snapshot,
+            statistics=ContextStatisticsSnapshot(
+                tick_count=tick_count,
+                tick_rate=tick_rate,
+                running_time_seconds=self._statistics.running_time_seconds(),
+            ),
+        )
         return DashboardState(
             system=SystemView(
                 engine_status=self._engine_status,
@@ -266,6 +296,12 @@ class DashboardController:
             market_behavior=MarketBehaviorView(
                 behavior=market_behavior.behavior.value,
                 reason=market_behavior.reason,
+            ),
+            market_context=MarketContextView(
+                summary=market_context.summary,
+                state=market_context.state,
+                behavior=market_context.behavior,
+                transition=market_context.transition,
             ),
             statistics=StatisticsView(
                 tick_count=tick_count,

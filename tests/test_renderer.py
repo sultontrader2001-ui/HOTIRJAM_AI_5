@@ -13,6 +13,7 @@ from hotirjam_ai5.dashboard.models import (
     FeedStatus,
     LiveMarketView,
     MarketBehaviorView,
+    MarketContextView,
     MarketStateView,
     MarketTransitionView,
     MarketStatus,
@@ -35,6 +36,7 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "MARKET STATE" in text
     assert "MARKET TRANSITION" in text
     assert "MARKET BEHAVIOR" in text
+    assert "MARKET CONTEXT" in text
     assert "STATISTICS" in text
     assert "LOG" in text
     assert "- Best Bid Size:" in text
@@ -45,6 +47,7 @@ def test_render_includes_required_sections_and_title() -> None:
     assert "- Transition:" in text
     assert "- Changed:" in text
     assert "- Behavior:" in text
+    assert "- Summary:" in text
 
 
 def test_render_shows_placeholder_not_fake_prices() -> None:
@@ -58,6 +61,7 @@ def test_render_shows_placeholder_not_fake_prices() -> None:
     assert "Transition: NONE" in text
     assert "Changed: NO" in text
     assert "Behavior: UNKNOWN" in text
+    assert "Summary: Insufficient market context." in text
     assert "Tick Count: 0" in text
 
 
@@ -121,6 +125,12 @@ def test_render_with_real_market_and_health_values() -> None:
             behavior="ACCELERATING",
             reason="Tick velocity increasing",
         ),
+        market_context=MarketContextView(
+            summary="Trending market with accelerating behavior.",
+            state="ACTIVE",
+            behavior="ACCELERATING",
+            transition="QUIET → ACTIVE",
+        ),
         statistics=StatisticsView(
             tick_count=120,
             tick_rate=12.5,
@@ -132,6 +142,7 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "PHYSICS" in text
     assert "MARKET STATE" in text
     assert "MARKET BEHAVIOR" in text
+    assert "MARKET CONTEXT" in text
     assert "State: ACTIVE" in text
     assert "Reason: Tick activity increasing" in text
     assert "Current: ACTIVE" in text
@@ -141,6 +152,7 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "Duration: 18 s" in text
     assert "Behavior: ACCELERATING" in text
     assert "Reason: Tick velocity increasing" in text
+    assert "Summary: Trending market with accelerating behavior." in text
     assert "Spread: 0.25" in text
     assert "Mid Price: 20100.38" in text
     assert "Tick Velocity: 1.5000" in text
