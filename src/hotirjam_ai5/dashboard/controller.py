@@ -293,6 +293,7 @@ class DashboardController:
             decision_assessment,
             market_context,
             physics_snapshot,
+            None,  # LiquiditySnapshot — observation producer not wired yet
         )
         return DashboardState(
             system=SystemView(

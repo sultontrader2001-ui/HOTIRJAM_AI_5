@@ -6,6 +6,7 @@ import time
 from collections.abc import Callable
 
 from hotirjam_ai5.decision_assessment import DecisionAssessmentSnapshot
+from hotirjam_ai5.liquidity import LiquiditySnapshot
 from hotirjam_ai5.market_context import MarketContextSnapshot
 from hotirjam_ai5.physics.measurements import PhysicsSnapshot
 from hotirjam_ai5.trade_decision.models import TradeDecision, TradeDecisionSnapshot
@@ -19,8 +20,9 @@ from hotirjam_ai5.trade_decision.policy import (
 class TradeDecisionEngine:
     """Orchestrates trade decision evaluation via the internal policy.
 
-    Consumes DecisionAssessmentSnapshot, MarketContextSnapshot, and PhysicsSnapshot.
-    Always returns NO_TRADE in Sprint 22. Never places orders or connects to a broker.
+    Consumes DecisionAssessmentSnapshot, MarketContextSnapshot, PhysicsSnapshot,
+    and LiquiditySnapshot. Always returns NO_TRADE in Sprint 23.
+    Never places orders or connects to a broker.
     """
 
     def __init__(self, *, clock: Callable[[], float] | None = None) -> None:
@@ -37,12 +39,14 @@ class TradeDecisionEngine:
         assessment: DecisionAssessmentSnapshot,
         context: MarketContextSnapshot | None = None,
         physics: PhysicsSnapshot | None = None,
+        liquidity: LiquiditySnapshot | None = None,
     ) -> TradeDecisionSnapshot:
         """Delegate decision logic to the internal policy."""
         self._latest = evaluate_trade_decision(
             assessment,
             context,
             physics,
+            liquidity,
             timestamp=self._clock(),
         )
         return self._latest
@@ -56,6 +60,7 @@ def evaluate_trade_decision(
     assessment: DecisionAssessmentSnapshot,
     context: MarketContextSnapshot | None = None,
     physics: PhysicsSnapshot | None = None,
+    liquidity: LiquiditySnapshot | None = None,
     *,
     timestamp: float,
 ) -> TradeDecisionSnapshot:
@@ -64,5 +69,6 @@ def evaluate_trade_decision(
         assessment,
         context,
         physics,
+        liquidity,
         timestamp=timestamp,
     )
