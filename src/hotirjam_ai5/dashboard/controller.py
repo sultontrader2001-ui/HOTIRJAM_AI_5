@@ -737,7 +737,11 @@ class DashboardController:
                 tashkent=display_clock.tashkent,
             ),
             memory_panel=_memory_panel_view(memory_report),
-            trade_plan=_trade_plan_view(self._trade_planning.current_view_plan()),
+            trade_plan=_trade_plan_view(
+                self._trade_planning.current_view_plan(),
+                current_price=self._market.last_price,
+                now=now_epoch,
+            ),
             position_status=_position_status_view(
                 self._position_lock.snapshot(
                     plan=self._trade_planning.active_plan,
@@ -916,11 +920,20 @@ def _position_status_view(snapshot: PositionLockSnapshot) -> PositionStatusView:
     )
 
 
-def _trade_plan_view(plan: TradePlan | None) -> TradePlanView:
-    """Map an active/latest Trade Plan into the TRADE PLAN panel."""
+def _trade_plan_view(
+    plan: TradePlan | None,
+    *,
+    current_price: float | None = None,
+    now: float | None = None,
+) -> TradePlanView:
+    """Map a Trade Plan into ACTIVE TRADE / LAST TRADE / TRADE PLAN modes.
+
+    Presentation only — never alters planning, decision, or account logic.
+    """
     if plan is None:
-        return TradePlanView()
-    return TradePlanView(
+        return TradePlanView(mode="NONE")
+
+    base = dict(
         direction=plan.direction.value,
         entry=plan.entry_price,
         stop_loss=plan.stop_loss,
@@ -930,6 +943,57 @@ def _trade_plan_view(plan: TradePlan | None) -> TradePlanView:
         risk_reward=plan.risk_reward,
         status=plan.status.value,
     )
+
+    if plan.status is TradePlanStatus.ACTIVE:
+        opened = plan.activated_at if plan.activated_at is not None else plan.created_at
+        duration = _format_lock_duration(max(0.0, now - opened)) if now is not None else "--"
+        current_pnl = None
+        dist_sl = None
+        dist_tp = None
+        if current_price is not None:
+            if plan.direction.value == "BUY":
+                current_pnl = current_price - plan.entry_price
+                dist_sl = current_price - plan.stop_loss
+                dist_tp = plan.take_profit - current_price
+            else:
+                current_pnl = plan.entry_price - current_price
+                dist_sl = plan.stop_loss - current_price
+                dist_tp = current_price - plan.take_profit
+        return TradePlanView(
+            mode="ACTIVE",
+            current_price=current_price,
+            current_pnl=current_pnl,
+            duration=duration,
+            distance_to_sl=dist_sl,
+            distance_to_tp=dist_tp,
+            **base,
+        )
+
+    if plan.status is TradePlanStatus.CLOSED:
+        if plan.result.value == "WIN":
+            exit_reason = "TP"
+        elif plan.result.value == "LOSS":
+            exit_reason = "SL"
+        else:
+            exit_reason = "MANUAL"
+        opened = plan.activated_at if plan.activated_at is not None else plan.created_at
+        duration = "--"
+        if plan.closed_at is not None:
+            duration = _format_lock_duration(max(0.0, plan.closed_at - opened))
+        rr_achieved = None
+        if plan.points is not None and plan.risk_points > 0:
+            rr_achieved = plan.points / plan.risk_points
+        return TradePlanView(
+            mode="CLOSED",
+            exit_price=plan.exit_price,
+            exit_reason=exit_reason,
+            pnl=plan.points,
+            rr_achieved=rr_achieved,
+            duration=duration,
+            **base,
+        )
+
+    return TradePlanView(mode="ACTIVE", **base)
 
 
 def _account_status_view(snapshot: AccountStatusSnapshot) -> AccountStatusView:

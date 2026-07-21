@@ -375,18 +375,46 @@ class DashboardRenderer:
 
     def _trade_plan_panel(self, state: DashboardState, width: int) -> list[str]:
         plan = state.trade_plan
-        return _panel(
+
+        if plan.mode == "ACTIVE":
+            return _panel(
+                "ACTIVE TRADE",
+                [
+                    ("Direction", plan.direction or MISSING),
+                    ("Entry", _format_price(plan.entry)),
+                    ("Current Price", _format_price(plan.current_price)),
+                    ("Current P/L", _format_signed_points(plan.current_pnl)),
+                    ("Stop Loss", _format_price(plan.stop_loss)),
+                    ("Take Profit", _format_price(plan.take_profit)),
+                    ("Risk", _format_points(plan.risk)),
+                    ("Reward", _format_points(plan.reward)),
+                    ("RR", _format_points(plan.risk_reward)),
+                    ("Duration", plan.duration or MISSING),
+                    ("Distance to SL", _format_signed_points(plan.distance_to_sl)),
+                    ("Distance to TP", _format_signed_points(plan.distance_to_tp)),
+                ],
+                width,
+            )
+
+        if plan.mode == "CLOSED":
+            return _panel(
+                "LAST TRADE",
+                [
+                    ("Direction", plan.direction or MISSING),
+                    ("Entry", _format_price(plan.entry)),
+                    ("Exit", _format_price(plan.exit_price)),
+                    ("Exit Reason", plan.exit_reason or MISSING),
+                    ("P/L", _format_signed_points(plan.pnl)),
+                    ("RR Achieved", _format_points(plan.rr_achieved)),
+                    ("Duration", plan.duration or MISSING),
+                    ("Status", plan.status or MISSING),
+                ],
+                width,
+            )
+
+        return _panel_lines(
             "TRADE PLAN",
-            [
-                ("Direction", plan.direction or MISSING),
-                ("Entry", _format_price(plan.entry)),
-                ("Stop Loss", _format_price(plan.stop_loss)),
-                ("Take Profit", _format_price(plan.take_profit)),
-                ("Risk", _format_points(plan.risk)),
-                ("Reward", _format_points(plan.reward)),
-                ("RR", _format_points(plan.risk_reward)),
-                ("Trade Status", plan.status or MISSING),
-            ],
+            ["No active trade.", "Waiting for setup..."],
             width,
         )
 

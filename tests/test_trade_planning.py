@@ -173,6 +173,7 @@ def test_configurable_rr(tmp_path: Path) -> None:
 def test_trade_plan_dashboard_panel() -> None:
     state = DashboardState(
         trade_plan=TradePlanView(
+            mode="ACTIVE",
             direction="BUY",
             entry=100.0,
             stop_loss=98.0,
@@ -184,11 +185,10 @@ def test_trade_plan_dashboard_panel() -> None:
         )
     )
     text = DashboardRenderer().render(state, width=100)
-    assert "TRADE PLAN" in text
+    assert "ACTIVE TRADE" in text
     assert "Direction" in text
     assert "Stop Loss" in text
     assert "Take Profit" in text
-    assert "ACTIVE" in text
     assert "2.00" in text
 
 

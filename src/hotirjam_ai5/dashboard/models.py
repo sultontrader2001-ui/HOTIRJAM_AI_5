@@ -440,8 +440,13 @@ class PositionStatusView:
 
 @dataclass(frozen=True, slots=True)
 class TradePlanView:
-    """TRADE PLAN section — presentation only (Sprint 49)."""
+    """TRADE PLAN / ACTIVE TRADE / LAST TRADE section (Sprint 49/50.1).
 
+    ``mode`` selects the presentation: NONE (never traded), ACTIVE (live
+    trade), or CLOSED (last completed trade). Presentation only.
+    """
+
+    mode: str = "NONE"  # NONE | ACTIVE | CLOSED
     direction: str = "--"
     entry: float | None = None
     stop_loss: float | None = None
@@ -450,6 +455,17 @@ class TradePlanView:
     reward: float | None = None
     risk_reward: float | None = None
     status: str = "--"
+    # ACTIVE-mode extras (live context)
+    current_price: float | None = None
+    current_pnl: float | None = None
+    duration: str = "--"
+    distance_to_sl: float | None = None
+    distance_to_tp: float | None = None
+    # CLOSED-mode extras (historical outcome)
+    exit_price: float | None = None
+    exit_reason: str = "--"  # TP | SL | MANUAL
+    pnl: float | None = None
+    rr_achieved: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
