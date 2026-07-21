@@ -15,15 +15,21 @@ class FakeClock:
         return self.now
 
 
-def _dom() -> DomSnapshot:
+def _dom(
+    *,
+    total_bid: int = 40,
+    total_ask: int = 35,
+    best_bid: int = 5,
+    best_ask: int = 7,
+) -> DomSnapshot:
     return DomSnapshot(
         timestamp_utc="2026-07-21T00:00:00.0000000Z",
         instrument="MNQ",
         depth_levels=10,
-        best_bid_size=5,
-        best_ask_size=7,
-        total_bid_size=40,
-        total_ask_size=35,
+        best_bid_size=best_bid,
+        best_ask_size=best_ask,
+        total_bid_size=total_bid,
+        total_ask_size=total_ask,
         status="OK",
     )
 
@@ -64,3 +70,53 @@ def test_dom_stalled_resumed_and_lost() -> None:
     controller.check_connection_health()
     assert controller.snapshot().dom_health.feed_status is FeedStatus.DISCONNECTED
     assert "DOM connection lost" in controller.snapshot().events
+
+
+def test_missing_dom_liquidity_explanation_unknown() -> None:
+    controller = DashboardController()
+    controller.start()
+    state = controller.snapshot()
+    assert state.dom_health.feed_status is FeedStatus.DISCONNECTED
+    assert state.trade_decision.explanation.liquidity == "UNKNOWN"
+
+
+def test_healthy_dom_buy_liquidity_explains_pass() -> None:
+    controller = DashboardController()
+    controller.start()
+    controller.on_dom(
+        _dom(total_bid=100, total_ask=40, best_bid=25, best_ask=10)
+    )
+    state = controller.snapshot()
+    assert state.dom_health.feed_status is FeedStatus.HEALTHY
+    assert state.trade_decision.explanation.liquidity == "PASS"
+
+
+def test_healthy_dom_sell_liquidity_explains_fail() -> None:
+    controller = DashboardController()
+    controller.start()
+    controller.on_dom(
+        _dom(total_bid=20, total_ask=80, best_bid=5, best_ask=20)
+    )
+    state = controller.snapshot()
+    assert state.dom_health.feed_status is FeedStatus.HEALTHY
+    assert state.trade_decision.explanation.liquidity == "FAIL"
+
+
+def test_dom_disconnect_clears_liquidity_to_unknown() -> None:
+    clock = FakeClock(0.0)
+    controller = DashboardController(
+        stall_seconds=2.0,
+        stale_seconds=5.0,
+        clock=clock,
+        wall_clock=FakeClock(1_700_000_000.0),
+    )
+    controller.start()
+    controller.on_dom(
+        _dom(total_bid=100, total_ask=40, best_bid=25, best_ask=10)
+    )
+    assert controller.snapshot().trade_decision.explanation.liquidity == "PASS"
+    clock.now = 10.0
+    controller.check_connection_health()
+    state = controller.snapshot()
+    assert state.dom_health.feed_status is FeedStatus.DISCONNECTED
+    assert state.trade_decision.explanation.liquidity == "UNKNOWN"

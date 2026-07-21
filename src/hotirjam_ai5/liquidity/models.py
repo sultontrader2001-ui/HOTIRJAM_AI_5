@@ -1,6 +1,6 @@
-"""Liquidity observation models (Sprint 23).
+"""Liquidity observation models.
 
-Snapshot contract only — no liquidity engine in this sprint.
+Produced by LiquidityEngine from DOM. Consumed by Trade Decision.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from enum import StrEnum
 
 
 class LiquidityBias(StrEnum):
-    """Directional liquidity bias used by BUY Phase-4 filters."""
+    """Directional liquidity bias used by BUY filters."""
 
     BUY = "BUY"
     SELL = "SELL"
@@ -21,10 +21,11 @@ class LiquidityBias(StrEnum):
 class LiquiditySnapshot:
     """Immutable liquidity observation for trade-decision filters.
 
-    Produced by a future observation layer. Trade Decision consumes this
-    snapshot only — it does not compute liquidity from Tick/DOM/Physics.
+    Produced only by LiquidityEngine from DOM. Trade Decision never
+    computes liquidity from Tick/DOM/Physics itself.
     """
 
     timestamp: float
     liquidity_shift: str
     dom_imbalance: str
+    confidence: float

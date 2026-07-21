@@ -41,6 +41,7 @@ from hotirjam_ai5.decision_assessment import DecisionAssessmentEngine
 from hotirjam_ai5.decision_evaluation import DecisionEvaluationEngine
 from hotirjam_ai5.decision_foundation import DecisionFoundationEngine
 from hotirjam_ai5.decision_intent import DecisionIntentEngine
+from hotirjam_ai5.liquidity import LiquidityEngine
 from hotirjam_ai5.live_data.dom import DomSnapshot
 from hotirjam_ai5.live_data.tick import LiveTick
 from hotirjam_ai5.market_behavior import BehaviorInputs, MarketBehaviorEngine
@@ -81,6 +82,7 @@ class DashboardController:
         feed_health: FeedHealthMonitor | None = None,
         dom_health: DomHealthMonitor | None = None,
         physics: PhysicsEngine | None = None,
+        liquidity: LiquidityEngine | None = None,
         market_state: MarketStateEngine | None = None,
         market_transition: MarketTransitionEngine | None = None,
         market_behavior: MarketBehaviorEngine | None = None,
@@ -113,6 +115,9 @@ class DashboardController:
             clock=self._clock,
         )
         self._physics = physics or PhysicsEngine()
+        self._liquidity = liquidity or LiquidityEngine(
+            clock=wall_clock or time.time
+        )
         self._market_state = market_state or MarketStateEngine(clock=wall_clock or time.time)
         self._market_transition = market_transition or MarketTransitionEngine()
         self._market_behavior = market_behavior or MarketBehaviorEngine(
@@ -198,6 +203,7 @@ class DashboardController:
             update_rate=health.update_rate,
             status=snapshot.status,
         )
+        self._liquidity.on_dom(snapshot)
         self._log_dom_transition(previous, FeedStatus.HEALTHY)
 
     def check_connection_health(self) -> None:
@@ -217,6 +223,8 @@ class DashboardController:
         dom_previous = self._dom_health.evaluate()
         dom_current = self._dom_health.feed_status
         self._log_dom_transition(dom_previous, dom_current)
+        if dom_current is FeedStatus.DISCONNECTED:
+            self._liquidity.clear()
         if self._dom.total_bid_size is not None:
             health = self._dom_health.snapshot()
             self._dom = DomView(
@@ -292,11 +300,14 @@ class DashboardController:
         decision_intent = self._decision_intent.evaluate(decision_foundation)
         decision_evaluation = self._decision_evaluation.evaluate(decision_intent)
         decision_assessment = self._decision_assessment.evaluate(decision_evaluation)
+        liquidity_snapshot = None
+        if dom_health.feed_status is FeedStatus.HEALTHY:
+            liquidity_snapshot = self._liquidity.snapshot()
         trade_decision = self._trade_decision.evaluate(
             decision_assessment,
             market_context,
             physics_snapshot,
-            None,  # LiquiditySnapshot — observation producer not wired yet
+            liquidity_snapshot,
         )
         return DashboardState(
             system=SystemView(

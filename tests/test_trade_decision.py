@@ -91,11 +91,13 @@ def _liquidity(
     *,
     liquidity_shift: str = LiquidityBias.BUY.value,
     dom_imbalance: str = LiquidityBias.BUY.value,
+    confidence: float = 0.5,
 ) -> LiquiditySnapshot:
     return LiquiditySnapshot(
         timestamp=100.0,
         liquidity_shift=liquidity_shift,
         dom_imbalance=dom_imbalance,
+        confidence=confidence,
     )
 
 
