@@ -339,7 +339,7 @@ def test_developer_view_shows_independent_objective_states() -> None:
         "OBJECTIVE DIAGNOSTICS", 1
     )[0]
     high, low = current.split("Low:", 1)
-    assert "Objective State BREACHED" in high
+    assert "Objective State PERSISTED" in high
     assert "Objective State PERSISTED" in low
 
 

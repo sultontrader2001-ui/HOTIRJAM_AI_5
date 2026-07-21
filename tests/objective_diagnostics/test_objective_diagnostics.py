@@ -7,6 +7,7 @@ from hotirjam_ai5.objective_diagnostics import (
     CandidateCategory,
     LifecycleState,
     ObjectiveDiagnosticsInputs,
+    PersistentStructuralHierarchy,
     SwingSide,
     audit_objectives,
     build_hierarchy,
@@ -67,7 +68,7 @@ def test_audit_labels_nested_and_micro() -> None:
     assert near_high.rejection_reasons
 
 
-def test_breached_lifecycle() -> None:
+def test_price_penetration_is_challenged_and_remains_eligible() -> None:
     report = audit_objectives(
         ObjectiveDiagnosticsInputs(
             current_price=106.0,
@@ -80,13 +81,23 @@ def test_breached_lifecycle() -> None:
         )
     )
     high = report.highs[0]
-    assert high.lifecycle is LifecycleState.BREACHED
-    assert high.eligible is False
-    assert any("BREACHED" in r for r in high.rejection_reasons)
+    assert high.lifecycle is LifecycleState.CHALLENGED
+    assert high.eligible is True
+    assert high.rejection_reasons == ()
 
 
 def test_superseded_lifecycle() -> None:
-    report = audit_objectives(
+    hierarchy = PersistentStructuralHierarchy()
+    hierarchy.evaluate(
+        ObjectiveDiagnosticsInputs(
+            current_price=100.0,
+            tick_size=TICK,
+            confirmed_highs=(_h(108.0, 60.0, at=1.0),),
+            confirmed_lows=(_l(90.0, 70.0, at=1.0),),
+            timestamp=9.0,
+        )
+    )
+    report = hierarchy.evaluate(
         ObjectiveDiagnosticsInputs(
             current_price=100.0,
             tick_size=TICK,

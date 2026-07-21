@@ -27,13 +27,14 @@ def evaluate_eligibility(
     """Return (eligible, rejection_reasons) for diagnostic reporting."""
     reasons: list[str] = []
 
-    if side is SwingSide.HIGH and not (price > current_price):
+    challenged = lifecycle is LifecycleState.CHALLENGED
+    if not challenged and side is SwingSide.HIGH and not (price > current_price):
         reasons.append("Wrong side of price (HIGH not above current price)")
-    if side is SwingSide.LOW and not (price < current_price):
+    if not challenged and side is SwingSide.LOW and not (price < current_price):
         reasons.append("Wrong side of price (LOW not below current price)")
 
-    if lifecycle is LifecycleState.BREACHED:
-        reasons.append("Lifecycle BREACHED")
+    if lifecycle is LifecycleState.CONFIRMED_BROKEN:
+        reasons.append("Lifecycle CONFIRMED_BROKEN")
     if lifecycle is LifecycleState.SUPERSEDED:
         reasons.append("Lifecycle SUPERSEDED")
     if lifecycle is LifecycleState.ARCHIVED:
@@ -47,11 +48,18 @@ def evaluate_eligibility(
         if category is not CandidateCategory.MAJOR:
             reasons.append("Nested inside parent")
 
-    # Diagnostic eligibility: MAJOR + ACTIVE + correct side only.
+    # H-3: NEW, ACTIVE, and CHALLENGED objectives remain eligible.
     eligible = (
         category is CandidateCategory.MAJOR
-        and lifecycle is LifecycleState.ACTIVE
+        and lifecycle
+        in {
+            LifecycleState.NEW,
+            LifecycleState.ACTIVE,
+            LifecycleState.CHALLENGED,
+        }
         and (
+            challenged
+            or
             (side is SwingSide.HIGH and price > current_price)
             or (side is SwingSide.LOW and price < current_price)
         )
@@ -60,7 +68,7 @@ def evaluate_eligibility(
         return True, ()
     # Ensure at least one reason when not eligible.
     if not reasons:
-        reasons.append("Not MAJOR+ACTIVE on correct side of price")
+        reasons.append("Not MAJOR+eligible-lifecycle on correct side of price")
     # Deduplicate while preserving order.
     unique: list[str] = []
     for r in reasons:
@@ -77,10 +85,12 @@ def sort_candidates(diagnostics: list[SwingDiagnostic]) -> list[SwingDiagnostic]
         CandidateCategory.MICRO: 2,
     }
     lifecycle_rank = {
+        LifecycleState.NEW: 0,
         LifecycleState.ACTIVE: 0,
-        LifecycleState.SUPERSEDED: 1,
-        LifecycleState.BREACHED: 2,
-        LifecycleState.ARCHIVED: 3,
+        LifecycleState.CHALLENGED: 1,
+        LifecycleState.SUPERSEDED: 2,
+        LifecycleState.CONFIRMED_BROKEN: 3,
+        LifecycleState.ARCHIVED: 4,
     }
     return sorted(
         diagnostics,

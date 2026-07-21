@@ -14,8 +14,10 @@ class SwingSide(StrEnum):
 
 
 class LifecycleState(StrEnum):
+    NEW = "NEW"
     ACTIVE = "ACTIVE"
-    BREACHED = "BREACHED"
+    CHALLENGED = "CHALLENGED"
+    CONFIRMED_BROKEN = "CONFIRMED_BROKEN"
     SUPERSEDED = "SUPERSEDED"
     ARCHIVED = "ARCHIVED"
 
@@ -44,6 +46,10 @@ class SwingDiagnostic:
     category: CandidateCategory
     eligible: bool
     rejection_reasons: tuple[str, ...]
+    challenge_state: str = "NONE"
+    challenge_evidence: tuple[str, ...] = ()
+    transition_cause: str | None = None
+    transition_time: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

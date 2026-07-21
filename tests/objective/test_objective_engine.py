@@ -296,7 +296,7 @@ def test_persistent_low_survives_evaluation_with_no_candidate() -> None:
     assert second.low_state is ObjectivePersistenceState.PERSISTED
 
 
-def test_new_nearer_active_major_low_replaces_previous() -> None:
+def test_nearer_nested_low_does_not_replace_persistent_major() -> None:
     engine = ObjectiveEngine(clock=lambda: 0.0)
     first = engine.evaluate(
         _inputs(
@@ -306,8 +306,8 @@ def test_new_nearer_active_major_low_replaces_previous() -> None:
     )
     assert first.nearest_low_price == 90.0
 
-    # Previous LOW is absent from the rolling inputs; a new root MAJOR LOW is
-    # closer. Absence alone does not clear the old objective, but nearer wins.
+    # The old LOW remains in persistent hierarchy even when absent from rolling
+    # input. The nearer higher LOW stays nested and cannot become a root MAJOR.
     second = engine.evaluate(
         _inputs(
             timestamp=2.0,
@@ -315,11 +315,11 @@ def test_new_nearer_active_major_low_replaces_previous() -> None:
             lows=(_swing(94.0, 80.0, at=2.0),),
         )
     )
-    assert second.nearest_low_price == 94.0
-    assert second.low_state is ObjectivePersistenceState.REPLACED
+    assert second.nearest_low_price == 90.0
+    assert second.low_state is ObjectivePersistenceState.PERSISTED
 
 
-def test_breached_low_is_removed() -> None:
+def test_penetrated_low_survives_as_challenged() -> None:
     engine = ObjectiveEngine(clock=lambda: 0.0)
     engine.evaluate(
         _inputs(
@@ -327,7 +327,7 @@ def test_breached_low_is_removed() -> None:
             lows=(_swing(90.0, 80.0, at=1.5),),
         )
     )
-    breached = engine.evaluate(
+    challenged = engine.evaluate(
         _inputs(
             price=89.0,
             timestamp=2.0,
@@ -335,10 +335,10 @@ def test_breached_low_is_removed() -> None:
             lows=(_swing(90.0, 80.0, at=1.5),),
         )
     )
-    assert breached.nearest_low_price is None
-    assert breached.low_state is ObjectivePersistenceState.BREACHED
+    assert challenged.nearest_low_price == 90.0
+    assert challenged.low_state is ObjectivePersistenceState.PERSISTED
 
-    # A later reclaim must not resurrect the already-breached swing.
+    # A price return alone does not resolve lifecycle, but cannot erase it.
     reclaimed = engine.evaluate(
         _inputs(
             price=100.0,
@@ -347,7 +347,8 @@ def test_breached_low_is_removed() -> None:
             lows=(_swing(90.0, 80.0, at=1.5),),
         )
     )
-    assert reclaimed.nearest_low_price is None
+    assert reclaimed.nearest_low_price == 90.0
+    assert reclaimed.low_state is ObjectivePersistenceState.PERSISTED
 
 
 def test_invalid_evaluation_does_not_clear_active_objectives() -> None:
@@ -374,8 +375,8 @@ def test_high_and_low_persistence_are_independent() -> None:
         )
     )
     updated = engine.evaluate(_inputs(price=111.0, timestamp=2.0))
-    assert updated.nearest_high_price is None
-    assert updated.high_state is ObjectivePersistenceState.BREACHED
+    assert updated.nearest_high_price == 110.0
+    assert updated.high_state is ObjectivePersistenceState.PERSISTED
     assert updated.nearest_low_price == 90.0
     assert updated.low_state is ObjectivePersistenceState.PERSISTED
 

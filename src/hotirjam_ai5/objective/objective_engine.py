@@ -25,6 +25,11 @@ from hotirjam_ai5.objective_diagnostics.models import (
     SwingSide,
 )
 from hotirjam_ai5.objective_diagnostics.objective_audit import audit_objectives
+from hotirjam_ai5.objective_diagnostics.persistent_hierarchy import (
+    PersistentStructuralHierarchy,
+    active_structural_hierarchy,
+    use_structural_hierarchy,
+)
 
 
 def _is_finite(value: float) -> bool:
@@ -59,10 +64,17 @@ def _pick_nearest_eligible(
         candidate
         for candidate in candidates
         if candidate.eligible
-        and candidate.lifecycle is LifecycleState.ACTIVE
+        and candidate.lifecycle
+        in {
+            LifecycleState.NEW,
+            LifecycleState.ACTIVE,
+            LifecycleState.CHALLENGED,
+        }
         and candidate.category is CandidateCategory.MAJOR
         and candidate.side is side
         and (
+            candidate.lifecycle is LifecycleState.CHALLENGED
+            or
             (side is SwingSide.HIGH and candidate.price > current_price)
             or (side is SwingSide.LOW and candidate.price < current_price)
         )
@@ -225,16 +237,13 @@ def _reconcile_side(
         )
 
     previous_diagnostic = _find_previous_diagnostic(previous, candidates)
-    breached = (
-        (side is SwingSide.HIGH and current_price > previous.price)
-        or (side is SwingSide.LOW and current_price < previous.price)
+    confirmed_broken = (
+        previous_diagnostic is not None
+        and previous_diagnostic.lifecycle is LifecycleState.CONFIRMED_BROKEN
     )
-    if previous_diagnostic is not None:
-        breached = (
-            breached
-            or previous_diagnostic.lifecycle is LifecycleState.BREACHED
-        )
-    if breached:
+    if confirmed_broken:
+        # Preserve the public ObjectiveSnapshot API: BREACHED now means the
+        # underlying structural lifecycle reached CONFIRMED_BROKEN.
         return None, ObjectivePersistenceState.BREACHED
 
     if (
@@ -272,10 +281,19 @@ class ObjectiveEngine:
         self._active_low: _StoredObjective | None = None
         self._invalidated_highs: set[_StoredObjective] = set()
         self._invalidated_lows: set[_StoredObjective] = set()
+        self._structural_hierarchy = PersistentStructuralHierarchy()
 
     def evaluate(self, inputs: ObjectiveInputs) -> ObjectiveSnapshot:
         """Evaluate, reconcile, and retain persistent objectives."""
-        _current, report, _high_pick, _low_pick = _evaluate_structural_candidates(inputs)
+        if active_structural_hierarchy() is None:
+            with use_structural_hierarchy(self._structural_hierarchy):
+                _current, report, _high_pick, _low_pick = (
+                    _evaluate_structural_candidates(inputs)
+                )
+        else:
+            _current, report, _high_pick, _low_pick = (
+                _evaluate_structural_candidates(inputs)
+            )
         if report is None:
             # Invalid/empty classification must not erase an existing objective.
             self._latest = ObjectiveSnapshot(

@@ -154,12 +154,19 @@ def _render_objective_diagnostics(frame: ValidatorFrame) -> list[str]:
             block.append("------------------------------------")
             return block
         reasons = " | ".join(d.rejection_reasons) if d.rejection_reasons else "--"
+        challenge_evidence = (
+            " | ".join(d.challenge_evidence) if d.challenge_evidence else "--"
+        )
         block.extend(
             [
                 f"ID               {d.swing_id}",
                 f"Category         {d.category.value}",
                 f"Eligible         {'YES' if d.eligible else 'NO'}",
                 f"Lifecycle        {d.lifecycle.value}",
+                f"Challenge State  {d.challenge_state}",
+                f"Challenge Evidence {challenge_evidence}",
+                f"Transition Cause {d.transition_cause or '--'}",
+                f"Transition Time  {d.transition_time if d.transition_time is not None else '--'}",
                 f"Parent ID        {d.parent_swing_id if d.parent_swing_id is not None else '--'}",
                 f"Hierarchy Depth  {d.hierarchy_depth}",
                 f"Persistence      {_fmt(d.persistence)}",
@@ -237,12 +244,19 @@ def _render_structural_diagnostics(report: object | None) -> list[str]:
             block.append("--------------------------------")
             return block
         for d in swings:
+            challenge_evidence = (
+                " | ".join(d.challenge_evidence) if d.challenge_evidence else "--"
+            )
             block.extend(
                 [
                     f"ID              {d.swing_id}",
                     f"Price           {_fmt(d.price)}",
                     f"Category        {d.category.value}",
                     f"Lifecycle       {d.lifecycle.value}",
+                    f"Challenge State {d.challenge_state}",
+                    f"Challenge Evidence {challenge_evidence}",
+                    f"Transition Cause {d.transition_cause or '--'}",
+                    f"Transition Time {d.transition_time if d.transition_time is not None else '--'}",
                     f"Eligible        {'YES' if d.eligible else 'NO'}",
                     f"Parent ID       {d.parent_swing_id if d.parent_swing_id is not None else '--'}",
                     f"Hierarchy Depth {d.hierarchy_depth}",

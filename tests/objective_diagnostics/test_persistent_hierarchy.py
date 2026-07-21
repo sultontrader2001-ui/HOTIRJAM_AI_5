@@ -151,10 +151,32 @@ def test_archived_parent_remains_structural_anchor() -> None:
             timestamp=12.0,
         )
     )
+    acceptance = _swing(110.5, 75.0, 3.0)
+    hierarchy.evaluate(
+        _inputs(
+            price=111.0,
+            highs=(parent, child),
+            lows=(low, acceptance),
+            timestamp=12.5,
+        )
+    )
+    epoch_root = _swing(112.0, 90.0, 4.0)
+    hierarchy.evaluate(
+        _inputs(
+            price=100.0,
+            highs=(parent, child, epoch_root),
+            lows=(low, acceptance),
+            timestamp=12.75,
+        )
+    )
+    epoch_root_id = _record_at(hierarchy, 112.0).swing_id
     hierarchy.archive(
         parent_id,
         timestamp=13.0,
-        evidence={"reason": "terminal-history-compaction"},
+        evidence={
+            "reason": "confirmed structural epoch closure",
+            "epoch_closing_swing_id": epoch_root_id,
+        },
     )
 
     archived_parent = _record_at(hierarchy, 110.0)
@@ -181,13 +203,13 @@ def test_transition_journal_records_old_new_state_and_evidence() -> None:
         )
     )
     transition = hierarchy.journal[-1]
-    assert transition.cause == "PRICE_BREACH"
+    assert transition.cause == "PRICE_TRADE_THROUGH"
     assert transition.swing_id == high_id
     assert transition.timestamp == 11.0
     assert transition.old_state is not None
     assert transition.new_state is not None
     assert transition.old_state["lifecycle"] == "ACTIVE"
-    assert transition.new_state["lifecycle"] == "BREACHED"
+    assert transition.new_state["lifecycle"] == "CHALLENGED"
     assert transition.evidence["current_price"] == 111.0
 
 
@@ -206,7 +228,7 @@ def test_supersession_is_event_driven_and_journaled() -> None:
         item
         for item in hierarchy.journal
         if item.swing_id == early_record.swing_id
-        and item.cause == "SWING_SUPERSEDED"
+        and item.cause == "HIERARCHY_GOVERNING_REPLACEMENT"
     )
     assert early_record.lifecycle is LifecycleState.SUPERSEDED
     assert transition.evidence["superseding_swing_id"] == _record_at(
@@ -226,7 +248,7 @@ def test_adapter_preserves_objective_audit_report_interface() -> None:
     assert report.hierarchy_version == hierarchy.hierarchy_version
     assert report.registry_size == 2
     assert report.transition_count == len(hierarchy.journal)
-    assert report.checkpoint_version == 1
+    assert report.checkpoint_version == 2
 
 
 def test_pipeline_objective_unchanged_when_parent_leaves_rolling_input() -> None:

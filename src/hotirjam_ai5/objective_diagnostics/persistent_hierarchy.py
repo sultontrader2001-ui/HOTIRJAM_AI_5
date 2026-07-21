@@ -37,9 +37,8 @@ from hotirjam_ai5.objective_diagnostics.significance_diagnostics import (
 )
 
 
-CHECKPOINT_VERSION = 1
+CHECKPOINT_VERSION = 2
 CLASSIFICATION_VERSION = 1
-_ZONE_TICKS = 2.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +58,11 @@ class StructuralSwingRecord:
     persistence_score: float
     classification_version: int
     lifecycle: LifecycleState
+    challenge_started_at: float | None
+    challenge_extreme_price: float | None
+    challenge_evidence: tuple[str, ...]
+    transition_cause: str
+    transition_time: float
     created_sequence: int
     last_transition_sequence: int
 
@@ -120,6 +124,11 @@ def _state(record: StructuralSwingRecord) -> dict[str, object]:
         "persistence_score": record.persistence_score,
         "classification_version": record.classification_version,
         "lifecycle": record.lifecycle.value,
+        "challenge_started_at": record.challenge_started_at,
+        "challenge_extreme_price": record.challenge_extreme_price,
+        "challenge_evidence": list(record.challenge_evidence),
+        "transition_cause": record.transition_cause,
+        "transition_time": record.transition_time,
     }
 
 
@@ -135,6 +144,7 @@ class PersistentStructuralHierarchy:
             SwingSide.LOW: [],
         }
         self._journal: list[StructuralTransition] = []
+        self._displaced_by_new: dict[int, tuple[int, ...]] = {}
         self._next_swing_id = 1
         self._version = 0
         if checkpoint_path is not None and checkpoint_path.exists():
@@ -184,8 +194,10 @@ class PersistentStructuralHierarchy:
         new_ids = self._ingest(inputs)
         if new_ids:
             self._classify_new(new_ids, inputs)
+            self._activate_new(new_ids, inputs)
+            self._resolve_challenges(new_ids, inputs)
             self._apply_supersession(new_ids, inputs)
-        self._apply_breaches(inputs)
+        self._apply_challenges(inputs)
         if self._version != before and self._checkpoint_path is not None:
             self.checkpoint(self._checkpoint_path)
         return self._to_report(inputs)
@@ -199,16 +211,33 @@ class PersistentStructuralHierarchy:
     ) -> None:
         """Archive a terminal node while retaining it as a structural anchor."""
         record = self._records[swing_id]
-        if record.lifecycle is LifecycleState.ACTIVE:
-            raise ValueError("ACTIVE structural nodes cannot be archived")
+        if record.lifecycle not in {
+            LifecycleState.CONFIRMED_BROKEN,
+            LifecycleState.SUPERSEDED,
+            LifecycleState.ARCHIVED,
+        }:
+            raise ValueError("only terminal structural nodes can be archived")
         if record.lifecycle is LifecycleState.ARCHIVED:
             return
+        archive_evidence = dict(evidence or {})
+        closing_id = archive_evidence.get("epoch_closing_swing_id")
+        if not isinstance(closing_id, int) or closing_id not in self._records:
+            raise ValueError("archive requires a valid epoch_closing_swing_id")
+        closing = self._records[closing_id]
+        if closing.parent_id is not None:
+            raise ValueError("epoch-closing swing must be a structural root")
+        if (
+            record.confirmed_at is not None
+            and closing.confirmed_at is not None
+            and closing.confirmed_at <= record.confirmed_at
+        ):
+            raise ValueError("epoch-closing swing must follow the archived node")
         self._transition_lifecycle(
             swing_id,
             LifecycleState.ARCHIVED,
             timestamp=timestamp,
-            cause="STRUCTURAL_ARCHIVED",
-            evidence=evidence or {},
+            cause="STRUCTURAL_EPOCH_CLOSED",
+            evidence=archive_evidence,
         )
         if self._checkpoint_path is not None:
             self.checkpoint(self._checkpoint_path)
@@ -248,11 +277,14 @@ class PersistentStructuralHierarchy:
         if source is None:
             raise ValueError("checkpoint path is required")
         payload = json.loads(source.read_text(encoding="utf-8"))
-        if payload.get("checkpoint_version") != CHECKPOINT_VERSION:
+        checkpoint_version = payload.get("checkpoint_version")
+        if checkpoint_version not in {1, CHECKPOINT_VERSION}:
             raise ValueError("unsupported structural hierarchy checkpoint version")
 
         records = {
-            item["swing_id"]: self._record_from_payload(item)
+            item["swing_id"]: self._record_from_payload(
+                item, checkpoint_version=checkpoint_version
+            )
             for item in payload["records"]
         }
         fingerprints = {r.fingerprint: r.swing_id for r in records.values()}
@@ -275,6 +307,7 @@ class PersistentStructuralHierarchy:
             SwingSide.LOW: list(payload["frontiers"][SwingSide.LOW.value]),
         }
         self._journal = journal
+        self._displaced_by_new = {}
         self._next_swing_id = payload["next_swing_id"]
         self._version = payload["hierarchy_version"]
 
@@ -300,7 +333,7 @@ class PersistentStructuralHierarchy:
                 continue
             swing_id = self._next_swing_id
             self._next_swing_id += 1
-            parent_id, depth = self._assign_parent(side, swing.price)
+            parent_id, depth, displaced_ids = self._assign_parent(side, swing.price)
             record = StructuralSwingRecord(
                 swing_id=swing_id,
                 fingerprint=fingerprint,
@@ -314,27 +347,36 @@ class PersistentStructuralHierarchy:
                 prominence=0.0,
                 persistence_score=0.0,
                 classification_version=CLASSIFICATION_VERSION,
-                lifecycle=LifecycleState.ACTIVE,
+                lifecycle=LifecycleState.NEW,
+                challenge_started_at=None,
+                challenge_extreme_price=None,
+                challenge_evidence=(),
+                transition_cause="SWING_CONFIRMED",
+                transition_time=inputs.timestamp,
                 created_sequence=self._version + 1,
                 last_transition_sequence=self._version + 1,
             )
             self._records[swing_id] = record
             self._fingerprints[fingerprint] = swing_id
             self._frontiers[side].append(swing_id)
+            self._displaced_by_new[swing_id] = displaced_ids
             new_ids.append(swing_id)
         return new_ids
 
-    def _assign_parent(self, side: SwingSide, price: float) -> tuple[int | None, int]:
+    def _assign_parent(
+        self, side: SwingSide, price: float
+    ) -> tuple[int | None, int, tuple[int, ...]]:
         frontier = self._frontiers[side]
+        displaced: list[int] = []
         if side is SwingSide.HIGH:
             while frontier and self._records[frontier[-1]].price <= price:
-                frontier.pop()
+                displaced.append(frontier.pop())
         else:
             while frontier and self._records[frontier[-1]].price >= price:
-                frontier.pop()
+                displaced.append(frontier.pop())
         parent_id = frontier[-1] if frontier else None
         depth = self._records[parent_id].depth + 1 if parent_id is not None else 0
-        return parent_id, depth
+        return parent_id, depth, tuple(displaced)
 
     def _classify_new(
         self, new_ids: list[int], inputs: ObjectiveDiagnosticsInputs
@@ -367,6 +409,11 @@ class PersistentStructuralHierarchy:
                 persistence_score=persistence,
                 classification_version=CLASSIFICATION_VERSION,
                 lifecycle=record.lifecycle,
+                challenge_started_at=record.challenge_started_at,
+                challenge_extreme_price=record.challenge_extreme_price,
+                challenge_evidence=record.challenge_evidence,
+                transition_cause=record.transition_cause,
+                transition_time=record.transition_time,
                 created_sequence=record.created_sequence,
                 last_transition_sequence=self._version + 1,
             )
@@ -380,67 +427,156 @@ class PersistentStructuralHierarchy:
                 evidence={
                     "parent_id": classified.parent_id,
                     "classification_version": CLASSIFICATION_VERSION,
+                    "displaced_swing_ids": list(
+                        self._displaced_by_new.get(swing_id, ())
+                    ),
                 },
+            )
+
+    def _activate_new(
+        self, new_ids: list[int], inputs: ObjectiveDiagnosticsInputs
+    ) -> None:
+        for swing_id in new_ids:
+            self._transition_lifecycle(
+                swing_id,
+                LifecycleState.ACTIVE,
+                timestamp=inputs.timestamp,
+                cause="OBJECTIVE_STRUCTURE_ACTIVATED",
+                evidence={"classification_version": CLASSIFICATION_VERSION},
             )
 
     def _apply_supersession(
         self, new_ids: list[int], inputs: ObjectiveDiagnosticsInputs
     ) -> None:
-        zone = _ZONE_TICKS * inputs.tick_size
         for new_id in new_ids:
             new = self._records[new_id]
-            if new.confirmed_at is None:
+            if (
+                new.category is not CandidateCategory.MAJOR
+                or new.parent_id is not None
+            ):
                 continue
-            for old_id in sorted(self._records):
-                if old_id == new_id:
+            for old_id in self._displaced_by_new.get(new_id, ()):
+                # Initial checkpoint hydration classifies one complete existing
+                # landscape; only a later event may replace its governing node.
+                if old_id in new_ids:
                     continue
                 old = self._records[old_id]
                 if (
-                    old.side is not new.side
-                    or old.lifecycle is not LifecycleState.ACTIVE
-                    or old.confirmed_at is None
-                    or old.confirmed_at >= new.confirmed_at
-                    or abs(old.price - new.price) > zone
+                    old.category is not CandidateCategory.MAJOR
+                    or old.lifecycle
+                    not in {LifecycleState.ACTIVE, LifecycleState.CHALLENGED}
                 ):
                     continue
                 self._transition_lifecycle(
                     old_id,
                     LifecycleState.SUPERSEDED,
                     timestamp=inputs.timestamp,
-                    cause="SWING_SUPERSEDED",
-                    evidence={"superseding_swing_id": new_id, "zone_ticks": _ZONE_TICKS},
-                )
-
-    def _apply_breaches(self, inputs: ObjectiveDiagnosticsInputs) -> None:
-        extreme_high = (
-            inputs.session_high
-            if inputs.session_high is not None
-            else inputs.current_price
-        )
-        extreme_low = (
-            inputs.session_low if inputs.session_low is not None else inputs.current_price
-        )
-        for swing_id in sorted(self._records):
-            record = self._records[swing_id]
-            breached = (
-                record.side is SwingSide.HIGH and extreme_high > record.price
-            ) or (
-                record.side is SwingSide.LOW and extreme_low < record.price
-            )
-            if breached and record.lifecycle is not LifecycleState.BREACHED:
-                if record.lifecycle is LifecycleState.ARCHIVED:
-                    continue
-                self._transition_lifecycle(
-                    swing_id,
-                    LifecycleState.BREACHED,
-                    timestamp=inputs.timestamp,
-                    cause="PRICE_BREACH",
+                    cause="HIERARCHY_GOVERNING_REPLACEMENT",
                     evidence={
-                        "current_price": inputs.current_price,
-                        "extreme_high": extreme_high,
-                        "extreme_low": extreme_low,
+                        "superseding_swing_id": new_id,
+                        "displaced_from_frontier": True,
                     },
                 )
+
+    def _resolve_challenges(
+        self, new_ids: list[int], inputs: ObjectiveDiagnosticsInputs
+    ) -> None:
+        """Resolve challenges only from newly confirmed opposite-side structure."""
+        challenged_ids = [
+            swing_id
+            for swing_id, record in sorted(self._records.items())
+            if record.lifecycle is LifecycleState.CHALLENGED
+        ]
+        for challenged_id in challenged_ids:
+            challenged = self._records[challenged_id]
+            for evidence_id in new_ids:
+                evidence_record = self._records[evidence_id]
+                if evidence_record.side is challenged.side:
+                    continue
+                if challenged.side is SwingSide.HIGH:
+                    accepted = (
+                        evidence_record.price > challenged.price
+                        and inputs.current_price > challenged.price
+                    )
+                    reclaimed = (
+                        evidence_record.price < challenged.price
+                        and inputs.current_price < challenged.price
+                    )
+                else:
+                    accepted = (
+                        evidence_record.price < challenged.price
+                        and inputs.current_price < challenged.price
+                    )
+                    reclaimed = (
+                        evidence_record.price > challenged.price
+                        and inputs.current_price > challenged.price
+                    )
+                if accepted:
+                    self._transition_lifecycle(
+                        challenged_id,
+                        LifecycleState.CONFIRMED_BROKEN,
+                        timestamp=inputs.timestamp,
+                        cause="FAR_SIDE_ACCEPTANCE_CONFIRMED",
+                        evidence={
+                            "acceptance_swing_id": evidence_id,
+                            "acceptance_price": evidence_record.price,
+                            "current_price": inputs.current_price,
+                        },
+                    )
+                    break
+                if reclaimed:
+                    self._transition_lifecycle(
+                        challenged_id,
+                        LifecycleState.ACTIVE,
+                        timestamp=inputs.timestamp,
+                        cause="RECLAIM_CONFIRMED",
+                        evidence={
+                            "reclaim_swing_id": evidence_id,
+                            "reclaim_price": evidence_record.price,
+                            "current_price": inputs.current_price,
+                        },
+                    )
+                    break
+
+    def _apply_challenges(self, inputs: ObjectiveDiagnosticsInputs) -> None:
+        """A trade-through challenges an objective; it never kills it."""
+        for swing_id in sorted(self._records):
+            record = self._records[swing_id]
+            penetrated = (
+                record.side is SwingSide.HIGH
+                and inputs.current_price > record.price
+            ) or (
+                record.side is SwingSide.LOW
+                and inputs.current_price < record.price
+            )
+            if not penetrated:
+                continue
+            if record.lifecycle is LifecycleState.ACTIVE:
+                self._transition_lifecycle(
+                    swing_id,
+                    LifecycleState.CHALLENGED,
+                    timestamp=inputs.timestamp,
+                    cause="PRICE_TRADE_THROUGH",
+                    evidence={
+                        "penetration_price": inputs.current_price,
+                        "current_price": inputs.current_price,
+                    },
+                )
+            elif record.lifecycle is LifecycleState.CHALLENGED:
+                previous_extreme = record.challenge_extreme_price
+                extends = previous_extreme is None or (
+                    record.side is SwingSide.HIGH
+                    and inputs.current_price > previous_extreme
+                ) or (
+                    record.side is SwingSide.LOW
+                    and inputs.current_price < previous_extreme
+                )
+                if extends:
+                    self._extend_challenge(
+                        swing_id,
+                        timestamp=inputs.timestamp,
+                        penetration_price=inputs.current_price,
+                    )
 
     def _transition_lifecycle(
         self,
@@ -454,6 +590,27 @@ class PersistentStructuralHierarchy:
         old = self._records[swing_id]
         if old.lifecycle is lifecycle:
             return
+        challenge_started_at = old.challenge_started_at
+        challenge_extreme_price = old.challenge_extreme_price
+        challenge_evidence = old.challenge_evidence
+        if lifecycle is LifecycleState.CHALLENGED:
+            penetration = float(evidence["penetration_price"])
+            challenge_started_at = timestamp
+            challenge_extreme_price = penetration
+            challenge_evidence = (
+                f"Trade-through at {penetration}",
+                f"Objective price {old.price}",
+            )
+        elif cause == "RECLAIM_CONFIRMED":
+            challenge_evidence = challenge_evidence + (
+                f"Reclaim swing {evidence['reclaim_swing_id']} at "
+                f"{evidence['reclaim_price']}",
+            )
+        elif cause == "FAR_SIDE_ACCEPTANCE_CONFIRMED":
+            challenge_evidence = challenge_evidence + (
+                f"Acceptance swing {evidence['acceptance_swing_id']} at "
+                f"{evidence['acceptance_price']}",
+            )
         updated = StructuralSwingRecord(
             swing_id=old.swing_id,
             fingerprint=old.fingerprint,
@@ -468,6 +625,11 @@ class PersistentStructuralHierarchy:
             persistence_score=old.persistence_score,
             classification_version=old.classification_version,
             lifecycle=lifecycle,
+            challenge_started_at=challenge_started_at,
+            challenge_extreme_price=challenge_extreme_price,
+            challenge_evidence=challenge_evidence,
+            transition_cause=cause,
+            transition_time=timestamp,
             created_sequence=old.created_sequence,
             last_transition_sequence=self._version + 1,
         )
@@ -479,6 +641,45 @@ class PersistentStructuralHierarchy:
             old_state=_state(old),
             new_state=_state(updated),
             evidence=evidence,
+        )
+
+    def _extend_challenge(
+        self, swing_id: int, *, timestamp: float, penetration_price: float
+    ) -> None:
+        old = self._records[swing_id]
+        evidence_lines = old.challenge_evidence + (
+            f"Extended to {penetration_price}",
+        )
+        updated = StructuralSwingRecord(
+            swing_id=old.swing_id,
+            fingerprint=old.fingerprint,
+            side=old.side,
+            price=old.price,
+            strength=old.strength,
+            confirmed_at=old.confirmed_at,
+            parent_id=old.parent_id,
+            depth=old.depth,
+            category=old.category,
+            prominence=old.prominence,
+            persistence_score=old.persistence_score,
+            classification_version=old.classification_version,
+            lifecycle=old.lifecycle,
+            challenge_started_at=old.challenge_started_at,
+            challenge_extreme_price=penetration_price,
+            challenge_evidence=evidence_lines,
+            transition_cause="CHALLENGE_EXTENDED",
+            transition_time=timestamp,
+            created_sequence=old.created_sequence,
+            last_transition_sequence=self._version + 1,
+        )
+        self._records[swing_id] = updated
+        self._append_transition(
+            timestamp=timestamp,
+            cause="CHALLENGE_EXTENDED",
+            swing_id=swing_id,
+            old_state=_state(old),
+            new_state=_state(updated),
+            evidence={"penetration_price": penetration_price},
         )
 
     def _append_transition(
@@ -546,6 +747,10 @@ class PersistentStructuralHierarchy:
                     category=record.category,
                     eligible=eligible,
                     rejection_reasons=reasons,
+                    challenge_state=self._challenge_state(record),
+                    challenge_evidence=record.challenge_evidence,
+                    transition_cause=record.transition_cause,
+                    transition_time=record.transition_time,
                 )
             )
         highs = sort_candidates(
@@ -568,6 +773,18 @@ class PersistentStructuralHierarchy:
         )
 
     @staticmethod
+    def _challenge_state(record: StructuralSwingRecord) -> str:
+        if record.lifecycle is LifecycleState.CHALLENGED:
+            return "UNDER_CHALLENGE"
+        if record.transition_cause == "RECLAIM_CONFIRMED":
+            return "RECLAIMED"
+        if record.lifecycle is LifecycleState.CONFIRMED_BROKEN:
+            return "CONFIRMED_BROKEN"
+        if record.challenge_started_at is not None:
+            return "RESOLVED"
+        return "NONE"
+
+    @staticmethod
     def _record_payload(record: StructuralSwingRecord) -> dict[str, object]:
         payload = asdict(record)
         payload["side"] = record.side.value
@@ -576,7 +793,16 @@ class PersistentStructuralHierarchy:
         return payload
 
     @staticmethod
-    def _record_from_payload(item: Mapping[str, object]) -> StructuralSwingRecord:
+    def _record_from_payload(
+        item: Mapping[str, object], *, checkpoint_version: int
+    ) -> StructuralSwingRecord:
+        lifecycle_value = str(item["lifecycle"])
+        if checkpoint_version == 1 and lifecycle_value == "BREACHED":
+            lifecycle_value = LifecycleState.CHALLENGED.value
+        migrated_challenge = (
+            checkpoint_version == 1
+            and lifecycle_value == LifecycleState.CHALLENGED.value
+        )
         return StructuralSwingRecord(
             swing_id=int(item["swing_id"]),
             fingerprint=str(item["fingerprint"]),
@@ -596,7 +822,34 @@ class PersistentStructuralHierarchy:
             prominence=float(item["prominence"]),
             persistence_score=float(item["persistence_score"]),
             classification_version=int(item["classification_version"]),
-            lifecycle=LifecycleState(str(item["lifecycle"])),
+            lifecycle=LifecycleState(lifecycle_value),
+            challenge_started_at=(
+                None
+                if item.get("challenge_started_at") is None
+                else float(item["challenge_started_at"])
+            ),
+            challenge_extreme_price=(
+                None
+                if item.get("challenge_extreme_price") is None
+                else float(item["challenge_extreme_price"])
+            ),
+            challenge_evidence=tuple(
+                str(value) for value in item.get("challenge_evidence", ())
+            )
+            or (
+                ("Migrated from H-2 BREACHED state",)
+                if migrated_challenge
+                else ()
+            ),
+            transition_cause=str(
+                item.get(
+                    "transition_cause",
+                    "H2_BREACH_MIGRATED_TO_CHALLENGE"
+                    if migrated_challenge
+                    else "CHECKPOINT_RESTORED",
+                )
+            ),
+            transition_time=float(item.get("transition_time", 0.0)),
             created_sequence=int(item["created_sequence"]),
             last_transition_sequence=int(item["last_transition_sequence"]),
         )

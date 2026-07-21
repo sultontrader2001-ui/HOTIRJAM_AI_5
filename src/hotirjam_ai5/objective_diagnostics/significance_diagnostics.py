@@ -84,14 +84,14 @@ def resolve_lifecycle(
     session_high: float | None,
     session_low: float | None,
 ) -> LifecycleState:
-    """ACTIVE / BREACHED / SUPERSEDED diagnostic lifecycle."""
+    """Stateless fallback lifecycle; penetration is only a challenge."""
     extreme_high = session_high if session_high is not None else current_price
     extreme_low = session_low if session_low is not None else current_price
 
     if node.side is SwingSide.HIGH and extreme_high > node.swing.price:
-        return LifecycleState.BREACHED
+        return LifecycleState.CHALLENGED
     if node.side is SwingSide.LOW and extreme_low < node.swing.price:
-        return LifecycleState.BREACHED
+        return LifecycleState.CHALLENGED
 
     # Superseded: later same-side swing within zone ticks, not itself.
     if tick_size <= 0.0:
