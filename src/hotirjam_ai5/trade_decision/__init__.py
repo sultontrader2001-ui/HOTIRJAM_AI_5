@@ -9,6 +9,7 @@ from hotirjam_ai5.trade_decision.models import (
     BuyScoreBreakdown,
     DecisionExplanation,
     ExplanationStatus,
+    SignalStability,
     TradeDecision,
     TradeDecisionSnapshot,
 )
@@ -21,7 +22,10 @@ from hotirjam_ai5.trade_decision.policy import (
     format_buy_score_reason,
     is_buy_eligible,
     matches_buy_strategy,
+    qualifies_for_signal_stability,
+    resolve_signal_stability,
     resolve_trade_authorization,
+    signal_stability_explanation_status,
 )
 
 __all__ = [
@@ -29,6 +33,7 @@ __all__ = [
     "BuyScoreBreakdown",
     "DecisionExplanation",
     "ExplanationStatus",
+    "SignalStability",
     "TradeAuthorization",
     "TradeDecision",
     "TradeDecisionEngine",
@@ -41,5 +46,8 @@ __all__ = [
     "format_buy_score_reason",
     "is_buy_eligible",
     "matches_buy_strategy",
+    "qualifies_for_signal_stability",
+    "resolve_signal_stability",
     "resolve_trade_authorization",
+    "signal_stability_explanation_status",
 ]

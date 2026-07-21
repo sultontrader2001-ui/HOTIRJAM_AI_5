@@ -1,7 +1,7 @@
 """Trade decision models.
 
 Trade Decision Engine output values. SELL remains unavailable.
-BUY exists for future emission; score/confidence/explanation do not emit BUY yet.
+BUY exists for future emission; score/confidence/stability do not emit BUY yet.
 """
 
 from __future__ import annotations
@@ -23,6 +23,13 @@ class ExplanationStatus(StrEnum):
     PASS = "PASS"
     FAIL = "FAIL"
     UNKNOWN = "UNKNOWN"
+
+
+class SignalStability(StrEnum):
+    """Temporal confirmation of BUY strength across consecutive evaluations."""
+
+    STABLE = "STABLE"
+    UNSTABLE = "UNSTABLE"
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +86,7 @@ class DecisionExplanation:
     behavior: ExplanationStatus
     physics: ExplanationStatus
     liquidity: ExplanationStatus
+    signal_stability: ExplanationStatus
     summary: str
 
 
@@ -92,4 +100,5 @@ class TradeDecisionSnapshot:
     next_action: str
     buy_score: int = 0
     buy_confidence: int = 0
+    signal_stability: SignalStability = SignalStability.UNSTABLE
     decision_explanation: DecisionExplanation | None = None

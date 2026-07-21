@@ -81,9 +81,11 @@ def test_render_shows_placeholder_not_fake_prices() -> None:
     assert "Decision: NO_TRADE" in text
     assert "BUY Score       : 0 / 100" in text
     assert "BUY Confidence : 0 %" in text
+    assert "Signal Stability : UNSTABLE" in text
     assert "Explanation" in text
     assert "Assessment : UNKNOWN" in text
     assert "Liquidity  : UNKNOWN" in text
+    assert "Stability  : UNKNOWN" in text
     assert "Summary" in text
     assert "Market conditions do not satisfy BUY requirements." in text
     assert "Next    : Execution Engine" in text
@@ -180,18 +182,20 @@ def test_render_with_real_market_and_health_values() -> None:
         ),
         trade_decision=TradeDecisionView(
             decision="NO_TRADE",
-            buy_score=35,
-            buy_confidence=45,
-            reason="Market conditions do not satisfy BUY requirements.",
+            buy_score=86,
+            buy_confidence=92,
+            signal_stability="STABLE",
+            reason="BUY requirements are satisfied. Awaiting release.",
             next_action="Execution Engine",
             explanation=DecisionExplanationView(
                 assessment="PASS",
                 feed="PASS",
-                market_state="FAIL",
-                behavior="FAIL",
-                physics="FAIL",
-                liquidity="UNKNOWN",
-                summary="Market conditions do not satisfy BUY requirements.",
+                market_state="PASS",
+                behavior="PASS",
+                physics="PASS",
+                liquidity="PASS",
+                signal_stability="PASS",
+                summary="BUY requirements are satisfied. Awaiting release.",
             ),
         ),
         statistics=StatisticsView(
@@ -237,18 +241,20 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "Reason: Evaluation completed successfully." in text
     assert "Next  : Trade Decision Engine" in text
     assert "TRADE DECISION" in text
-    assert "BUY Score       : 35 / 100" in text
-    assert "BUY Confidence : 45 %" in text
+    assert "BUY Score       : 86 / 100" in text
+    assert "BUY Confidence : 92 %" in text
+    assert "Signal Stability : STABLE" in text
     assert "Decision: NO_TRADE" in text
     assert "Explanation" in text
     assert "Assessment : PASS" in text
     assert "Feed       : PASS" in text
-    assert "State      : FAIL" in text
-    assert "Behavior   : FAIL" in text
-    assert "Physics    : FAIL" in text
-    assert "Liquidity  : UNKNOWN" in text
+    assert "State      : PASS" in text
+    assert "Behavior   : PASS" in text
+    assert "Physics    : PASS" in text
+    assert "Liquidity  : PASS" in text
+    assert "Stability  : PASS" in text
     assert "Summary" in text
-    assert "Market conditions do not satisfy BUY requirements." in text
+    assert "BUY requirements are satisfied. Awaiting release." in text
     assert "Next    : Execution Engine" in text
     assert "• DOM connected" in text
 

@@ -120,7 +120,9 @@ def test_full_score_and_confidence_still_no_trade() -> None:
     assert snap.decision is not TradeDecision.BUY
     assert snap.buy_score == 100
     assert snap.buy_confidence == 100
-    assert snap.reason == "BUY requirements are satisfied. Awaiting release."
+    assert snap.signal_stability.value == "UNSTABLE"  # window not yet full
+    assert snap.decision_explanation is not None
+    assert snap.decision_explanation.signal_stability is ExplanationStatus.UNKNOWN
     assert snap.next_action == NEXT_ACTION
 
 
@@ -292,12 +294,14 @@ def test_partial_score_example_65() -> None:
 
 
 def test_explanation_all_pass() -> None:
+    history = ((100, 100), (100, 100))
     snap = apply_trade_decision_policy(
         _assessment(DecisionAssessmentState.READY),
         _context(),
         _physics(),
         _liquidity(),
         timestamp=5.0,
+        signal_history=history,
     )
     expl = snap.decision_explanation
     assert expl is not None
@@ -307,6 +311,8 @@ def test_explanation_all_pass() -> None:
     assert expl.behavior is ExplanationStatus.PASS
     assert expl.physics is ExplanationStatus.PASS
     assert expl.liquidity is ExplanationStatus.PASS
+    assert expl.signal_stability is ExplanationStatus.PASS
+    assert snap.signal_stability.value == "STABLE"
     assert expl.summary == "BUY requirements are satisfied. Awaiting release."
     assert snap.decision is TradeDecision.NO_TRADE
 
@@ -411,8 +417,17 @@ def test_engine_delegates_to_policy() -> None:
 
 
 def test_engine_evaluate_and_snapshot() -> None:
-    clock = iter([10.0, 11.0]).__next__
+    clock = iter([10.0, 11.0, 12.0, 13.0]).__next__
     engine = TradeDecisionEngine(clock=clock)
+    for _ in range(2):
+        snap = engine.evaluate(
+            _assessment(DecisionAssessmentState.READY),
+            _context(),
+            _physics(),
+            _liquidity(),
+        )
+        assert snap.signal_stability.value == "UNSTABLE"
+        assert snap.decision is TradeDecision.NO_TRADE
     snap = engine.evaluate(
         _assessment(DecisionAssessmentState.READY),
         _context(),
@@ -421,6 +436,69 @@ def test_engine_evaluate_and_snapshot() -> None:
     )
     assert snap.buy_score == 100
     assert snap.buy_confidence == 100
+    assert snap.signal_stability.value == "STABLE"
     assert snap.decision is TradeDecision.NO_TRADE
-    assert snap.timestamp == 11.0
     assert engine.snapshot() is snap
+
+
+def test_three_consecutive_qualifying_evaluations_stable() -> None:
+    history = ((86, 92), (90, 88))
+    snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _context(),
+        _physics(),
+        _liquidity(),
+        timestamp=20.0,
+        signal_history=history,
+    )
+    # Current eval is 100/100 — with prior two qualifying → STABLE
+    assert snap.buy_score == 100
+    assert snap.buy_confidence == 100
+    assert snap.signal_stability.value == "STABLE"
+    assert snap.decision_explanation is not None
+    assert snap.decision_explanation.signal_stability is ExplanationStatus.PASS
+    assert snap.decision is TradeDecision.NO_TRADE
+
+
+def test_interrupted_sequence_unstable() -> None:
+    history = ((90, 90), (50, 90))  # second sample fails score threshold
+    snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _context(),
+        _physics(),
+        _liquidity(),
+        timestamp=21.0,
+        signal_history=history,
+    )
+    assert snap.signal_stability.value == "UNSTABLE"
+    assert snap.decision_explanation is not None
+    assert snap.decision_explanation.signal_stability is ExplanationStatus.FAIL
+
+
+def test_rolling_window_drops_old_samples() -> None:
+    # Only last 3 matter; old failing sample outside window is ignored.
+    history = ((10, 10), (90, 90), (91, 91))
+    snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _context(),
+        _physics(),
+        _liquidity(),
+        timestamp=22.0,
+        signal_history=history,
+    )
+    # Window becomes (90,90), (91,91), (100,100) — STABLE
+    assert snap.signal_stability.value == "STABLE"
+
+
+def test_signal_stability_unknown_until_window_full() -> None:
+    snap = apply_trade_decision_policy(
+        _assessment(DecisionAssessmentState.READY),
+        _context(),
+        _physics(),
+        _liquidity(),
+        timestamp=23.0,
+        signal_history=((95, 95),),
+    )
+    assert snap.signal_stability.value == "UNSTABLE"
+    assert snap.decision_explanation is not None
+    assert snap.decision_explanation.signal_stability is ExplanationStatus.UNKNOWN

@@ -1,13 +1,15 @@
-"""Trade Decision Policy — Score, Confidence, and Decision Explanation.
+"""Trade Decision Policy — Score, Confidence, Stability, and Explanation.
 
 buy_score measures setup quality.
 buy_confidence measures decision reliability.
+signal_stability is temporal confirmation across consecutive evaluations.
 decision_explanation explains WHY the current decision was made.
 Always emits NO_TRADE. SELL remains unavailable.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import StrEnum
 from typing import Final
 
@@ -23,6 +25,7 @@ from hotirjam_ai5.trade_decision.models import (
     BuyScoreBreakdown,
     DecisionExplanation,
     ExplanationStatus,
+    SignalStability,
     TradeDecision,
     TradeDecisionSnapshot,
 )
@@ -53,6 +56,11 @@ CONF_LIQUIDITY_RELIABILITY: Final[int] = 20
 CONF_MARKET_STABILITY: Final[int] = 15
 CONF_TOTAL: Final[int] = 100
 
+# --- Signal Stability (temporal confirmation) ---
+SIGNAL_STABILITY_WINDOW: Final[int] = 3
+SIGNAL_MIN_BUY_SCORE: Final[int] = 80
+SIGNAL_MIN_BUY_CONFIDENCE: Final[int] = 85
+
 NEXT_ACTION = "Execution Engine"
 DEFAULT_FAIL_SUMMARY = "Market conditions do not satisfy BUY requirements."
 SATISFIED_SUMMARY = "BUY requirements are satisfied. Awaiting release."
@@ -77,11 +85,48 @@ def empty_decision_explanation() -> DecisionExplanation:
         behavior=ExplanationStatus.UNKNOWN,
         physics=ExplanationStatus.UNKNOWN,
         liquidity=ExplanationStatus.UNKNOWN,
+        signal_stability=ExplanationStatus.UNKNOWN,
         summary=DEFAULT_FAIL_SUMMARY,
     )
 
 
 PENDING_REASON = format_buy_score_reason(0)
+
+
+def qualifies_for_signal_stability(buy_score: int, buy_confidence: int) -> bool:
+    """Return True when one evaluation meets stability thresholds."""
+    return (
+        buy_score >= SIGNAL_MIN_BUY_SCORE
+        and buy_confidence >= SIGNAL_MIN_BUY_CONFIDENCE
+    )
+
+
+def resolve_signal_stability(
+    history: Sequence[tuple[int, int]],
+) -> SignalStability:
+    """Resolve STABLE/UNSTABLE from a rolling score/confidence history.
+
+    STABLE only when the window is full and every sample qualifies.
+    """
+    if len(history) < SIGNAL_STABILITY_WINDOW:
+        return SignalStability.UNSTABLE
+    window = history[-SIGNAL_STABILITY_WINDOW:]
+    if all(qualifies_for_signal_stability(score, conf) for score, conf in window):
+        return SignalStability.STABLE
+    return SignalStability.UNSTABLE
+
+
+def signal_stability_explanation_status(
+    stability: SignalStability,
+    *,
+    history_length: int,
+) -> ExplanationStatus:
+    """Map signal stability to explanation PASS/FAIL/UNKNOWN."""
+    if history_length < SIGNAL_STABILITY_WINDOW:
+        return ExplanationStatus.UNKNOWN
+    if stability is SignalStability.STABLE:
+        return ExplanationStatus.PASS
+    return ExplanationStatus.FAIL
 
 
 def resolve_trade_authorization(
@@ -214,6 +259,8 @@ def build_decision_explanation(
     context: MarketContextSnapshot | None = None,
     physics: PhysicsSnapshot | None = None,
     liquidity: LiquiditySnapshot | None = None,
+    *,
+    signal_stability_status: ExplanationStatus = ExplanationStatus.UNKNOWN,
 ) -> DecisionExplanation:
     """Build PASS/FAIL/UNKNOWN explanation for the current decision."""
     assessment_status = _status_from_bool(
@@ -254,6 +301,7 @@ def build_decision_explanation(
         behavior_status=behavior_status,
         physics_status=physics_status,
         liquidity_status=liquidity_status,
+        signal_stability_status=signal_stability_status,
         context=context,
     )
     return DecisionExplanation(
@@ -263,6 +311,7 @@ def build_decision_explanation(
         behavior=behavior_status,
         physics=physics_status,
         liquidity=liquidity_status,
+        signal_stability=signal_stability_status,
         summary=summary,
     )
 
@@ -275,6 +324,7 @@ def _build_explanation_summary(
     behavior_status: ExplanationStatus,
     physics_status: ExplanationStatus,
     liquidity_status: ExplanationStatus,
+    signal_stability_status: ExplanationStatus,
     context: MarketContextSnapshot | None,
 ) -> str:
     """Produce a concise sentence explaining the decision."""
@@ -285,9 +335,13 @@ def _build_explanation_summary(
         behavior_status,
         physics_status,
         liquidity_status,
+        signal_stability_status,
     )
     if all(status is ExplanationStatus.PASS for status in statuses):
         return SATISFIED_SUMMARY
+
+    if signal_stability_status is ExplanationStatus.FAIL:
+        return "BUY signal is not yet stable across consecutive evaluations."
 
     # Named combo matching the sprint example.
     if (
@@ -314,6 +368,7 @@ def _build_explanation_summary(
             behavior_status,
             physics_status,
             liquidity_status,
+            signal_stability_status,
         )
     ):
         return "Assessment is not READY for trade decision."
@@ -364,14 +419,25 @@ def apply_trade_decision_policy(
     liquidity: LiquiditySnapshot | None = None,
     *,
     timestamp: float,
+    signal_history: Sequence[tuple[int, int]] = (),
 ) -> TradeDecisionSnapshot:
-    """Compute score, confidence, and explanation; emit NO_TRADE only."""
+    """Compute score, confidence, stability, and explanation; emit NO_TRADE only."""
     score = compute_buy_score(assessment, context, physics, liquidity).total
     confidence = compute_buy_confidence(
         assessment, context, physics, liquidity
     ).total
+    history = (*signal_history, (score, confidence))
+    stability = resolve_signal_stability(history)
+    stability_status = signal_stability_explanation_status(
+        stability,
+        history_length=len(history),
+    )
     explanation = build_decision_explanation(
-        assessment, context, physics, liquidity
+        assessment,
+        context,
+        physics,
+        liquidity,
+        signal_stability_status=stability_status,
     )
     return TradeDecisionSnapshot(
         timestamp=timestamp,
@@ -380,5 +446,6 @@ def apply_trade_decision_policy(
         next_action=NEXT_ACTION,
         buy_score=score,
         buy_confidence=confidence,
+        signal_stability=stability,
         decision_explanation=explanation,
     )

@@ -32,6 +32,7 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 25 | BUY Confidence Framework (not emitted) | Done |
 | 26 | Decision Explanation Framework (not emitted) | Done |
 | 27 | Liquidity Engine Integration (not emitted) | Done |
+| 28 | Signal Stability Framework (not emitted) | Done |
 
 **Out of scope still:** emitting BUY, SELL, order execution, broker connectivity, risk
 
@@ -133,10 +134,9 @@ Does not emit BUY/SELL, orders, risk, probability, or confidence.
 
 ### TRADE DECISION section
 
-Emits `NO_TRADE` only. Displays BUY Score, BUY Confidence, and an Explanation
-block (Assessment / Feed / State / Behavior / Physics / Liquidity as
-PASS|FAIL|UNKNOWN) plus a concise Summary. Liquidity PASS/FAIL comes from
-LiquidityEngine when DOM is healthy; UNKNOWN only when DOM is unavailable.
+Emits `NO_TRADE` only. Displays BUY Score, BUY Confidence, Signal Stability
+(STABLE/UNSTABLE over a 3-evaluation rolling window), and an Explanation
+block (including Stability PASS|FAIL|UNKNOWN) plus a concise Summary.
 BUY is not emitted. SELL remains unavailable.
 
 ### Test

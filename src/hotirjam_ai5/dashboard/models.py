@@ -224,6 +224,7 @@ class DecisionExplanationView:
     behavior: str = "UNKNOWN"
     physics: str = "UNKNOWN"
     liquidity: str = "UNKNOWN"
+    signal_stability: str = "UNKNOWN"
     summary: str = "Market conditions do not satisfy BUY requirements."
 
 
@@ -234,6 +235,7 @@ class TradeDecisionView:
     decision: str = "NO_TRADE"
     buy_score: int = 0
     buy_confidence: int = 0
+    signal_stability: str = "UNSTABLE"
     reason: str = "Market conditions do not satisfy BUY requirements."
     next_action: str = "Execution Engine"
     explanation: DecisionExplanationView = field(
