@@ -116,6 +116,8 @@ class DashboardRenderer:
             "STATISTICS",
             f"Tick Rate : {_format_rate(stats.tick_rate)}",
             f"Tick Count: {_format_int(stats.tick_count)}",
+            f"BUY_INTERNAL: {stats.buy_internal_count} ({stats.buy_internal_frequency:.1f}%)",
+            f"NO_TRADE    : {stats.no_trade_count} ({stats.no_trade_frequency:.1f}%)",
         ]
 
         foundation_detail = (

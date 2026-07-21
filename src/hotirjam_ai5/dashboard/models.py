@@ -136,6 +136,10 @@ class StatisticsView:
     tick_count: int = 0
     tick_rate: float = 0.0
     running_time_seconds: float = 0.0
+    buy_internal_count: int = 0
+    no_trade_count: int = 0
+    buy_internal_frequency: float = 0.0
+    no_trade_frequency: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,7 +235,7 @@ class DecisionExplanationView:
 
 @dataclass(frozen=True, slots=True)
 class TradeDecisionView:
-    """TRADE DECISION section — scored/confidence NO_TRADE (BUY not emitted)."""
+    """TRADE DECISION section — observation-only internal activation."""
 
     decision: str = "NO_TRADE"
     buy_score: int = 0

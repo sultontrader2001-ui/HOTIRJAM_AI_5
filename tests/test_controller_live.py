@@ -12,6 +12,12 @@ from hotirjam_ai5.dashboard.models import (
     MarketStatus,
 )
 from hotirjam_ai5.live_data.tick import LiveTick
+from hotirjam_ai5.trade_decision.models import (
+    DecisionReadiness,
+    SignalStability,
+    TradeDecision,
+    TradeDecisionSnapshot,
+)
 
 
 class FakeClock:
@@ -20,6 +26,22 @@ class FakeClock:
 
     def __call__(self) -> float:
         return self.now
+
+
+class BuyInternalDecisionEngine:
+    """Test double proving dashboard-only activation handling."""
+
+    def evaluate(self, *_args: object) -> TradeDecisionSnapshot:
+        return TradeDecisionSnapshot(
+            timestamp=1_700_000_000.5,
+            decision=TradeDecision.BUY_INTERNAL,
+            reason="Decision Readiness is READY.",
+            next_action="Execution Engine",
+            buy_score=91,
+            buy_confidence=93,
+            signal_stability=SignalStability.STABLE,
+            decision_readiness=DecisionReadiness.READY,
+        )
 
 
 def _tick(*, price: float = 20100.0, symbol: str = "MNQ", timestamp: float = 1_700_000_000.0) -> LiveTick:
@@ -114,3 +136,27 @@ def test_reconnect_logs_connected_again() -> None:
 def test_reject_non_positive_stale_seconds() -> None:
     with pytest.raises(ValueError, match="stale_seconds"):
         DashboardController(stale_seconds=0)
+
+
+def test_buy_internal_is_logged_and_counted_without_execution() -> None:
+    controller = DashboardController(
+        trade_decision=BuyInternalDecisionEngine(),  # type: ignore[arg-type]
+    )
+    controller.start()
+
+    state = controller.snapshot()
+
+    assert state.trade_decision.decision == "BUY_INTERNAL"
+    assert state.statistics.buy_internal_count == 1
+    assert state.statistics.no_trade_count == 0
+    assert state.statistics.buy_internal_frequency == 100.0
+    assert state.statistics.no_trade_frequency == 0.0
+    assert len(state.events) == 1
+    log = state.events[0]
+    assert log.startswith("BUY_INTERNAL timestamp=1700000000.500000")
+    assert "score=91" in log
+    assert "confidence=93" in log
+    assert "state=UNKNOWN" in log
+    assert "behavior=UNKNOWN" in log
+    assert "physics=velocity:None,acceleration:None" in log
+    assert "liquidity=shift:UNKNOWN,imbalance:UNKNOWN" in log

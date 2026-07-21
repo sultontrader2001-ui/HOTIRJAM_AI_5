@@ -117,7 +117,7 @@ def test_full_score_and_confidence_still_no_trade() -> None:
         assessment, context, physics, liquidity, timestamp=1.0
     )
     assert snap.decision is TradeDecision.NO_TRADE
-    assert snap.decision is not TradeDecision.BUY
+    assert snap.decision is not TradeDecision.BUY_INTERNAL
     assert snap.buy_score == 100
     assert snap.buy_confidence == 100
     assert snap.signal_stability.value == "UNSTABLE"  # window not yet full
@@ -319,7 +319,7 @@ def test_explanation_all_pass() -> None:
         "BUY requirements are satisfied and Decision Readiness is READY. "
         "Awaiting release."
     )
-    assert snap.decision is TradeDecision.NO_TRADE
+    assert snap.decision is TradeDecision.BUY_INTERNAL
 
 
 def test_explanation_pass_fail_unknown_combo() -> None:
@@ -396,7 +396,7 @@ def test_decision_readiness_ready_path() -> None:
     assert snap.decision_readiness.value == "READY"
     assert snap.decision_explanation is not None
     assert snap.decision_explanation.readiness is ExplanationStatus.PASS
-    assert snap.decision is TradeDecision.NO_TRADE
+    assert snap.decision is TradeDecision.BUY_INTERNAL
 
 
 def test_decision_readiness_not_ready_path() -> None:
@@ -452,7 +452,7 @@ def test_buy_never_emitted_across_scores() -> None:
             assessment, context, physics, liquidity, timestamp=3.0
         )
         assert snap.decision is TradeDecision.NO_TRADE
-        assert snap.decision is not TradeDecision.BUY
+        assert snap.decision is not TradeDecision.BUY_INTERNAL
         assert 0 <= snap.buy_score <= 100
         assert 0 <= snap.buy_confidence <= 100
         assert snap.decision_explanation is not None
@@ -461,7 +461,8 @@ def test_buy_never_emitted_across_scores() -> None:
 
 def test_sell_remains_unavailable() -> None:
     values = {item.value for item in TradeDecision}
-    assert "BUY" in values
+    assert "BUY_INTERNAL" in values
+    assert "BUY" not in values
     assert "SELL" not in values
 
 
@@ -503,7 +504,8 @@ def test_engine_evaluate_and_snapshot() -> None:
     assert snap.buy_score == 100
     assert snap.buy_confidence == 100
     assert snap.signal_stability.value == "STABLE"
-    assert snap.decision is TradeDecision.NO_TRADE
+    assert snap.decision_readiness.value == "READY"
+    assert snap.decision is TradeDecision.BUY_INTERNAL
     assert engine.snapshot() is snap
 
 
@@ -523,7 +525,8 @@ def test_three_consecutive_qualifying_evaluations_stable() -> None:
     assert snap.signal_stability.value == "STABLE"
     assert snap.decision_explanation is not None
     assert snap.decision_explanation.signal_stability is ExplanationStatus.PASS
-    assert snap.decision is TradeDecision.NO_TRADE
+    assert snap.decision_readiness.value == "READY"
+    assert snap.decision is TradeDecision.BUY_INTERNAL
 
 
 def test_interrupted_sequence_unstable() -> None:

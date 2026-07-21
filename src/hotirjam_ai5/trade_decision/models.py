@@ -1,7 +1,7 @@
 """Trade decision models.
 
-Trade Decision Engine output values. SELL remains unavailable.
-BUY exists for future emission; score/confidence/stability do not emit BUY yet.
+Trade Decision Engine output values. BUY_INTERNAL is observation-only.
+Tradable BUY and SELL remain unavailable.
 """
 
 from __future__ import annotations
@@ -11,10 +11,10 @@ from enum import StrEnum
 
 
 class TradeDecision(StrEnum):
-    """Trade decision output. SELL is intentionally unavailable."""
+    """Observation-only trade decision output."""
 
     NO_TRADE = "NO_TRADE"
-    BUY = "BUY"
+    BUY_INTERNAL = "BUY_INTERNAL"
 
 
 class ExplanationStatus(StrEnum):

@@ -183,7 +183,7 @@ def test_render_with_real_market_and_health_values() -> None:
             next_stage="Trade Decision Engine",
         ),
         trade_decision=TradeDecisionView(
-            decision="NO_TRADE",
+            decision="BUY_INTERNAL",
             buy_score=88,
             buy_confidence=92,
             signal_stability="STABLE",
@@ -212,6 +212,10 @@ def test_render_with_real_market_and_health_values() -> None:
             tick_count=120,
             tick_rate=37.0,
             running_time_seconds=65,
+            buy_internal_count=3,
+            no_trade_count=7,
+            buy_internal_frequency=30.0,
+            no_trade_frequency=70.0,
         ),
         events=("Connected", "DOM connected"),
     )
@@ -255,7 +259,9 @@ def test_render_with_real_market_and_health_values() -> None:
     assert "BUY Confidence     : 92 %" in text
     assert "Signal Stability   : STABLE" in text
     assert "Decision Readiness : READY" in text
-    assert "Decision: NO_TRADE" in text
+    assert "Decision: BUY_INTERNAL" in text
+    assert "BUY_INTERNAL: 3 (30.0%)" in text
+    assert "NO_TRADE    : 7 (70.0%)" in text
     assert "Explanation" in text
     assert "Assessment : PASS" in text
     assert "Feed       : PASS" in text

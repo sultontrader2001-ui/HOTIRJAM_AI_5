@@ -41,12 +41,13 @@ from hotirjam_ai5.decision_assessment import DecisionAssessmentEngine
 from hotirjam_ai5.decision_evaluation import DecisionEvaluationEngine
 from hotirjam_ai5.decision_foundation import DecisionFoundationEngine
 from hotirjam_ai5.decision_intent import DecisionIntentEngine
-from hotirjam_ai5.liquidity import LiquidityEngine
+from hotirjam_ai5.liquidity import LiquidityEngine, LiquiditySnapshot
 from hotirjam_ai5.live_data.dom import DomSnapshot
 from hotirjam_ai5.live_data.tick import LiveTick
 from hotirjam_ai5.market_behavior import BehaviorInputs, MarketBehaviorEngine
 from hotirjam_ai5.market_context import (
     MarketContextEngine,
+    MarketContextSnapshot,
     StatisticsSnapshot as ContextStatisticsSnapshot,
 )
 from hotirjam_ai5.market_state import (
@@ -58,7 +59,7 @@ from hotirjam_ai5.market_transition import MarketTransitionEngine
 from hotirjam_ai5.physics.engine import PhysicsEngine
 from hotirjam_ai5.physics.measurements import PhysicsSnapshot
 from hotirjam_ai5.trade_decision import TradeDecisionEngine
-from hotirjam_ai5.trade_decision.models import TradeDecisionSnapshot
+from hotirjam_ai5.trade_decision.models import TradeDecision, TradeDecisionSnapshot
 from hotirjam_ai5.trade_decision.policy import empty_decision_explanation
 
 # Backward-compatible alias used by CLI / older call sites.
@@ -309,6 +310,14 @@ class DashboardController:
             physics_snapshot,
             liquidity_snapshot,
         )
+        self._statistics.record_decision(trade_decision.decision.value)
+        if trade_decision.decision is TradeDecision.BUY_INTERNAL:
+            self._log_buy_internal(
+                trade_decision,
+                market_context=market_context,
+                physics=physics_snapshot,
+                liquidity=liquidity_snapshot,
+            )
         return DashboardState(
             system=SystemView(
                 engine_status=self._engine_status,
@@ -395,6 +404,12 @@ class DashboardController:
                 tick_count=tick_count,
                 tick_rate=tick_rate,
                 running_time_seconds=self._statistics.running_time_seconds(),
+                buy_internal_count=self._statistics.buy_internal_count,
+                no_trade_count=self._statistics.no_trade_count,
+                buy_internal_frequency=self._statistics.decision_frequency(
+                    "BUY_INTERNAL"
+                ),
+                no_trade_frequency=self._statistics.decision_frequency("NO_TRADE"),
             ),
             events=self._event_log.latest(),
         )
@@ -428,6 +443,32 @@ class DashboardController:
             return
         if current is FeedStatus.DISCONNECTED and previous is not FeedStatus.DISCONNECTED:
             self._event_log.append("DOM connection lost")
+
+    def _log_buy_internal(
+        self,
+        decision: TradeDecisionSnapshot,
+        *,
+        market_context: MarketContextSnapshot,
+        physics: PhysicsSnapshot,
+        liquidity: LiquiditySnapshot | None,
+    ) -> None:
+        """Log every observation-only BUY_INTERNAL with its evidence."""
+        state = market_context.state
+        behavior = market_context.behavior
+        velocity = physics.tick_velocity
+        acceleration = physics.tick_acceleration
+        shift = getattr(liquidity, "liquidity_shift", "UNKNOWN")
+        imbalance = getattr(liquidity, "dom_imbalance", "UNKNOWN")
+        self._event_log.append(
+            "BUY_INTERNAL "
+            f"timestamp={decision.timestamp:.6f} "
+            f"score={decision.buy_score} "
+            f"confidence={decision.buy_confidence} "
+            f"state={state} "
+            f"behavior={behavior} "
+            f"physics=velocity:{velocity},acceleration:{acceleration} "
+            f"liquidity=shift:{shift},imbalance:{imbalance}"
+        )
 
 
 def _trade_explanation_view(

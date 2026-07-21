@@ -4,7 +4,8 @@ buy_score measures setup quality.
 buy_confidence measures decision reliability.
 signal_stability is temporal confirmation across consecutive evaluations.
 decision_explanation explains WHY the current decision was made.
-Always emits NO_TRADE. SELL remains unavailable.
+Emits observation-only BUY_INTERNAL only when Decision Readiness is READY.
+Tradable BUY and SELL remain unavailable.
 """
 
 from __future__ import annotations
@@ -490,6 +491,13 @@ def is_buy_eligible(
     return compute_buy_score(assessment, context, physics, liquidity).total == POINTS_TOTAL
 
 
+def resolve_trade_decision(readiness: DecisionReadiness) -> TradeDecision:
+    """Activate observation-only BUY_INTERNAL when readiness is READY."""
+    if readiness is DecisionReadiness.READY:
+        return TradeDecision.BUY_INTERNAL
+    return TradeDecision.NO_TRADE
+
+
 def apply_trade_decision_policy(
     assessment: DecisionAssessmentSnapshot,
     context: MarketContextSnapshot | None = None,
@@ -530,7 +538,7 @@ def apply_trade_decision_policy(
     )
     return TradeDecisionSnapshot(
         timestamp=timestamp,
-        decision=TradeDecision.NO_TRADE,
+        decision=resolve_trade_decision(readiness),
         reason=explanation.summary,
         next_action=NEXT_ACTION,
         buy_score=score,

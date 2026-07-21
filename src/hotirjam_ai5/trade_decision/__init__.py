@@ -27,6 +27,7 @@ from hotirjam_ai5.trade_decision.policy import (
     qualifies_for_signal_stability,
     resolve_decision_readiness,
     resolve_signal_stability,
+    resolve_trade_decision,
     resolve_trade_authorization,
     signal_stability_explanation_status,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "qualifies_for_signal_stability",
     "resolve_decision_readiness",
     "resolve_signal_stability",
+    "resolve_trade_decision",
     "resolve_trade_authorization",
     "signal_stability_explanation_status",
 ]

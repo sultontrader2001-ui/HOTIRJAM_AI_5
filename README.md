@@ -34,8 +34,10 @@ Professional AI assistant for MNQ futures trading (NinjaTrader + Python).
 | 27 | Liquidity Engine Integration (not emitted) | Done |
 | 28 | Signal Stability Framework (not emitted) | Done |
 | 29 | Decision Readiness Framework (not emitted) | Done |
+| 30 | Internal BUY Activation (observation only) | Done |
 
-**Out of scope still:** emitting BUY, SELL, order execution, broker connectivity, risk
+**Out of scope still:** tradable BUY, SELL, order execution, broker connectivity,
+positions, risk
 
 Market/DOM/physics fields show `—` until enough live updates exist. No synthetic data.
 Market State is observation-only (UNKNOWN / QUIET / NORMAL / ACTIVE / TRENDING / VOLATILE).
@@ -135,10 +137,11 @@ Does not emit BUY/SELL, orders, risk, probability, or confidence.
 
 ### TRADE DECISION section
 
-Emits `NO_TRADE` only. Displays BUY Score, BUY Confidence, Signal Stability,
-and Decision Readiness (READY/NOT_READY/UNKNOWN), plus an Explanation block
-(including Readiness PASS|FAIL|UNKNOWN) and a Summary that includes readiness.
-BUY is not emitted. SELL remains unavailable.
+Emits observation-only `BUY_INTERNAL` when Decision Readiness is `READY`;
+otherwise emits `NO_TRADE`. Displays BUY Score, BUY Confidence, Signal
+Stability, Decision Readiness, and a structured Explanation. `BUY_INTERNAL`
+is counted and logged locally only. It never reaches orders, positions,
+execution, or a broker. Tradable BUY and SELL remain unavailable.
 
 ### Test
 

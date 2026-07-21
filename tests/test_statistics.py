@@ -20,6 +20,11 @@ def test_initial_counters_are_zero() -> None:
     assert stats.tick_count == 0
     assert stats.tick_rate() == 0.0
     assert stats.running_time_seconds() == 0.0
+    assert stats.buy_internal_count == 0
+    assert stats.no_trade_count == 0
+    assert stats.decision_count == 0
+    assert stats.decision_frequency("BUY_INTERNAL") == 0.0
+    assert stats.decision_frequency("NO_TRADE") == 0.0
 
 
 def test_tick_rate_over_elapsed_time() -> None:
@@ -37,6 +42,26 @@ def test_record_tick_rejects_non_positive() -> None:
         stats.record_tick(0)
 
 
+def test_decision_counts_and_frequency() -> None:
+    stats = SessionStatistics(clock=FakeClock())
+    stats.record_decision("BUY_INTERNAL")
+    stats.record_decision("NO_TRADE")
+    stats.record_decision("NO_TRADE")
+    stats.record_decision("NO_TRADE")
+
+    assert stats.buy_internal_count == 1
+    assert stats.no_trade_count == 3
+    assert stats.decision_count == 4
+    assert stats.decision_frequency("BUY_INTERNAL") == 25.0
+    assert stats.decision_frequency("NO_TRADE") == 75.0
+
+
+def test_record_decision_rejects_unknown_value() -> None:
+    stats = SessionStatistics(clock=FakeClock())
+    with pytest.raises(ValueError, match="unsupported decision"):
+        stats.record_decision("BUY")
+
+
 def test_reset_clears_and_restarts_clock() -> None:
     clock = FakeClock(10.0)
     stats = SessionStatistics(clock=clock)
@@ -44,6 +69,8 @@ def test_reset_clears_and_restarts_clock() -> None:
     clock.now = 20.0
     stats.reset()
     assert stats.tick_count == 0
+    assert stats.buy_internal_count == 0
+    assert stats.no_trade_count == 0
     assert stats.running_time_seconds() == 0.0
     clock.now = 25.0
     assert stats.running_time_seconds() == 5.0

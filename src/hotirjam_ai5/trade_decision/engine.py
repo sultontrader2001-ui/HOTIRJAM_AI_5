@@ -28,7 +28,8 @@ class TradeDecisionEngine:
     """Orchestrates trade decision evaluation via the internal policy.
 
     Maintains a rolling signal-stability history inside Trade Decision.
-    Always returns NO_TRADE. Never places orders or connects to a broker.
+    Emits BUY_INTERNAL only when Decision Readiness is READY; otherwise NO_TRADE.
+    Neither result is sent to execution, orders, positions, or a broker.
     """
 
     def __init__(self, *, clock: Callable[[], float] | None = None) -> None:
