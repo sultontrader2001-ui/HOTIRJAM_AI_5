@@ -251,6 +251,8 @@ class PersistentStructuralHierarchy:
         serialize_ms = 0.0
         write_ms = 0.0
         flush_ms = 0.0
+        payload: dict[str, object] | None = None
+        written_path: Path | None = None
         try:
             _c0 = time.perf_counter()
             target = path or self._checkpoint_path
@@ -289,6 +291,7 @@ class PersistentStructuralHierarchy:
                 _w0 = time.perf_counter()
                 os.replace(temporary_name, target)
                 write_ms = (time.perf_counter() - _w0) * 1000.0
+                written_path = target
             finally:
                 if os.path.exists(temporary_name):
                     os.unlink(temporary_name)
@@ -297,6 +300,7 @@ class PersistentStructuralHierarchy:
                 from hotirjam_ai5.live_validator.loop_timing import (
                     add_hierarchy_breakdown,
                     add_hierarchy_checkpoint_ms,
+                    set_hierarchy_footprint,
                 )
 
                 add_hierarchy_checkpoint_ms((time.perf_counter() - _t0) * 1000.0)
@@ -307,6 +311,14 @@ class PersistentStructuralHierarchy:
                     write_ms=write_ms,
                     flush_ms=flush_ms,
                 )
+                # Footprint after timing so existing stage totals stay unchanged.
+                if payload is not None:
+                    json_size_bytes = None
+                    if written_path is not None and written_path.exists():
+                        json_size_bytes = written_path.stat().st_size
+                    set_hierarchy_footprint(
+                        payload=payload, json_size_bytes=json_size_bytes
+                    )
             except Exception:
                 pass
 

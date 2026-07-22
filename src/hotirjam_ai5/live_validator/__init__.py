@@ -16,6 +16,8 @@ from hotirjam_ai5.live_validator.display import render_validator_frame
 from hotirjam_ai5.live_validator.idc import render_idc, render_idc_main_menu
 from hotirjam_ai5.live_validator.logger import SnapshotLogger
 from hotirjam_ai5.live_validator.loop_timing import (
+    HierarchyFootprint,
+    LoggingFootprint,
     LoopTimingSnapshot,
     StageBreakdown,
     TimingSeverity,
@@ -28,9 +30,11 @@ from hotirjam_ai5.live_validator.swing_confirmer import SwingConfirmer
 __all__ = [
     "ArchitecturePipeline",
     "AuditLog",
+    "HierarchyFootprint",
     "IdcPage",
     "LiveValidatorApp",
     "LiveValidatorController",
+    "LoggingFootprint",
     "LoopTimingSnapshot",
     "MarketTelemetry",
     "PresentationMode",

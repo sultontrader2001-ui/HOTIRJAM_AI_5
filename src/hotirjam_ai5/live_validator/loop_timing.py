@@ -6,10 +6,11 @@ checkpoints, or keyboard behavior. Instrumentation failures are ignored.
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, Mapping
 
 SLOW_MS = 100.0
 CRITICAL_MS = 1000.0
@@ -34,6 +35,48 @@ class StageBreakdown:
     serialize_ms: float | None
     write_ms: float | None
     flush_ms: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class SectionSize:
+    """One top-level JSON section and its encoded size in bytes."""
+
+    name: str
+    size_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class HierarchyFootprint:
+    """What the hierarchy checkpoint serialized (latest write in the sample)."""
+
+    registry_entries: int
+    hierarchy_nodes: int
+    journal_entries: int
+    snapshot_object_count: int
+    json_size_bytes: int
+    section_sizes: tuple[SectionSize, ...]
+    largest_section: str | None
+    largest_section_bytes: int | None
+
+    @property
+    def json_size_mb(self) -> float:
+        return self.json_size_bytes / (1024.0 * 1024.0)
+
+
+@dataclass(frozen=True, slots=True)
+class LoggingFootprint:
+    """What the snapshot logger serialized (latest write in the sample)."""
+
+    frame_object_count: int
+    top_level_sections: tuple[str, ...]
+    json_size_bytes: int
+    section_sizes: tuple[SectionSize, ...]
+    largest_section: str | None
+    largest_section_bytes: int | None
+
+    @property
+    def json_size_mb(self) -> float:
+        return self.json_size_bytes / (1024.0 * 1024.0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +105,8 @@ class LoopTimingSnapshot:
     loop_severity: TimingSeverity
     hierarchy_breakdown: StageBreakdown | None = None
     logging_breakdown: StageBreakdown | None = None
+    hierarchy_footprint: HierarchyFootprint | None = None
+    logging_footprint: LoggingFootprint | None = None
 
     def stage_severity(self, stage: str) -> TimingSeverity:
         """Return severity for a named stage, or OK if unknown."""
@@ -119,6 +164,8 @@ class _LoopTimingAccumulator:
         "logging_flush_ms",
         "hierarchy_breakdown_seen",
         "logging_breakdown_seen",
+        "hierarchy_footprint",
+        "logging_footprint",
     )
 
     def __init__(self, *, start_time: float) -> None:
@@ -142,6 +189,8 @@ class _LoopTimingAccumulator:
         self.logging_flush_ms: float | None = None
         self.hierarchy_breakdown_seen = False
         self.logging_breakdown_seen = False
+        self.hierarchy_footprint: HierarchyFootprint | None = None
+        self.logging_footprint: LoggingFootprint | None = None
 
     def build(self, *, end_time: float) -> LoopTimingSnapshot:
         checkpoint_ms = self.initiative_checkpoint_ms + self.hierarchy_checkpoint_ms
@@ -191,6 +240,8 @@ class _LoopTimingAccumulator:
             loop_severity=severity_for_ms(loop_ms),
             hierarchy_breakdown=hierarchy_breakdown,
             logging_breakdown=logging_breakdown,
+            hierarchy_footprint=self.hierarchy_footprint,
+            logging_footprint=self.logging_footprint,
         )
 
 
@@ -311,6 +362,81 @@ def add_logging_breakdown(
         acc.logging_serialize_ms = _sum_optional(acc.logging_serialize_ms, serialize_ms)
         acc.logging_write_ms = _sum_optional(acc.logging_write_ms, write_ms)
         acc.logging_flush_ms = _sum_optional(acc.logging_flush_ms, flush_ms)
+    except Exception:
+        return
+
+
+def _section_sizes(payload: Mapping[str, Any]) -> tuple[SectionSize, ...]:
+    """Diagnostic sizes of top-level sections. Does not replace production serialize."""
+    sizes: list[SectionSize] = []
+    for name, value in payload.items():
+        encoded = json.dumps(value, sort_keys=True, separators=(",", ":"))
+        sizes.append(SectionSize(name=str(name), size_bytes=len(encoded.encode("utf-8"))))
+    sizes.sort(key=lambda item: item.size_bytes, reverse=True)
+    return tuple(sizes)
+
+
+def _container_object_count(value: Any) -> int:
+    """Count dict/list containers in a JSON-like structure."""
+    if isinstance(value, dict):
+        return 1 + sum(_container_object_count(item) for item in value.values())
+    if isinstance(value, list):
+        return 1 + sum(_container_object_count(item) for item in value)
+    return 0
+
+
+def set_hierarchy_footprint(
+    *,
+    payload: Mapping[str, Any],
+    json_size_bytes: int | None = None,
+) -> None:
+    """Record hierarchy checkpoint footprint after timing has been sealed."""
+    try:
+        acc = _active
+        if acc is None:
+            return
+        records = payload.get("records", ())
+        journal = payload.get("journal", ())
+        registry_entries = len(records) if hasattr(records, "__len__") else 0
+        journal_entries = len(journal) if hasattr(journal, "__len__") else 0
+        sections = _section_sizes(payload)
+        if json_size_bytes is None:
+            json_size_bytes = sum(section.size_bytes for section in sections)
+        largest = sections[0] if sections else None
+        acc.hierarchy_footprint = HierarchyFootprint(
+            registry_entries=registry_entries,
+            hierarchy_nodes=registry_entries,
+            journal_entries=journal_entries,
+            snapshot_object_count=registry_entries,
+            json_size_bytes=int(json_size_bytes),
+            section_sizes=sections,
+            largest_section=None if largest is None else largest.name,
+            largest_section_bytes=None if largest is None else largest.size_bytes,
+        )
+    except Exception:
+        return
+
+
+def set_logging_footprint(
+    *,
+    payload: Mapping[str, Any],
+    json_size_bytes: int,
+) -> None:
+    """Record snapshot-logger footprint after timing has been sealed."""
+    try:
+        acc = _active
+        if acc is None:
+            return
+        sections = _section_sizes(payload)
+        largest = sections[0] if sections else None
+        acc.logging_footprint = LoggingFootprint(
+            frame_object_count=_container_object_count(payload),
+            top_level_sections=tuple(str(key) for key in payload.keys()),
+            json_size_bytes=int(json_size_bytes),
+            section_sizes=sections,
+            largest_section=None if largest is None else largest.name,
+            largest_section_bytes=None if largest is None else largest.size_bytes,
+        )
     except Exception:
         return
 

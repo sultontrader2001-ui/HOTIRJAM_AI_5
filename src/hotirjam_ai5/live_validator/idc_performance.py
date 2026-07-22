@@ -10,6 +10,8 @@ from hotirjam_ai5.live_validator.loop_timing import (
     LoopTimingSnapshot,
     StageBreakdown,
     TimingSeverity,
+    HierarchyFootprint,
+    LoggingFootprint,
 )
 
 _NA = "NOT AVAILABLE"
@@ -124,6 +126,72 @@ def _breakdown_lines(
     ]
 
 
+def _fmt_bytes(value: int | None, *, available: bool) -> str:
+    if not available or value is None:
+        return _NA
+    return f"{value} bytes"
+
+
+def _fmt_mb(value_bytes: int | None, *, available: bool) -> str:
+    if not available or value_bytes is None:
+        return _NA
+    return f"{value_bytes / (1024.0 * 1024.0):.2f} MB"
+
+
+def _fmt_count(value: int | None, *, available: bool) -> str:
+    if not available or value is None:
+        return _NA
+    return str(value)
+
+
+def _hierarchy_footprint_lines(
+    footprint: HierarchyFootprint | None, *, sample_available: bool
+) -> list[str]:
+    available = sample_available and footprint is not None
+    lines = [
+        "Hierarchy Footprint",
+        f"  Registry........ {_fmt_count(None if footprint is None else footprint.registry_entries, available=available)}",
+        f"  Hierarchy Nodes. {_fmt_count(None if footprint is None else footprint.hierarchy_nodes, available=available)}",
+        f"  Journal......... {_fmt_count(None if footprint is None else footprint.journal_entries, available=available)}",
+        f"  Snapshot Objs... {_fmt_count(None if footprint is None else footprint.snapshot_object_count, available=available)}",
+        f"  JSON Size....... {_fmt_bytes(None if footprint is None else footprint.json_size_bytes, available=available)}",
+        f"  JSON Size MB.... {_fmt_mb(None if footprint is None else footprint.json_size_bytes, available=available)}",
+        f"  Largest Section. {_NA if not available or footprint is None or footprint.largest_section is None else footprint.largest_section}",
+        f"  Largest Size.... {_fmt_bytes(None if footprint is None else footprint.largest_section_bytes, available=available)}",
+    ]
+    if available and footprint is not None and footprint.section_sizes:
+        lines.append("  Top-level Sections")
+        for section in footprint.section_sizes[:8]:
+            lines.append(
+                f"    {section.name}.... {_fmt_bytes(section.size_bytes, available=True)}"
+            )
+    return lines
+
+
+def _logging_footprint_lines(
+    footprint: LoggingFootprint | None, *, sample_available: bool
+) -> list[str]:
+    available = sample_available and footprint is not None
+    lines = [
+        "Snapshot Logger Footprint",
+        f"  Frame Objects... {_fmt_count(None if footprint is None else footprint.frame_object_count, available=available)}",
+        f"  JSON Size....... {_fmt_bytes(None if footprint is None else footprint.json_size_bytes, available=available)}",
+        f"  JSON Size MB.... {_fmt_mb(None if footprint is None else footprint.json_size_bytes, available=available)}",
+        f"  Largest Section. {_NA if not available or footprint is None or footprint.largest_section is None else footprint.largest_section}",
+        f"  Largest Size.... {_fmt_bytes(None if footprint is None else footprint.largest_section_bytes, available=available)}",
+    ]
+    if available and footprint is not None:
+        sections = ", ".join(footprint.top_level_sections) if footprint.top_level_sections else _NA
+        lines.append(f"  Top-level Keys.. {sections}")
+        if footprint.section_sizes:
+            lines.append("  Top-level Sections")
+            for section in footprint.section_sizes[:8]:
+                lines.append(
+                    f"    {section.name}.... {_fmt_bytes(section.size_bytes, available=True)}"
+                )
+    return lines
+
+
 def render_performance_page(
     timing: LoopTimingSnapshot | None,
     *,
@@ -177,6 +245,10 @@ def render_performance_page(
                     None,
                     sample_available=False,
                 ),
+                "----------------------------------------",
+                *_hierarchy_footprint_lines(None, sample_available=False),
+                "----------------------------------------",
+                *_logging_footprint_lines(None, sample_available=False),
                 "----------------------------------------",
                 "SLEEP",
                 f"Sleep Time        {_NA}",
@@ -241,6 +313,14 @@ def render_performance_page(
                 sample_available=True,
             ),
             f"Status            {timing.logging_severity.value}",
+            "----------------------------------------",
+            *_hierarchy_footprint_lines(
+                timing.hierarchy_footprint, sample_available=True
+            ),
+            "----------------------------------------",
+            *_logging_footprint_lines(
+                timing.logging_footprint, sample_available=True
+            ),
             "----------------------------------------",
             "SLEEP",
             f"Sleep Time        {_fmt_ms(timing.sleep_ms)}",

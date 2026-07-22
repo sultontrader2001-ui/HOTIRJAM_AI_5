@@ -47,6 +47,8 @@ class SnapshotLogger:
         build_ms = 0.0
         serialize_ms = 0.0
         write_ms = 0.0
+        payload: dict[str, Any] | None = None
+        line: str | None = None
         try:
             _b0 = time.perf_counter()
             payload = _jsonable(frame)
@@ -67,6 +69,7 @@ class SnapshotLogger:
                 from hotirjam_ai5.live_validator.loop_timing import (
                     add_logging_breakdown,
                     add_logging_ms,
+                    set_logging_footprint,
                 )
 
                 add_logging_ms((time.perf_counter() - _t0) * 1000.0)
@@ -79,5 +82,11 @@ class SnapshotLogger:
                     write_ms=write_ms,
                     flush_ms=None,
                 )
+                # Footprint after timing so existing stage totals stay unchanged.
+                if isinstance(payload, dict) and line is not None:
+                    set_logging_footprint(
+                        payload=payload,
+                        json_size_bytes=len(line.encode("utf-8")),
+                    )
             except Exception:
                 pass
