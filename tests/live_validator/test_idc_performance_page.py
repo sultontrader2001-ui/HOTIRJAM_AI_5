@@ -104,7 +104,6 @@ def test_performance_page_layout_with_snapshot() -> None:
         "Initiative Checkpoint",
         "Hierarchy Checkpoint",
         "Combined Checkpoint",
-        "LOGGING",
         "Snapshot Logger",
         "SLEEP",
         "Sleep Time",
@@ -118,6 +117,7 @@ def test_performance_page_layout_with_snapshot() -> None:
         assert section in text
     assert "LIVE" in text
     assert "OK" in text
+    assert "Collect........." in text
     assert "IMPLEMENTATION PENDING" not in text
 
 

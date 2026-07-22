@@ -15,7 +15,11 @@ from hotirjam_ai5.live_validator.controller import LiveValidatorController
 from hotirjam_ai5.live_validator.display import render_validator_frame
 from hotirjam_ai5.live_validator.idc import render_idc, render_idc_main_menu
 from hotirjam_ai5.live_validator.logger import SnapshotLogger
-from hotirjam_ai5.live_validator.loop_timing import LoopTimingSnapshot, TimingSeverity
+from hotirjam_ai5.live_validator.loop_timing import (
+    LoopTimingSnapshot,
+    StageBreakdown,
+    TimingSeverity,
+)
 from hotirjam_ai5.live_validator.models import ValidatorFrame
 from hotirjam_ai5.live_validator.pipeline import ArchitecturePipeline
 from hotirjam_ai5.live_validator.presentation_mode import IdcPage, PresentationMode
@@ -31,6 +35,7 @@ __all__ = [
     "MarketTelemetry",
     "PresentationMode",
     "SnapshotLogger",
+    "StageBreakdown",
     "SwingConfirmer",
     "TickBarBuilder",
     "TimingSeverity",

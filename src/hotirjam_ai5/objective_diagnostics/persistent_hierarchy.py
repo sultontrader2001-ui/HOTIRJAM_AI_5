@@ -246,11 +246,20 @@ class PersistentStructuralHierarchy:
     def checkpoint(self, path: Path | None = None) -> None:
         """Atomically persist registry, graph, lifecycle, and transition journal."""
         _t0 = time.perf_counter()
+        collect_ms = 0.0
+        build_ms = 0.0
+        serialize_ms = 0.0
+        write_ms = 0.0
+        flush_ms = 0.0
         try:
+            _c0 = time.perf_counter()
             target = path or self._checkpoint_path
             if target is None:
                 raise ValueError("checkpoint path is required")
             target.parent.mkdir(parents=True, exist_ok=True)
+            collect_ms = (time.perf_counter() - _c0) * 1000.0
+
+            _b0 = time.perf_counter()
             payload = {
                 "checkpoint_version": CHECKPOINT_VERSION,
                 "hierarchy_version": self._version,
@@ -261,25 +270,43 @@ class PersistentStructuralHierarchy:
                 },
                 "journal": [self._transition_payload(t) for t in self._journal],
             }
+            build_ms = (time.perf_counter() - _b0) * 1000.0
+
             fd, temporary_name = tempfile.mkstemp(
                 prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
             )
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    _s0 = time.perf_counter()
                     json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
+                    serialize_ms = (time.perf_counter() - _s0) * 1000.0
+
+                    _f0 = time.perf_counter()
                     handle.flush()
                     os.fsync(handle.fileno())
+                    flush_ms = (time.perf_counter() - _f0) * 1000.0
+
+                _w0 = time.perf_counter()
                 os.replace(temporary_name, target)
+                write_ms = (time.perf_counter() - _w0) * 1000.0
             finally:
                 if os.path.exists(temporary_name):
                     os.unlink(temporary_name)
         finally:
             try:
                 from hotirjam_ai5.live_validator.loop_timing import (
+                    add_hierarchy_breakdown,
                     add_hierarchy_checkpoint_ms,
                 )
 
                 add_hierarchy_checkpoint_ms((time.perf_counter() - _t0) * 1000.0)
+                add_hierarchy_breakdown(
+                    collect_ms=collect_ms,
+                    build_ms=build_ms,
+                    serialize_ms=serialize_ms,
+                    write_ms=write_ms,
+                    flush_ms=flush_ms,
+                )
             except Exception:
                 pass
 

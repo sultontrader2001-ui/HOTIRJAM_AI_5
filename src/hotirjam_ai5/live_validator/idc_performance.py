@@ -1,19 +1,19 @@
-"""IDC Performance page — render existing LoopTimingSnapshot (H-6.6.5).
+"""IDC Performance page — render LoopTimingSnapshot (+ H-6.6.6 breakdowns).
 
-Read-only presentation of instrumentation already collected by H-6.6.4.
-Never measures, never restarts timers, never calls evaluate().
+Read-only presentation of instrumentation. Never measures, never restarts
+timers, never calls evaluate().
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from hotirjam_ai5.live_validator.loop_timing import (
     LoopTimingSnapshot,
+    StageBreakdown,
     TimingSeverity,
 )
 
 _NA = "NOT AVAILABLE"
+_N_A = "NOT APPLICABLE"
 
 _STAGE_LABELS: tuple[tuple[str, str], ...] = (
     ("loop", "Loop Time"),
@@ -31,6 +31,15 @@ _STAGE_LABELS: tuple[tuple[str, str], ...] = (
 def _fmt_ms(value: float | None) -> str:
     if value is None:
         return _NA
+    return f"{value:.2f} ms"
+
+
+def _fmt_stage_ms(value: float | None, *, available: bool) -> str:
+    """Format a breakdown stage: missing sample, N/A stage, or milliseconds."""
+    if not available:
+        return _NA
+    if value is None:
+        return _N_A
     return f"{value:.2f} ms"
 
 
@@ -96,6 +105,25 @@ def _warnings(snap: LoopTimingSnapshot) -> list[str]:
     return warnings
 
 
+def _breakdown_lines(
+    title: str,
+    total_ms: float,
+    breakdown: StageBreakdown | None,
+    *,
+    sample_available: bool,
+) -> list[str]:
+    available = sample_available and breakdown is not None
+    return [
+        title,
+        f"  Total........... {_fmt_ms(total_ms) if sample_available else _NA}",
+        f"  Collect......... {_fmt_stage_ms(None if breakdown is None else breakdown.collect_ms, available=available)}",
+        f"  Build........... {_fmt_stage_ms(None if breakdown is None else breakdown.build_ms, available=available)}",
+        f"  Serialize....... {_fmt_stage_ms(None if breakdown is None else breakdown.serialize_ms, available=available)}",
+        f"  Write........... {_fmt_stage_ms(None if breakdown is None else breakdown.write_ms, available=available)}",
+        f"  Flush........... {_fmt_stage_ms(None if breakdown is None else breakdown.flush_ms, available=available)}",
+    ]
+
+
 def render_performance_page(
     timing: LoopTimingSnapshot | None,
     *,
@@ -133,13 +161,22 @@ def render_performance_page(
                 "----------------------------------------",
                 "CHECKPOINTS",
                 f"Initiative Checkpoint {_NA}",
-                f"Hierarchy Checkpoint  {_NA}",
                 f"Combined Checkpoint   {_NA}",
                 f"Status            {_NA}",
                 "----------------------------------------",
-                "LOGGING",
-                f"Snapshot Logger   {_NA}",
-                f"Status            {_NA}",
+                *_breakdown_lines(
+                    "Hierarchy Checkpoint",
+                    0.0,
+                    None,
+                    sample_available=False,
+                ),
+                "----------------------------------------",
+                *_breakdown_lines(
+                    "Snapshot Logger",
+                    0.0,
+                    None,
+                    sample_available=False,
+                ),
                 "----------------------------------------",
                 "SLEEP",
                 f"Sleep Time        {_NA}",
@@ -187,12 +224,22 @@ def render_performance_page(
             "----------------------------------------",
             "CHECKPOINTS",
             f"Initiative Checkpoint {_fmt_ms(timing.initiative_checkpoint_ms)}",
-            f"Hierarchy Checkpoint  {_fmt_ms(timing.hierarchy_checkpoint_ms)}",
             f"Combined Checkpoint   {_fmt_ms(timing.checkpoint_ms)}",
             f"Status            {timing.checkpoint_severity.value}",
             "----------------------------------------",
-            "LOGGING",
-            f"Snapshot Logger   {_fmt_ms(timing.logging_ms)}",
+            *_breakdown_lines(
+                "Hierarchy Checkpoint",
+                timing.hierarchy_checkpoint_ms,
+                timing.hierarchy_breakdown,
+                sample_available=True,
+            ),
+            "----------------------------------------",
+            *_breakdown_lines(
+                "Snapshot Logger",
+                timing.logging_ms,
+                timing.logging_breakdown,
+                sample_available=True,
+            ),
             f"Status            {timing.logging_severity.value}",
             "----------------------------------------",
             "SLEEP",

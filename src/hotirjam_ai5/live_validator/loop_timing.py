@@ -1,4 +1,4 @@
-"""Passive Live Validator loop timing (H-6.6.4).
+"""Passive Live Validator loop timing (H-6.6.4 / H-6.6.6).
 
 Diagnostics only. Never changes execution order, polling, rendering,
 checkpoints, or keyboard behavior. Instrumentation failures are ignored.
@@ -19,6 +19,21 @@ class TimingSeverity(StrEnum):
     OK = "OK"
     SLOW = "SLOW"
     CRITICAL = "CRITICAL"
+
+
+@dataclass(frozen=True, slots=True)
+class StageBreakdown:
+    """Internal stage timings for one write path.
+
+    ``None`` means the stage does not exist in that path (NOT APPLICABLE).
+    Values are milliseconds accumulated within the latest loop sample.
+    """
+
+    collect_ms: float | None
+    build_ms: float | None
+    serialize_ms: float | None
+    write_ms: float | None
+    flush_ms: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +60,8 @@ class LoopTimingSnapshot:
     hierarchy_checkpoint_severity: TimingSeverity
     logging_severity: TimingSeverity
     loop_severity: TimingSeverity
+    hierarchy_breakdown: StageBreakdown | None = None
+    logging_breakdown: StageBreakdown | None = None
 
     def stage_severity(self, stage: str) -> TimingSeverity:
         """Return severity for a named stage, or OK if unknown."""
@@ -70,6 +87,14 @@ def severity_for_ms(elapsed_ms: float) -> TimingSeverity:
     return TimingSeverity.OK
 
 
+def _sum_optional(current: float | None, delta: float | None) -> float | None:
+    if delta is None:
+        return current
+    if current is None:
+        return max(0.0, float(delta))
+    return float(current) + max(0.0, float(delta))
+
+
 class _LoopTimingAccumulator:
     """Mutable per-iteration counters. Not part of the public API."""
 
@@ -82,6 +107,18 @@ class _LoopTimingAccumulator:
         "initiative_checkpoint_ms",
         "hierarchy_checkpoint_ms",
         "logging_ms",
+        "hierarchy_collect_ms",
+        "hierarchy_build_ms",
+        "hierarchy_serialize_ms",
+        "hierarchy_write_ms",
+        "hierarchy_flush_ms",
+        "logging_collect_ms",
+        "logging_build_ms",
+        "logging_serialize_ms",
+        "logging_write_ms",
+        "logging_flush_ms",
+        "hierarchy_breakdown_seen",
+        "logging_breakdown_seen",
     )
 
     def __init__(self, *, start_time: float) -> None:
@@ -93,10 +130,40 @@ class _LoopTimingAccumulator:
         self.initiative_checkpoint_ms = 0.0
         self.hierarchy_checkpoint_ms = 0.0
         self.logging_ms = 0.0
+        self.hierarchy_collect_ms: float | None = None
+        self.hierarchy_build_ms: float | None = None
+        self.hierarchy_serialize_ms: float | None = None
+        self.hierarchy_write_ms: float | None = None
+        self.hierarchy_flush_ms: float | None = None
+        self.logging_collect_ms: float | None = None
+        self.logging_build_ms: float | None = None
+        self.logging_serialize_ms: float | None = None
+        self.logging_write_ms: float | None = None
+        self.logging_flush_ms: float | None = None
+        self.hierarchy_breakdown_seen = False
+        self.logging_breakdown_seen = False
 
     def build(self, *, end_time: float) -> LoopTimingSnapshot:
         checkpoint_ms = self.initiative_checkpoint_ms + self.hierarchy_checkpoint_ms
         loop_ms = max(0.0, (end_time - self.start_time) * 1000.0)
+        hierarchy_breakdown = None
+        if self.hierarchy_breakdown_seen:
+            hierarchy_breakdown = StageBreakdown(
+                collect_ms=self.hierarchy_collect_ms,
+                build_ms=self.hierarchy_build_ms,
+                serialize_ms=self.hierarchy_serialize_ms,
+                write_ms=self.hierarchy_write_ms,
+                flush_ms=self.hierarchy_flush_ms,
+            )
+        logging_breakdown = None
+        if self.logging_breakdown_seen:
+            logging_breakdown = StageBreakdown(
+                collect_ms=self.logging_collect_ms,
+                build_ms=self.logging_build_ms,
+                serialize_ms=self.logging_serialize_ms,
+                write_ms=self.logging_write_ms,
+                flush_ms=self.logging_flush_ms,
+            )
         return LoopTimingSnapshot(
             loop_ms=loop_ms,
             poll_ms=self.poll_ms,
@@ -122,6 +189,8 @@ class _LoopTimingAccumulator:
             ),
             logging_severity=severity_for_ms(self.logging_ms),
             loop_severity=severity_for_ms(loop_ms),
+            hierarchy_breakdown=hierarchy_breakdown,
+            logging_breakdown=logging_breakdown,
         )
 
 
@@ -196,6 +265,54 @@ def add_hierarchy_checkpoint_ms(elapsed_ms: float) -> None:
 
 def add_logging_ms(elapsed_ms: float) -> None:
     _add_ms("logging_ms", elapsed_ms)
+
+
+def add_hierarchy_breakdown(
+    *,
+    collect_ms: float | None = None,
+    build_ms: float | None = None,
+    serialize_ms: float | None = None,
+    write_ms: float | None = None,
+    flush_ms: float | None = None,
+) -> None:
+    """Accumulate hierarchy checkpoint internal stage timings."""
+    try:
+        acc = _active
+        if acc is None:
+            return
+        acc.hierarchy_breakdown_seen = True
+        acc.hierarchy_collect_ms = _sum_optional(acc.hierarchy_collect_ms, collect_ms)
+        acc.hierarchy_build_ms = _sum_optional(acc.hierarchy_build_ms, build_ms)
+        acc.hierarchy_serialize_ms = _sum_optional(
+            acc.hierarchy_serialize_ms, serialize_ms
+        )
+        acc.hierarchy_write_ms = _sum_optional(acc.hierarchy_write_ms, write_ms)
+        acc.hierarchy_flush_ms = _sum_optional(acc.hierarchy_flush_ms, flush_ms)
+    except Exception:
+        return
+
+
+def add_logging_breakdown(
+    *,
+    collect_ms: float | None = None,
+    build_ms: float | None = None,
+    serialize_ms: float | None = None,
+    write_ms: float | None = None,
+    flush_ms: float | None = None,
+) -> None:
+    """Accumulate snapshot-logger internal stage timings."""
+    try:
+        acc = _active
+        if acc is None:
+            return
+        acc.logging_breakdown_seen = True
+        acc.logging_collect_ms = _sum_optional(acc.logging_collect_ms, collect_ms)
+        acc.logging_build_ms = _sum_optional(acc.logging_build_ms, build_ms)
+        acc.logging_serialize_ms = _sum_optional(acc.logging_serialize_ms, serialize_ms)
+        acc.logging_write_ms = _sum_optional(acc.logging_write_ms, write_ms)
+        acc.logging_flush_ms = _sum_optional(acc.logging_flush_ms, flush_ms)
+    except Exception:
+        return
 
 
 def measure_ms(fn: Any) -> tuple[Any, float]:

@@ -44,17 +44,40 @@ class SnapshotLogger:
 
     def log(self, frame: ValidatorFrame) -> None:
         _t0 = time.perf_counter()
+        build_ms = 0.0
+        serialize_ms = 0.0
+        write_ms = 0.0
         try:
+            _b0 = time.perf_counter()
             payload = _jsonable(frame)
+            build_ms = (time.perf_counter() - _b0) * 1000.0
+
+            _s0 = time.perf_counter()
             line = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+            serialize_ms = (time.perf_counter() - _s0) * 1000.0
+
+            _w0 = time.perf_counter()
             with self._path.open("a", encoding="utf-8") as handle:
                 handle.write(line)
                 handle.write("\n")
+            write_ms = (time.perf_counter() - _w0) * 1000.0
             self._count += 1
         finally:
             try:
-                from hotirjam_ai5.live_validator.loop_timing import add_logging_ms
+                from hotirjam_ai5.live_validator.loop_timing import (
+                    add_logging_breakdown,
+                    add_logging_ms,
+                )
 
                 add_logging_ms((time.perf_counter() - _t0) * 1000.0)
+                # Collect is not a distinct step (frame already in hand).
+                # Flush/fsync is not called — close may flush implicitly inside Write.
+                add_logging_breakdown(
+                    collect_ms=None,
+                    build_ms=build_ms,
+                    serialize_ms=serialize_ms,
+                    write_ms=write_ms,
+                    flush_ms=None,
+                )
             except Exception:
                 pass
