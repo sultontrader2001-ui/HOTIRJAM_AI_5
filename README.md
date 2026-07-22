@@ -225,6 +225,20 @@ LIFETIME / ACCOUNT STATUS / SYSTEM; SIGNAL HISTORY full width at the bottom.
 Narrower terminals use a single column stack. Unicode box panels; NY/UZ wall times
 always visible. Pipeline internals appear only with `--verbose`.
 
+### Objective Engine — live validation watch window
+
+Mission Control and Operator UX development are **frozen**. For Objective Engine
+live validation, use the classic H-6.9.4-era Live Certification Dashboard:
+
+```bash
+hotirjam-ai5-live-validator
+```
+
+Do **not** pass `--mission-control`. Default view is Trader / Certification
+Dashboard (Objective block, hierarchy, initiative). Press `D` only if you need
+Developer View. Trade Decision classic dashboard: `hotirjam-ai5` (same rule —
+omit `--mission-control`).
+
 ### Test
 
 ```bash

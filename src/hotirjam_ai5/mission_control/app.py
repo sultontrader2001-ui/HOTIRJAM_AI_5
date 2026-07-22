@@ -137,8 +137,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="hotirjam-ai5-mission-control",
         description=(
-            "HOTIRJAM AI 5 Mission Control (H-7.2A) — passive observer. "
-            "Prefer: python -m hotirjam_ai5 --mission-control (same runtime)."
+            "HOTIRJAM AI 5 Mission Control — frozen / optional observer only. "
+            "For Objective Engine live validation use: hotirjam-ai5-live-validator "
+            "(classic Live Certification Dashboard, no --mission-control)."
         ),
     )
     parser.add_argument(

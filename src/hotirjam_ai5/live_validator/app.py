@@ -539,8 +539,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--mission-control",
         action="store_true",
         help=(
-            "H-7.2A: draw Mission Control as a passive view of this runner's "
-            "ValidatorFrame (same runtime — no second engines)"
+            "Optional passive Mission Control view (not the Objective live-validation "
+            "watch window). Default is the classic Live Certification Dashboard "
+            "(H-6.9.4-era). Prefer omitting this flag for Objective Engine validation."
         ),
     )
     return parser

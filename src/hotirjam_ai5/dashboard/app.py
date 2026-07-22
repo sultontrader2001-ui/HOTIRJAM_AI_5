@@ -277,8 +277,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--mission-control",
         action="store_true",
         help=(
-            "H-7.2A: draw Mission Control as a passive view of this runner's "
-            "DashboardState (same runtime — no second engines)"
+            "Optional passive Mission Control view. Default remains the classic "
+            "Trade Decision Dashboard. Not used for Objective Engine live validation "
+            "(use hotirjam-ai5-live-validator without this flag)."
         ),
     )
     return parser
