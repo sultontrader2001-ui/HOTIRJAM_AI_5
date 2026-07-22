@@ -9,6 +9,7 @@ from enum import StrEnum
 class MissionWindow(StrEnum):
     """Top-level Mission Control windows."""
 
+    OPERATOR = "OPERATOR"
     COCKPIT = "COCKPIT"
     LABORATORY = "LABORATORY"
     DEVELOPER = "DEVELOPER"

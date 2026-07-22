@@ -131,6 +131,12 @@ def test_developer_placeholder_only() -> None:
 
 def test_window_switching() -> None:
     shell = MissionControlShell()
+    assert "MISSION CONTROL" in shell.render()
+    assert "TRADING COCKPIT" in shell.render()
+    assert "AI LABORATORY" in shell.render()
+    assert "DEVELOPER" in shell.render()
+    shell.handle_key("1")
+    assert shell.window is MissionWindow.COCKPIT
     assert "WINDOW 1 · TRADING COCKPIT" in shell.render()
     shell.handle_key("2")
     assert shell.window is MissionWindow.LABORATORY
@@ -138,8 +144,10 @@ def test_window_switching() -> None:
     shell.handle_key("3")
     assert shell.window is MissionWindow.DEVELOPER
     assert "Coming in H-7.9" in shell.render()
-    shell.handle_key("1")
-    assert shell.window is MissionWindow.COCKPIT
+    shell.handle_key("0")
+    assert shell.window is MissionWindow.OPERATOR
+    assert "TRADING COCKPIT" in shell.render()
+    assert "AI LABORATORY" in shell.render()
 
 
 def test_module_group_order() -> None:
@@ -187,8 +195,9 @@ def test_app_interactive_navigation(tmp_path: Path) -> None:
         sleep_fn=lambda _s: None,
     )
     app.run(max_frames=10)
-    # After q from developer with no expansions, app stops; last window may be DEV
+    # q from detail view returns to Operator first
     assert shell.window in {
+        MissionWindow.OPERATOR,
         MissionWindow.DEVELOPER,
         MissionWindow.LABORATORY,
         MissionWindow.COCKPIT,

@@ -1,4 +1,4 @@
-"""Mission Control shell — window navigation and render dispatch (H-7.2).
+"""Mission Control shell — H-7.3 Professional Operator UX dispatch.
 
 Read-only consumer. Never allocates engines.
 Never calls evaluate / calculate / recompute / predict / derive.
@@ -17,17 +17,18 @@ from hotirjam_ai5.mission_control.models import (
     MissionWindow,
     ModuleCardState,
 )
+from hotirjam_ai5.mission_control.operator import render_operator
 from hotirjam_ai5.mission_control.runtime_bundle import RuntimeBundle
 
 
 class MissionControlShell:
-    """In-memory presentation shell for three Mission Control windows."""
+    """In-memory presentation shell — Operator layout default (H-7.3)."""
 
     def __init__(
         self,
         *,
         modules: list[ModuleCardState] | None = None,
-        window: MissionWindow = MissionWindow.COCKPIT,
+        window: MissionWindow = MissionWindow.OPERATOR,
         bundle: RuntimeBundle | None = None,
         clock: Callable[[], float] | None = None,
     ) -> None:
@@ -94,7 +95,13 @@ class MissionControlShell:
             ):
                 self.collapse_all()
                 return True
+            if self._window is not MissionWindow.OPERATOR:
+                self.set_window(MissionWindow.OPERATOR)
+                return True
             return False
+        if key == "0":
+            self.set_window(MissionWindow.OPERATOR)
+            return True
         if key == "1":
             self.set_window(MissionWindow.COCKPIT)
             return True
@@ -119,22 +126,34 @@ class MissionControlShell:
                 return True
         return True
 
-    def render(self, *, width: int | None = None) -> str:
-        """Render active window once. Does not rebuild bundle clock (anti-flicker)."""
+    def render(self, *, width: int | None = None, height: int | None = None) -> str:
+        """Render active surface once. Does not rebuild bundle clock (anti-flicker)."""
         from hotirjam_ai5.mission_control.render_format import (
             clamp_lines,
             dedupe_consecutive,
             fit_line,
+            terminal_height,
             terminal_width,
         )
 
         panel_width = max(40, int(width) if width is not None else terminal_width())
+        view_height = max(20, int(height) if height is not None else terminal_height())
+
+        if self._help_visible:
+            lines = clamp_lines(self._help_text().splitlines(), panel_width)
+            return "\n".join(dedupe_consecutive(lines[:view_height]))
+
+        if self._window is MissionWindow.OPERATOR:
+            return render_operator(
+                self._bundle,
+                width=panel_width,
+                height=view_height,
+            )
+
         header_lines = [
             fit_line(line, panel_width) for line in self._chrome().splitlines()
         ]
-        if self._help_visible:
-            body = self._help_text()
-        elif self._window is MissionWindow.COCKPIT:
+        if self._window is MissionWindow.COCKPIT:
             body = render_cockpit(self._bundle, width=panel_width)
         elif self._window is MissionWindow.LABORATORY:
             body = render_laboratory(
@@ -147,9 +166,16 @@ class MissionControlShell:
             body = render_developer_placeholder(width=panel_width)
         lines = header_lines + body.splitlines()
         lines = dedupe_consecutive(clamp_lines(lines, panel_width))
+        if len(lines) > view_height:
+            lines = lines[:view_height]
         return "\n".join(lines)
 
     def _chrome(self) -> str:
+        w0 = (
+            "[0 Operator]"
+            if self._window is MissionWindow.OPERATOR
+            else " 0 Operator "
+        )
         w1 = "[1 Cockpit]" if self._window is MissionWindow.COCKPIT else " 1 Cockpit "
         w2 = (
             "[2 Laboratory]"
@@ -168,7 +194,7 @@ class MissionControlShell:
             feed = "BOUND"
         return (
             f"HOTIRJAM AI 5 · MISSION CONTROL  |  Feed: {feed}  |  Mode: OBSERVE\n"
-            f"{w1}  {w2}  {w3}  |  Decision: DISABLED  |  Execution: DISABLED"
+            f"{w0}  {w1}  {w2}  {w3}  |  Decision: DISABLED  |  Execution: DISABLED"
         )
 
     @staticmethod
@@ -177,10 +203,11 @@ class MissionControlShell:
             [
                 "HELP",
                 "----",
-                "1 / 2 / 3   Switch windows",
-                "J K / arrows  Select Laboratory module",
+                "0           Professional Operator (default)",
+                "1 / 2 / 3   Focus Cockpit / Laboratory / Developer detail",
+                "J K / arrows  Select Laboratory module (detail view)",
                 "Enter / E   Expand or collapse selected module",
-                "Q           Collapse expansions, then quit",
+                "Q           Back to Operator, then quit",
                 "?           Toggle this help",
                 "",
                 "Mission Control is a READ-ONLY consumer.",

@@ -29,7 +29,6 @@ def test_prepare_clears_terminal_exactly_once() -> None:
         ansi_supported=False,
         clear_command=lambda: clears.append(1),
     )
-    # Non-interactive stream skips os clear; force path via interactive mock.
     display._is_interactive_console = lambda: True  # type: ignore[method-assign]
     display.prepare()
     display.render_frame("A")
@@ -73,15 +72,18 @@ def test_non_tty_skips_unchanged_frame() -> None:
     display.render_frame("line-a\nline-b")
     display.render_frame("line-a\nline-b")
     assert buffer.getvalue().count("line-a") == 1
+    assert display.paint_count == 1
+    assert display.skip_count == 1
 
 
-def test_non_tty_rewrites_when_content_changes() -> None:
+def test_non_tty_replaces_when_content_changes() -> None:
     buffer = io.StringIO()
     display = TerminalDisplay(stream=buffer, ansi_supported=False)
     display.render_frame("one")
     display.render_frame("two")
-    assert "one" in buffer.getvalue()
-    assert "two" in buffer.getvalue()
+    assert buffer.getvalue() == "two\n"
+    assert "one" not in buffer.getvalue()
+    assert display.paint_count == 2
 
 
 def test_ansi_diff_rewrites_only_changed_line() -> None:
@@ -132,6 +134,7 @@ def test_fallback_never_emits_raw_ansi_escape_sequences() -> None:
     assert "[?25h" not in output
     assert "HOTIRJAM AI 5" in output
     assert "STOPPED" in output
+    assert "RUNNING" not in output  # replace, not append
 
 
 def test_tty_alone_does_not_force_ansi_on_windows(

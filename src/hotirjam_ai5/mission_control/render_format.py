@@ -30,6 +30,13 @@ def terminal_width(*, fallback: int = 80) -> int:
         return fallback
 
 
+def terminal_height(*, fallback: int = 28) -> int:
+    try:
+        return max(20, shutil.get_terminal_size(fallback=(80, fallback)).lines)
+    except OSError:
+        return fallback
+
+
 def truncate(text: str, max_len: int) -> str:
     """Fit text into max_len columns; ellipsis when truncated."""
     if max_len <= 0:
