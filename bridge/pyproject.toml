@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hotirjam-bridge"
+version = "0.1.0"
+description = "HOTIRJAM Data Bridge — Windows Sender / Mac Receiver (transport only)"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "Proprietary" }
+authors = [{ name = "HOTIRJAM" }]
+dependencies = ["aiohttp>=3.9"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+# Runtime entry points (Windows: Scripts\bridge_sender.exe after pip install -e .)
+[project.scripts]
+bridge_sender = "hotirjam_bridge.sender.app:main"
+hotirjam-bridge-sender = "hotirjam_bridge.sender.app:main"
+bridge_receiver = "hotirjam_bridge.receiver.app:main"
+hotirjam-bridge-receiver = "hotirjam_bridge.receiver.app:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
