@@ -13,7 +13,7 @@ import tempfile
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Mapping
 
@@ -145,6 +145,9 @@ class PersistentStructuralHierarchy:
             SwingSide.LOW: [],
         }
         self._journal: list[StructuralTransition] = []
+        # Incremental JSON fragments (sort_keys=True). Avoids full re-serialize.
+        self._record_json: dict[int, str] = {}
+        self._journal_json: list[str] = []
         self._displaced_by_new: dict[int, tuple[int, ...]] = {}
         self._next_swing_id = 1
         self._version = 0
@@ -252,6 +255,7 @@ class PersistentStructuralHierarchy:
         write_ms = 0.0
         flush_ms = 0.0
         payload: dict[str, object] | None = None
+        document: str | None = None
         written_path: Path | None = None
         try:
             _c0 = time.perf_counter()
@@ -262,15 +266,16 @@ class PersistentStructuralHierarchy:
             collect_ms = (time.perf_counter() - _c0) * 1000.0
 
             _b0 = time.perf_counter()
+            self._ensure_json_caches()
+            document = self._assemble_checkpoint_document()
+            # Lightweight payload for footprint diagnostics (no nested rebuild).
             payload = {
                 "checkpoint_version": CHECKPOINT_VERSION,
                 "hierarchy_version": self._version,
                 "next_swing_id": self._next_swing_id,
-                "records": [self._record_payload(r) for r in self.snapshot().records],
-                "frontiers": {
-                    side.value: list(ids) for side, ids in self._frontiers.items()
-                },
-                "journal": [self._transition_payload(t) for t in self._journal],
+                "records": self._records,
+                "frontiers": self._frontiers,
+                "journal": self._journal,
             }
             build_ms = (time.perf_counter() - _b0) * 1000.0
 
@@ -280,7 +285,7 @@ class PersistentStructuralHierarchy:
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as handle:
                     _s0 = time.perf_counter()
-                    json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
+                    handle.write(document)
                     serialize_ms = (time.perf_counter() - _s0) * 1000.0
 
                     _f0 = time.perf_counter()
@@ -298,6 +303,7 @@ class PersistentStructuralHierarchy:
         finally:
             try:
                 from hotirjam_ai5.live_validator.loop_timing import (
+                    SectionSize,
                     add_hierarchy_breakdown,
                     add_hierarchy_checkpoint_ms,
                     set_hierarchy_footprint,
@@ -312,12 +318,29 @@ class PersistentStructuralHierarchy:
                     flush_ms=flush_ms,
                 )
                 # Footprint after timing so existing stage totals stay unchanged.
-                if payload is not None:
-                    json_size_bytes = None
+                if payload is not None and document is not None:
+                    json_size_bytes = len(document.encode("utf-8"))
                     if written_path is not None and written_path.exists():
                         json_size_bytes = written_path.stat().st_size
+                    frontiers_json = self._frontiers_json()
+                    section_sizes = (
+                        SectionSize(
+                            "journal",
+                            sum(len(part) for part in self._journal_json),
+                        ),
+                        SectionSize(
+                            "records",
+                            sum(len(self._record_json[sid]) for sid in self._records),
+                        ),
+                        SectionSize("frontiers", len(frontiers_json)),
+                        SectionSize("hierarchy_version", 24),
+                        SectionSize("next_swing_id", 24),
+                        SectionSize("checkpoint_version", 24),
+                    )
                     set_hierarchy_footprint(
-                        payload=payload, json_size_bytes=json_size_bytes
+                        payload=payload,
+                        json_size_bytes=json_size_bytes,
+                        section_sizes=section_sizes,
                     )
             except Exception:
                 pass
@@ -361,7 +384,7 @@ class PersistentStructuralHierarchy:
         self._displaced_by_new = {}
         self._next_swing_id = payload["next_swing_id"]
         self._version = payload["hierarchy_version"]
-
+        self._rebuild_json_caches()
     def _ingest(self, inputs: ObjectiveDiagnosticsInputs) -> list[int]:
         incoming = [
             (SwingSide.HIGH, swing) for swing in inputs.confirmed_highs
@@ -407,7 +430,7 @@ class PersistentStructuralHierarchy:
                 created_sequence=self._version + 1,
                 last_transition_sequence=self._version + 1,
             )
-            self._records[swing_id] = record
+            self._put_record(record)
             self._fingerprints[fingerprint] = swing_id
             self._frontiers[side].append(swing_id)
             self._displaced_by_new[swing_id] = displaced_ids
@@ -468,7 +491,7 @@ class PersistentStructuralHierarchy:
                 created_sequence=record.created_sequence,
                 last_transition_sequence=self._version + 1,
             )
-            self._records[swing_id] = classified
+            self._put_record(classified)
             self._append_transition(
                 timestamp=inputs.timestamp,
                 cause="SWING_CONFIRMED",
@@ -684,7 +707,7 @@ class PersistentStructuralHierarchy:
             created_sequence=old.created_sequence,
             last_transition_sequence=self._version + 1,
         )
-        self._records[swing_id] = updated
+        self._put_record(updated)
         self._append_transition(
             timestamp=timestamp,
             cause=cause,
@@ -723,7 +746,7 @@ class PersistentStructuralHierarchy:
             created_sequence=old.created_sequence,
             last_transition_sequence=self._version + 1,
         )
-        self._records[swing_id] = updated
+        self._put_record(updated)
         self._append_transition(
             timestamp=timestamp,
             cause="CHALLENGE_EXTENDED",
@@ -744,17 +767,95 @@ class PersistentStructuralHierarchy:
         evidence: Mapping[str, object],
     ) -> None:
         self._version += 1
-        self._journal.append(
-            StructuralTransition(
-                sequence=self._version,
-                timestamp=timestamp,
-                cause=cause,
-                swing_id=swing_id,
-                old_state=old_state,
-                new_state=new_state,
-                evidence=dict(evidence),
-            )
+        transition = StructuralTransition(
+            sequence=self._version,
+            timestamp=timestamp,
+            cause=cause,
+            swing_id=swing_id,
+            old_state=old_state,
+            new_state=new_state,
+            evidence=dict(evidence),
         )
+        self._journal.append(transition)
+        self._journal_json.append(self._encode_json(self._transition_payload(transition)))
+
+    def _put_record(self, record: StructuralSwingRecord) -> None:
+        """Store a registry record and refresh its cached JSON fragment."""
+        self._records[record.swing_id] = record
+        self._record_json[record.swing_id] = self._encode_json(
+            self._record_payload(record)
+        )
+
+    def _ensure_json_caches(self) -> None:
+        """Fill any missing fragment caches (safety for restore/edge paths)."""
+        if len(self._record_json) != len(self._records):
+            for swing_id, record in self._records.items():
+                if swing_id not in self._record_json:
+                    self._record_json[swing_id] = self._encode_json(
+                        self._record_payload(record)
+                    )
+        if len(self._journal_json) != len(self._journal):
+            self._journal_json = [
+                self._encode_json(self._transition_payload(item))
+                for item in self._journal
+            ]
+
+    def _rebuild_json_caches(self) -> None:
+        """Rebuild all JSON fragments after restore."""
+        self._record_json = {
+            swing_id: self._encode_json(self._record_payload(record))
+            for swing_id, record in self._records.items()
+        }
+        self._journal_json = [
+            self._encode_json(self._transition_payload(item))
+            for item in self._journal
+        ]
+
+    def _frontiers_json(self) -> str:
+        frontiers = {
+            side.value: list(ids) for side, ids in self._frontiers.items()
+        }
+        return self._encode_json(frontiers)
+
+    def _assemble_checkpoint_document(self) -> str:
+        """Assemble checkpoint JSON identical to json.dumps(..., sort_keys=True).
+
+        Top-level keys are emitted in alphabetical order matching sort_keys.
+        Record and journal fragments were already encoded with sort_keys=True.
+        """
+        records_json = ",".join(
+            self._record_json[swing_id] for swing_id in sorted(self._records)
+        )
+        journal_json = ",".join(self._journal_json)
+        frontiers_json = self._frontiers_json()
+        return (
+            "{"
+            f'"checkpoint_version":{CHECKPOINT_VERSION},'
+            f'"frontiers":{frontiers_json},'
+            f'"hierarchy_version":{self._version},'
+            f'"journal":[{journal_json}],'
+            f'"next_swing_id":{self._next_swing_id},'
+            f'"records":[{records_json}]'
+            "}"
+        )
+
+    def _classic_checkpoint_document(self) -> str:
+        """Reference serializer used only to prove byte-identical output."""
+        payload = {
+            "checkpoint_version": CHECKPOINT_VERSION,
+            "hierarchy_version": self._version,
+            "next_swing_id": self._next_swing_id,
+            "records": [self._record_payload(r) for r in self.snapshot().records],
+            "frontiers": {
+                side.value: list(ids) for side, ids in self._frontiers.items()
+            },
+            "journal": [self._transition_payload(t) for t in self._journal],
+        }
+        return self._encode_json(payload)
+
+    @staticmethod
+    def _encode_json(value: object) -> str:
+        return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
     def _nodes(self) -> tuple[HierarchyNode, ...]:
         return tuple(
@@ -837,11 +938,29 @@ class PersistentStructuralHierarchy:
 
     @staticmethod
     def _record_payload(record: StructuralSwingRecord) -> dict[str, object]:
-        payload = asdict(record)
-        payload["side"] = record.side.value
-        payload["category"] = record.category.value
-        payload["lifecycle"] = record.lifecycle.value
-        return payload
+        # Explicit fields (same content as asdict + enum .value). Avoid asdict cost.
+        return {
+            "swing_id": record.swing_id,
+            "fingerprint": record.fingerprint,
+            "side": record.side.value,
+            "price": record.price,
+            "strength": record.strength,
+            "confirmed_at": record.confirmed_at,
+            "parent_id": record.parent_id,
+            "depth": record.depth,
+            "category": record.category.value,
+            "prominence": record.prominence,
+            "persistence_score": record.persistence_score,
+            "classification_version": record.classification_version,
+            "lifecycle": record.lifecycle.value,
+            "challenge_started_at": record.challenge_started_at,
+            "challenge_extreme_price": record.challenge_extreme_price,
+            "challenge_evidence": list(record.challenge_evidence),
+            "transition_cause": record.transition_cause,
+            "transition_time": record.transition_time,
+            "created_sequence": record.created_sequence,
+            "last_transition_sequence": record.last_transition_sequence,
+        }
 
     @staticmethod
     def _record_from_payload(

@@ -389,6 +389,7 @@ def set_hierarchy_footprint(
     *,
     payload: Mapping[str, Any],
     json_size_bytes: int | None = None,
+    section_sizes: tuple[SectionSize, ...] | None = None,
 ) -> None:
     """Record hierarchy checkpoint footprint after timing has been sealed."""
     try:
@@ -399,7 +400,9 @@ def set_hierarchy_footprint(
         journal = payload.get("journal", ())
         registry_entries = len(records) if hasattr(records, "__len__") else 0
         journal_entries = len(journal) if hasattr(journal, "__len__") else 0
-        sections = _section_sizes(payload)
+        sections = section_sizes if section_sizes is not None else _section_sizes(payload)
+        # Rank largest-first for display (cached section order may differ).
+        sections = tuple(sorted(sections, key=lambda item: item.size_bytes, reverse=True))
         if json_size_bytes is None:
             json_size_bytes = sum(section.size_bytes for section in sections)
         largest = sections[0] if sections else None

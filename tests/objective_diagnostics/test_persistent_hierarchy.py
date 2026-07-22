@@ -236,6 +236,22 @@ def test_supersession_is_event_driven_and_journaled() -> None:
     ).swing_id
 
 
+def test_checkpoint_document_byte_identical_to_classic() -> None:
+    hierarchy = PersistentStructuralHierarchy()
+    highs = [_swing(110.0 - i * 0.25, 80.0, float(i) + 1.0) for i in range(12)]
+    lows = [_swing(90.0 + i * 0.25, 80.0, float(i) + 1.5) for i in range(12)]
+    for i in range(12):
+        hierarchy.evaluate(
+            _inputs(
+                highs=tuple(highs[max(0, i - 4) : i + 1]),
+                lows=tuple(lows[max(0, i - 4) : i + 1]),
+                timestamp=float(i) + 10.0,
+            )
+        )
+    hierarchy._ensure_json_caches()
+    assert hierarchy._assemble_checkpoint_document() == hierarchy._classic_checkpoint_document()
+
+
 def test_adapter_preserves_objective_audit_report_interface() -> None:
     hierarchy = PersistentStructuralHierarchy()
     report = hierarchy.evaluate(
