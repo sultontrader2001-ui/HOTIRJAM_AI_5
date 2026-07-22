@@ -11,10 +11,14 @@ from pathlib import Path
 from hotirjam_ai5.dashboard.terminal import TerminalDisplay
 from hotirjam_ai5.live_data.ingress import LiveTickIngress
 from hotirjam_ai5.live_data.ingress_poll_snapshot import IngressPollSnapshot
-from hotirjam_ai5.live_data.paths import default_tick_path
+from hotirjam_ai5.live_data.paths import default_dom_path, default_tick_path
 from hotirjam_ai5.live_validator.certification_dashboard import (
     AuditLog,
     MarketTelemetry,
+)
+from hotirjam_ai5.retention import (
+    get_retention_stats,
+    load_retention_config,
 )
 from hotirjam_ai5.live_validator.controller import LiveValidatorController
 from hotirjam_ai5.live_validator.display import render_validator_frame
@@ -87,6 +91,10 @@ class LiveValidatorApp:
         self._audit = AuditLog()
         self._started_wall: float | None = None
         self._last_feed_status: str | None = None
+        self._tick_path: Path | None = None
+        self._dom_path: Path | None = None
+        self._snapshot_log_path: Path | None = None
+        self._retention_checks = 0
 
     @property
     def presentation_mode(self) -> PresentationMode:
@@ -134,6 +142,20 @@ class LiveValidatorApp:
         self._developer_mode = False
         return True
 
+    def configure_retention_paths(
+        self,
+        *,
+        tick_path: Path | None = None,
+        dom_path: Path | None = None,
+        snapshot_log_path: Path | None = None,
+    ) -> None:
+        """Bind market/log paths for H-6.7 retention enforcement and diagnostics."""
+        self._tick_path = None if tick_path is None else Path(tick_path)
+        self._dom_path = None if dom_path is None else Path(dom_path)
+        self._snapshot_log_path = (
+            None if snapshot_log_path is None else Path(snapshot_log_path)
+        )
+
     def feed_status(self) -> str:
         """Presentation-only feed health from last accepted tick age."""
         if self._ticks_seen == 0 or self._last_tick_wall is None:
@@ -168,6 +190,44 @@ class LiveValidatorApp:
             return None
         return getattr(self._ingress, "last_poll", None)
 
+    def retention_snapshot(self):
+        """H-6.7 retention diagnostics for the Performance page."""
+        try:
+            from hotirjam_ai5.retention import RetentionSnapshot
+
+            stats = get_retention_stats()
+            stats.config = load_retention_config()
+            stats.snapshot_log_path = self._snapshot_log_path
+            stats.tick_path = self._tick_path
+            stats.dom_path = self._dom_path
+            try:
+                hierarchy = self._controller._pipeline.structural_hierarchy
+                stats.journal_entries = len(hierarchy.journal)
+                stats.hierarchy_version = hierarchy.hierarchy_version
+            except Exception:
+                pass
+            snap = stats.snapshot()
+            assert isinstance(snap, RetentionSnapshot)
+            return snap
+        except Exception:
+            return None
+
+    def _enforce_market_file_retention(self) -> None:
+        """Storage maintenance AFTER poll — never touches unconsumed market bytes."""
+        self._retention_checks += 1
+        # At most every ~1s at default 50ms poll.
+        if self._retention_checks % 20 != 0:
+            return
+        try:
+            cfg = load_retention_config()
+            if self._ingress is not None:
+                apply = getattr(self._ingress, "apply_safe_storage_retention", None)
+                if callable(apply):
+                    apply(max_bytes=cfg.tick_ndjson_max_bytes)
+            # DOM: only when a LiveDomIngress is bound (dashboard); path-only is unsafe.
+        except Exception:
+            return
+
     def poll_once(self) -> int:
         """Pull new ticks into the controller. Returns accepted tick count."""
         if self._ingress is None:
@@ -184,6 +244,8 @@ class LiveValidatorApp:
             self._last_spread = tick.spread
             self._last_latency_ms = max(0.0, (wall - tick.timestamp) * 1000.0)
             self._tick_wall_times.append(wall)
+        # Retention only after ticks were delivered to the controller.
+        self._enforce_market_file_retention()
         return len(ticks)
 
     def _tick_rate(self) -> float | None:
@@ -220,6 +282,7 @@ class LiveValidatorApp:
                 feed_status=status,
                 loop_timing=self.loop_timing,
                 ingress_poll=self.ingress_poll,
+                retention=self.retention_snapshot(),
             )
             self._display.render_frame(text)
             return text
@@ -420,7 +483,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     tick_path = args.tick_file or default_tick_path()
+    dom_path = default_dom_path()
     log_path = args.log_file or _default_log_path()
+    load_retention_config()
 
     logger = SnapshotLogger(log_path)
     from hotirjam_ai5.live_validator.candle_builder import TickBarBuilder
@@ -447,6 +512,11 @@ def main(argv: list[str] | None = None) -> int:
         ingress=ingress,
         poll_seconds=args.poll,
         refresh_seconds=args.refresh,
+    )
+    app.configure_retention_paths(
+        tick_path=tick_path,
+        dom_path=dom_path,
+        snapshot_log_path=log_path,
     )
     if args.developer:
         app.toggle_developer_mode()

@@ -90,6 +90,8 @@ def test_performance_page_layout_with_snapshot() -> None:
     for section in (
         "PERFORMANCE",
         "FEED INGRESS (TEMPORARY)",
+        "RETENTION",
+        "Current Journal Entries",
         "Gate",
         "tail_lines",
         "accepted_count",

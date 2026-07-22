@@ -14,6 +14,7 @@ from hotirjam_ai5.live_validator.loop_timing import (
     HierarchyFootprint,
     LoggingFootprint,
 )
+from hotirjam_ai5.retention import RetentionSnapshot
 
 _NA = "NOT AVAILABLE"
 _N_A = "NOT APPLICABLE"
@@ -228,11 +229,64 @@ def _ingress_poll_lines(snapshot: IngressPollSnapshot | None) -> list[str]:
     return lines
 
 
+def _fmt_bytes_size(value: int | None) -> str:
+    if value is None:
+        return _NA
+    if value >= 1024 * 1024:
+        return f"{value / (1024 * 1024):.2f} MB"
+    if value >= 1024:
+        return f"{value / 1024:.1f} KB"
+    return f"{value} B"
+
+
+def _retention_lines(snapshot: RetentionSnapshot | None) -> list[str]:
+    """H-6.7 retention diagnostics block."""
+    lines = [
+        "RETENTION",
+        "----------------------------------------",
+    ]
+    if snapshot is None:
+        lines.extend(
+            [
+                f"Current Journal Entries {_NA}",
+                f"Journal Limit           {_NA}",
+                f"Checkpoint Versions     {_NA}",
+                f"Version Limit           {_NA}",
+                f"Snapshot Log Size       {_NA}",
+                f"Snapshot Limit          {_NA}",
+                f"Tick File Size          {_NA}",
+                f"Tick Limit              {_NA}",
+                f"DOM File Size           {_NA}",
+                f"DOM Limit               {_NA}",
+                f"Retention Events        {_NA}",
+            ]
+        )
+        return lines
+    lines.extend(
+        [
+            f"Current Journal Entries {snapshot.journal_entries}",
+            f"Journal Limit           {snapshot.journal_limit}",
+            f"Checkpoint Versions     {snapshot.checkpoint_versions}",
+            f"Version Limit           {snapshot.version_limit}",
+            f"Snapshot Log Size       {_fmt_bytes_size(snapshot.snapshot_log_size_bytes)}",
+            f"Snapshot Limit          {_fmt_bytes_size(snapshot.snapshot_log_limit_bytes)}",
+            f"Tick File Size          {_fmt_bytes_size(snapshot.tick_file_size_bytes)}",
+            f"Tick Limit              {_fmt_bytes_size(snapshot.tick_file_limit_bytes)}",
+            f"DOM File Size           {_fmt_bytes_size(snapshot.dom_file_size_bytes)}",
+            f"DOM Limit               {_fmt_bytes_size(snapshot.dom_file_limit_bytes)}",
+            f"Retention Events        {snapshot.retention_events}",
+            "Note: hierarchy journal limits are advisory (never prune live AI state)",
+        ]
+    )
+    return lines
+
+
 def render_performance_page(
     timing: LoopTimingSnapshot | None,
     *,
     feed_status: str | None = None,
     ingress_poll: IngressPollSnapshot | None = None,
+    retention: RetentionSnapshot | None = None,
 ) -> str:
     """Render the IDC Performance diagnostics page from existing timing only."""
     lines = [
@@ -240,6 +294,8 @@ def render_performance_page(
         "PERFORMANCE",
         "----------------------------------------",
         *_ingress_poll_lines(ingress_poll),
+        "----------------------------------------",
+        *_retention_lines(retention),
         "----------------------------------------",
     ]
 

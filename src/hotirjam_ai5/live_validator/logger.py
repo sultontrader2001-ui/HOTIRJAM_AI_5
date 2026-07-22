@@ -37,10 +37,23 @@ def _jsonable(value: Any) -> Any:
 class SnapshotLogger:
     """Persist every ValidatorFrame as one NDJSON line."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        max_file_size_bytes: int | None = None,
+    ) -> None:
         self._path = Path(path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._count = 0
+        if max_file_size_bytes is None:
+            try:
+                from hotirjam_ai5.retention import load_retention_config
+
+                max_file_size_bytes = load_retention_config().snapshot_log_max_bytes
+            except Exception:
+                max_file_size_bytes = 100 * 1024 * 1024
+        self._max_file_size_bytes = int(max_file_size_bytes)
         # Keep handle open across logs (same durability via flush per write).
         self._handle: TextIO = self._path.open("a", encoding="utf-8")
 
@@ -62,6 +75,31 @@ class SnapshotLogger:
             self.close()
         except Exception:
             pass
+
+    def _maybe_rotate(self) -> None:
+        """Rotate after persistence when over size; reopen for continued appends."""
+        try:
+            try:
+                over = (
+                    self._path.is_file()
+                    and self._path.stat().st_size > self._max_file_size_bytes
+                )
+            except OSError:
+                return
+            if not over:
+                return
+            if not self._handle.closed:
+                self._handle.close()
+            from hotirjam_ai5.retention import rotate_log_if_needed
+
+            rotate_log_if_needed(self._path, max_bytes=self._max_file_size_bytes)
+            self._handle = self._path.open("a", encoding="utf-8")
+        except Exception:
+            try:
+                if getattr(self, "_handle", None) is None or self._handle.closed:
+                    self._handle = self._path.open("a", encoding="utf-8")
+            except Exception:
+                return
 
     def log(self, frame: ValidatorFrame) -> None:
         _t0 = time.perf_counter()
@@ -86,6 +124,9 @@ class SnapshotLogger:
             self._handle.flush()
             write_ms = (time.perf_counter() - _w0) * 1000.0
             self._count += 1
+            # Rotate only after this frame was successfully persisted.
+            # Engines already consumed the frame before log() was called.
+            self._maybe_rotate()
         finally:
             try:
                 from hotirjam_ai5.live_validator.loop_timing import (

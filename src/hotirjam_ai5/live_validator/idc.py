@@ -16,6 +16,7 @@ from hotirjam_ai5.live_validator.loop_timing import LoopTimingSnapshot
 from hotirjam_ai5.live_validator.models import ValidatorFrame
 from hotirjam_ai5.live_validator.presentation_mode import IdcPage
 from hotirjam_ai5.objective_diagnostics.persistent_hierarchy import StructuralTransition
+from hotirjam_ai5.retention import RetentionSnapshot
 
 _PLACEHOLDER_TITLES: dict[IdcPage, str] = {
     IdcPage.OBJECTIVE: "OBJECTIVE ENGINE",
@@ -65,6 +66,7 @@ def render_idc(
     certifications: Mapping[str, str] | None = None,
     loop_timing: LoopTimingSnapshot | None = None,
     ingress_poll: IngressPollSnapshot | None = None,
+    retention: RetentionSnapshot | None = None,
 ) -> str:
     """Render IDC menu, implemented engine pages, or a placeholder page."""
     if page is IdcPage.MENU:
@@ -87,6 +89,7 @@ def render_idc(
             loop_timing,
             feed_status=feed_status,
             ingress_poll=ingress_poll,
+            retention=retention,
         )
     return render_idc_placeholder(page)
 

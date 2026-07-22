@@ -1,0 +1,8 @@
+{
+  "objective_journal_max_entries": 10000,
+  "hierarchy_max_versions": 500,
+  "snapshot_log_max_file_size_mb": 100,
+  "tick_ndjson_max_file_size_mb": 200,
+  "dom_ndjson_max_file_size_mb": 200,
+  "audit_events_max_entries": 50000
+}

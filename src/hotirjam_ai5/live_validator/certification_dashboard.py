@@ -65,9 +65,21 @@ class AuditEvent:
 class AuditLog:
     """Presentation-only event collector for the AUDIT LOG section."""
 
-    def __init__(self, *, max_events: int = 50) -> None:
-        self._events: deque[AuditEvent] = deque(maxlen=max_events)
+    def __init__(self, *, max_events: int | None = None) -> None:
+        if max_events is None:
+            try:
+                from hotirjam_ai5.retention import load_retention_config
+
+                max_events = load_retention_config().audit_events_max_entries
+            except Exception:
+                max_events = 50_000
+        self._max_events = int(max_events)
+        self._events: deque[AuditEvent] = deque(maxlen=self._max_events)
         self._counts = {"INFO": 0, "WARNING": 0, "ERROR": 0}
+
+    @property
+    def max_events(self) -> int:
+        return self._max_events
 
     def record(self, level: str, message: str, *, timestamp: float) -> None:
         level = level.upper()

@@ -41,6 +41,9 @@ class LiveTickIngress:
         self._accepted = 0
         self._skipped = 0
         self._last_poll: IngressPollSnapshot | None = None
+        # Bytes through which complete lines were returned from poll (proven consumed).
+        # None until at least one non-empty poll delivers lines — never truncate on uncertainty.
+        self._proven_consumed_offset: int | None = None
         self._diagnostics.log(
             f"Ingress ready path={self.path} exists={self.path.exists()} "
             f"expected_symbol={self._parser.expected_symbol}"
@@ -55,6 +58,11 @@ class LiveTickIngress:
         return self._skipped
 
     @property
+    def proven_consumed_offset(self) -> int | None:
+        """Byte offset through which ingress has returned complete lines, or None."""
+        return self._proven_consumed_offset
+
+    @property
     def last_poll(self) -> IngressPollSnapshot | None:
         """TEMPORARY — snapshot from the most recent ``poll()`` call."""
         return self._last_poll
@@ -67,6 +75,9 @@ class LiveTickIngress:
         # Observation only: capture line count; same iteration/parse as before.
         raw_lines = self._tail.poll()
         tail_lines = len(raw_lines)
+        if tail_lines > 0:
+            # Only complete lines returned by the tail are proven consumed.
+            self._proven_consumed_offset = self._tail.offset
 
         ticks: list[LiveTick] = []
         for line in raw_lines:
@@ -102,6 +113,31 @@ class LiveTickIngress:
         self._last_poll = snapshot
         self._emit_poll_snapshot(snapshot)
         return tuple(ticks)
+
+    def apply_safe_storage_retention(self, *, max_bytes: int) -> bool:
+        """Storage-only: drop proven-consumed prefix if file exceeds ``max_bytes``.
+
+        Never runs inside engine evaluation. Never deletes unconsumed bytes.
+        """
+        try:
+            from hotirjam_ai5.retention import enforce_ndjson_size_limit
+
+            trimmed = enforce_ndjson_size_limit(
+                self.path,
+                max_bytes=max_bytes,
+                consumed_offset=self._proven_consumed_offset,
+            )
+            if not trimmed:
+                return False
+            try:
+                new_size = self.path.stat().st_size
+            except OSError:
+                new_size = 0
+            self._tail.mark_prefix_removed(new_size=new_size)
+            self._proven_consumed_offset = None
+            return True
+        except Exception:
+            return False
 
     def _emit_poll_snapshot(self, snapshot: IngressPollSnapshot) -> None:
         """TEMPORARY stderr line after every poll (Feed WAITING triage)."""

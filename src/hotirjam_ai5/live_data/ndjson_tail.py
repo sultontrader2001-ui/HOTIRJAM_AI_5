@@ -37,6 +37,14 @@ class NdjsonFileTail:
     def offset(self) -> int:
         return self._offset
 
+    def mark_prefix_removed(self, *, new_size: int) -> None:
+        """Caller dropped a consumed prefix and rewrote the file.
+
+        Stay parked at EOF of the remnant so retained bytes are not re-delivered.
+        """
+        self._offset = max(0, int(new_size))
+        self._initialized = True
+
     def poll(self) -> tuple[str, ...]:
         """Return newly completed NDJSON lines since the last poll."""
         if not self.path.exists():

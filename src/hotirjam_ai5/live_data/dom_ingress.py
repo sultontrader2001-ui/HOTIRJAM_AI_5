@@ -35,6 +35,7 @@ class LiveDomIngress:
         self._tail = NdjsonFileTail(self.path, diagnostics=self._diagnostics)
         self._accepted = 0
         self._skipped = 0
+        self._proven_consumed_offset: int | None = None
         self._diagnostics.log(
             f"DOM ingress ready path={self.path} exists={self.path.exists()} "
             f"expected_symbol={self._parser.expected_symbol}"
@@ -48,10 +49,17 @@ class LiveDomIngress:
     def skipped_count(self) -> int:
         return self._skipped
 
+    @property
+    def proven_consumed_offset(self) -> int | None:
+        return self._proven_consumed_offset
+
     def poll(self) -> tuple[DomSnapshot, ...]:
         """Parse newly appended lines into DomSnapshot objects."""
         snapshots: list[DomSnapshot] = []
-        for line in self._tail.poll():
+        raw_lines = self._tail.poll()
+        if raw_lines:
+            self._proven_consumed_offset = self._tail.offset
+        for line in raw_lines:
             try:
                 snapshot = self._parser.parse_line(line)
             except DomParseError as exc:
@@ -67,3 +75,25 @@ class LiveDomIngress:
                 f"status={snapshot.status}"
             )
         return tuple(snapshots)
+
+    def apply_safe_storage_retention(self, *, max_bytes: int) -> bool:
+        """Storage-only: drop proven-consumed prefix if file exceeds ``max_bytes``."""
+        try:
+            from hotirjam_ai5.retention import enforce_ndjson_size_limit
+
+            trimmed = enforce_ndjson_size_limit(
+                self.path,
+                max_bytes=max_bytes,
+                consumed_offset=self._proven_consumed_offset,
+            )
+            if not trimmed:
+                return False
+            try:
+                new_size = self.path.stat().st_size
+            except OSError:
+                new_size = 0
+            self._tail.mark_prefix_removed(new_size=new_size)
+            self._proven_consumed_offset = None
+            return True
+        except Exception:
+            return False
