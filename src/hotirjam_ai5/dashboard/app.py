@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import time
 from collections.abc import Callable
+from enum import StrEnum
 from pathlib import Path
 
 from hotirjam_ai5.dashboard.controller import DEFAULT_STALE_SECONDS, DashboardController
@@ -14,12 +15,22 @@ from hotirjam_ai5.dashboard.terminal import TerminalDisplay
 from hotirjam_ai5.live_data.dom_ingress import LiveDomIngress
 from hotirjam_ai5.live_data.ingress import LiveTickIngress
 from hotirjam_ai5.live_data.paths import default_dom_path, default_tick_path
+from hotirjam_ai5.mission_control.runtime_bundle import RuntimeBundle
+from hotirjam_ai5.mission_control.runtime_hub import get_runtime_hub
+from hotirjam_ai5.mission_control.shell import MissionControlShell
 
 # Display refresh is throttled; ingress polling stays faster.
 MIN_REFRESH_SECONDS = 0.25
 MAX_REFRESH_SECONDS = 0.5
 DEFAULT_REFRESH_SECONDS = 0.25
 DEFAULT_POLL_SECONDS = 0.05
+
+
+class RunnerDisplayMode(StrEnum):
+    """Which presentation surface the live runner draws."""
+
+    DASHBOARD = "DASHBOARD"
+    MISSION_CONTROL = "MISSION_CONTROL"
 
 
 def clamp_refresh_seconds(value: float) -> float:
@@ -30,7 +41,12 @@ def clamp_refresh_seconds(value: float) -> float:
 
 
 class DashboardApp:
-    """Polls live ticks/DOM in real time; redraws the terminal on a slower cadence."""
+    """Polls live ticks/DOM in real time; redraws the terminal on a slower cadence.
+
+    Owns the live runtime. Mission Control, when enabled, is a passive view of
+    the same ``DashboardState`` already produced for rendering — never a second
+    runtime.
+    """
 
     def __init__(
         self,
@@ -45,6 +61,9 @@ class DashboardApp:
         sleep_fn: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
         verbose: bool = False,
+        mission_control: bool = False,
+        keyboard: object | None = None,
+        wall_clock: Callable[[], float] = time.time,
     ) -> None:
         self._refresh_seconds = clamp_refresh_seconds(refresh_seconds)
         if poll_seconds <= 0:
@@ -57,6 +76,21 @@ class DashboardApp:
         self._poll_seconds = poll_seconds
         self._sleep = sleep_fn
         self._clock = clock
+        self._wall_clock = wall_clock
+        self._display_mode = (
+            RunnerDisplayMode.MISSION_CONTROL
+            if mission_control
+            else RunnerDisplayMode.DASHBOARD
+        )
+        self._mc_shell = MissionControlShell() if mission_control else None
+        self._keyboard = keyboard
+        if mission_control and self._keyboard is None:
+            try:
+                from hotirjam_ai5.live_validator.keyboard_input import KeyboardInput
+
+                self._keyboard = KeyboardInput()
+            except Exception:
+                self._keyboard = None
 
     @property
     def refresh_seconds(self) -> float:
@@ -65,6 +99,14 @@ class DashboardApp:
     @property
     def poll_seconds(self) -> float:
         return self._poll_seconds
+
+    @property
+    def display_mode(self) -> RunnerDisplayMode:
+        return self._display_mode
+
+    @property
+    def controller(self) -> DashboardController:
+        return self._controller
 
     def poll_ingress(self) -> int:
         """Pull new live ticks into the controller. Returns accepted tick count."""
@@ -90,13 +132,50 @@ class DashboardApp:
         self.poll_dom_ingress()
         self._controller.check_connection_health()
 
+    def _poll_mission_control_keys(self) -> None:
+        if self._keyboard is None or self._mc_shell is None:
+            return
+        for _ in range(32):
+            ch = getattr(self._keyboard, "poll_key", lambda: None)()
+            if not isinstance(ch, str) or not ch:
+                break
+            if ch in {"b", "B"} and self._display_mode is RunnerDisplayMode.MISSION_CONTROL:
+                self._display_mode = RunnerDisplayMode.DASHBOARD
+                continue
+            if ch in {"m", "M"} and self._display_mode is RunnerDisplayMode.DASHBOARD:
+                self._display_mode = RunnerDisplayMode.MISSION_CONTROL
+                continue
+            if self._display_mode is RunnerDisplayMode.MISSION_CONTROL:
+                from hotirjam_ai5.mission_control.models import MissionWindow
+
+                if (
+                    ch in {"q", "Q"}
+                    and self._mc_shell.window is MissionWindow.COCKPIT
+                    and not any(c.expanded for c in self._mc_shell.modules)
+                ):
+                    self._display_mode = RunnerDisplayMode.DASHBOARD
+                    continue
+                self._mc_shell.handle_key(ch)
+
     def render_once(self) -> str:
-        """Render the current snapshot to the terminal (diff update)."""
+        """Runner builds state once, publishes it, then draws one surface."""
         state = self._controller.snapshot()
-        width = self._renderer.fixed_width
-        if width is None:
-            width = self._display.terminal_width()
-        text = self._renderer.render(state, width=width)
+        # Publish the identical object the runner just produced.
+        get_runtime_hub().publish_dashboard(state, publisher="DashboardApp")
+
+        if (
+            self._display_mode is RunnerDisplayMode.MISSION_CONTROL
+            and self._mc_shell is not None
+        ):
+            self._mc_shell.set_bundle(
+                RuntimeBundle(now=float(self._wall_clock()), dashboard=state)
+            )
+            text = self._mc_shell.render()
+        else:
+            width = self._renderer.fixed_width
+            if width is None:
+                width = self._display.terminal_width()
+            text = self._renderer.render(state, width=width)
         self._display.render_frame(text)
         return text
 
@@ -107,12 +186,16 @@ class DashboardApp:
         Returns 0 on clean exit.
         """
         self._display.prepare()
+        enable = getattr(self._keyboard, "enable", None)
+        if callable(enable):
+            enable()
         self._controller.start()
         frames = 0
         last_render_at = None
         try:
             while max_frames is None or frames < max_frames:
                 self.poll_once()
+                self._poll_mission_control_keys()
                 now = self._clock()
                 should_render = (
                     last_render_at is None
@@ -128,6 +211,9 @@ class DashboardApp:
         except KeyboardInterrupt:
             pass
         finally:
+            disable = getattr(self._keyboard, "disable", None)
+            if callable(disable):
+                disable()
             self._display.shutdown()
             self._controller.stop()
         return 0
@@ -187,6 +273,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show developer/pipeline details on the dashboard",
     )
+    parser.add_argument(
+        "--mission-control",
+        action="store_true",
+        help=(
+            "H-7.2A: draw Mission Control as a passive view of this runner's "
+            "DashboardState (same runtime — no second engines)"
+        ),
+    )
     return parser
 
 
@@ -207,6 +301,7 @@ def main(argv: list[str] | None = None) -> int:
         refresh_seconds=args.refresh,
         poll_seconds=args.poll,
         verbose=args.verbose,
+        mission_control=bool(args.mission_control),
     )
     return app.run()
 

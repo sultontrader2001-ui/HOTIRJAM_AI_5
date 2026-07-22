@@ -16,6 +16,7 @@ from hotirjam_ai5.mission_control.runtime_bundle import (
     read_lv_controller_latest,
     read_lv_journal_summaries,
 )
+from hotirjam_ai5.mission_control.runtime_hub import get_runtime_hub
 from hotirjam_ai5.mission_control.shell import MissionControlShell
 
 
@@ -69,7 +70,11 @@ class MissionControlApp:
         return self._shell
 
     def _refresh_bundle(self) -> None:
-        """Re-read existing objects only. No evaluate / on_tick / snapshot()."""
+        """Re-read published / attached objects only. No evaluate / on_tick / snapshot()."""
+        hub = get_runtime_hub()
+        if hub.is_attached():
+            self._shell.set_bundle(hub.read_bundle(now=float(self._clock())))
+            return
         frame = None
         summaries: tuple[str, ...] = ()
         if self._lv is not None:
@@ -131,7 +136,10 @@ def _build_keyboard() -> object:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="hotirjam-ai5-mission-control",
-        description="HOTIRJAM AI 5 Mission Control (H-7.2) — read-only UI.",
+        description=(
+            "HOTIRJAM AI 5 Mission Control (H-7.2A) — passive observer. "
+            "Prefer: python -m hotirjam_ai5 --mission-control (same runtime)."
+        ),
     )
     parser.add_argument(
         "--window",
@@ -150,6 +158,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Optional interactive frame cap (tests)",
     )
+    parser.add_argument(
+        "--from-hub",
+        action="store_true",
+        help="Read RuntimeHub only (must be published by an active runner in-process)",
+    )
     args = parser.parse_args(argv)
 
     window = {
@@ -158,10 +171,17 @@ def main(argv: list[str] | None = None) -> int:
         "developer": MissionWindow.DEVELOPER,
     }[args.window]
     shell = MissionControlShell(window=window)
+    if args.from_hub or get_runtime_hub().is_attached():
+        shell.set_bundle(get_runtime_hub().read_bundle())
 
     if args.once:
         sys.stdout.write(shell.render())
         sys.stdout.write("\n")
+        if not get_runtime_hub().is_attached():
+            sys.stdout.write(
+                "# NOTE: RuntimeHub empty — launch via "
+                "`hotirjam-ai5 --mission-control` for live wiring.\n"
+            )
         return 0
 
     app = MissionControlApp(shell=shell, keyboard=_build_keyboard())

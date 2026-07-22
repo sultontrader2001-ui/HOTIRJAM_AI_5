@@ -61,6 +61,7 @@ class LiveValidatorApp:
         wall_clock: Callable[[], float] = time.time,
         stale_seconds: float = DEFAULT_STALE_SECONDS,
         keyboard: KeyboardInput | None = None,
+        mission_control: bool = False,
     ) -> None:
         if poll_seconds <= 0:
             raise ValueError("poll_seconds must be positive")
@@ -95,6 +96,12 @@ class LiveValidatorApp:
         self._dom_path: Path | None = None
         self._snapshot_log_path: Path | None = None
         self._retention_checks = 0
+        self._mission_control = bool(mission_control)
+        self._mc_shell = None
+        if self._mission_control:
+            from hotirjam_ai5.mission_control.shell import MissionControlShell
+
+            self._mc_shell = MissionControlShell()
 
     @property
     def presentation_mode(self) -> PresentationMode:
@@ -265,6 +272,19 @@ class LiveValidatorApp:
         self._audit.record(level, f"Feed {status}", timestamp=self._wall_clock())
         self._last_feed_status = status
 
+    def _publish_runtime(self, frame: object) -> None:
+        """Publish existing LV frame to the process hub (H-7.2A)."""
+        from hotirjam_ai5.mission_control.runtime_bundle import read_lv_journal_summaries
+        from hotirjam_ai5.mission_control.runtime_hub import get_runtime_hub
+
+        timing = self.loop_timing
+        get_runtime_hub().publish_frame(
+            frame,
+            publisher="LiveValidatorApp",
+            transition_summaries=read_lv_journal_summaries(self._controller),
+            loop_timing=timing,
+        )
+
     def render_once(self) -> str:
         # IDC is presentation-only: never calls evaluate(); engine pages
         # observe the latest frame / journal already produced by the runtime.
@@ -272,6 +292,7 @@ class LiveValidatorApp:
             status = self.feed_status()
             self._track_feed_transition(status)
             frame = self._controller.latest
+            self._publish_runtime(frame)
             transitions = None
             if self._idc_page is IdcPage.OBJECTIVE:
                 transitions = self._controller.structural_transition_journal
@@ -290,8 +311,29 @@ class LiveValidatorApp:
         frame = self._controller.latest
         if frame.current_price is None:
             frame = self._controller.evaluate_now()
+        self._publish_runtime(frame)
         status = self.feed_status()
         self._track_feed_transition(status)
+
+        # H-7.2A: Mission Control is a passive view of the same latest frame.
+        if self._mission_control and self._mc_shell is not None:
+            from hotirjam_ai5.mission_control.runtime_bundle import (
+                RuntimeBundle,
+                read_lv_journal_summaries,
+            )
+
+            self._mc_shell.set_bundle(
+                RuntimeBundle(
+                    now=float(self._wall_clock()),
+                    frame=frame,
+                    loop_timing=self.loop_timing,
+                    transition_summaries=read_lv_journal_summaries(self._controller),
+                )
+            )
+            text = self._mc_shell.render()
+            self._display.render_frame(text)
+            return text
+
         market = MarketTelemetry(
             bid=self._last_bid,
             ask=self._last_ask,
@@ -333,6 +375,22 @@ class LiveValidatorApp:
                 changed = self.enter_idc() or changed
             elif ch in {"d", "D"}:
                 self.toggle_developer_mode()
+                changed = True
+            elif self._mission_control and self._mc_shell is not None and ch in {
+                "1",
+                "2",
+                "3",
+                "j",
+                "J",
+                "k",
+                "K",
+                "e",
+                "E",
+                "\r",
+                "\n",
+                "?",
+            }:
+                self._mc_shell.handle_key(ch)
                 changed = True
             elif ch == self._ESCAPE:
                 changed = self.exit_developer_mode() or changed
@@ -477,6 +535,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Start in Developer View (default is Trader View)",
     )
+    parser.add_argument(
+        "--mission-control",
+        action="store_true",
+        help=(
+            "H-7.2A: draw Mission Control as a passive view of this runner's "
+            "ValidatorFrame (same runtime — no second engines)"
+        ),
+    )
     return parser
 
 
@@ -512,6 +578,7 @@ def main(argv: list[str] | None = None) -> int:
         ingress=ingress,
         poll_seconds=args.poll,
         refresh_seconds=args.refresh,
+        mission_control=bool(args.mission_control),
     )
     app.configure_retention_paths(
         tick_path=tick_path,

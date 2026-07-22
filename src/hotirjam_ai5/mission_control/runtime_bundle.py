@@ -8,11 +8,13 @@ Never allocates engines.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from hotirjam_ai5.dashboard.models import DashboardState
-from hotirjam_ai5.live_validator.loop_timing import LoopTimingSnapshot
-from hotirjam_ai5.live_validator.models import ValidatorFrame
+
+if TYPE_CHECKING:
+    from hotirjam_ai5.live_validator.loop_timing import LoopTimingSnapshot
+    from hotirjam_ai5.live_validator.models import ValidatorFrame
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,12 +50,9 @@ def bundle_from_live_validator(
     )
 
 
-def read_lv_controller_latest(controller: Any) -> ValidatorFrame | None:
+def read_lv_controller_latest(controller: Any) -> Any:
     """Read ``controller.latest`` only. Never calls on_tick / evaluate_now."""
-    latest = getattr(controller, "latest", None)
-    if latest is None:
-        return None
-    return latest  # type: ignore[no-any-return]
+    return getattr(controller, "latest", None)
 
 
 def read_lv_journal_summaries(controller: Any, *, limit: int = 8) -> tuple[str, ...]:
