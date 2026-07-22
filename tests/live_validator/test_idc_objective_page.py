@@ -13,6 +13,7 @@ from hotirjam_ai5.live_validator import (
     PresentationMode,
     render_idc,
 )
+from hotirjam_ai5.live_validator.diagnostic_projection import derive_diagnostic_log
 from hotirjam_ai5.live_validator.idc_objective import render_objective_page
 from hotirjam_ai5.objective import ObjectivePersistenceState, ObjectiveSnapshot
 from hotirjam_ai5.objective_diagnostics import (
@@ -116,6 +117,7 @@ def _frame_with_objectives() -> object:
         current_price=100.0,
         objective=objective,
         objective_diagnostics=report,
+        diagnostic_log=derive_diagnostic_log(report, objective),
     )
 
 
@@ -128,6 +130,7 @@ def test_objective_page_layout_sections() -> None:
         "Health",
         "Certification",
         "Last Evaluation",
+        "SUMMARY (diagnostic_log)",
         "CURRENT SNAPSHOT",
         "Current High",
         "Current Low",
@@ -135,6 +138,7 @@ def test_objective_page_layout_sections() -> None:
         "Distance Low",
         "Calculation State",
         "LIFECYCLE",
+        "DETAIL (objective_diagnostics)",
         "EVIDENCE",
         "REASONS",
         "TRANSITION JOURNAL",

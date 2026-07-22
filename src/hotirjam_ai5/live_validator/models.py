@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from hotirjam_ai5.break_capability import BreakCapabilitySnapshot
 from hotirjam_ai5.continuation import ContinuationSnapshot
 from hotirjam_ai5.initiative import InitiativeSnapshot
+from hotirjam_ai5.live_validator.diagnostic_projection import DiagnosticLogProjection
 from hotirjam_ai5.objective import ObjectiveSnapshot
 from hotirjam_ai5.objective_diagnostics import ObjectiveAuditReport
 from hotirjam_ai5.response import ResponseSnapshot
@@ -17,7 +18,10 @@ class ValidatorFrame:
     """One observation frame from the live architecture pipeline.
 
     Decision and execution are always disabled in this frame.
-    ``objective_diagnostics`` is presentation-only evidence for Developer View.
+
+    H-6.9.4 Alternative E:
+    - ``objective_diagnostics`` (R): runtime ObjectiveAuditReport — selection / IDC detail
+    - ``diagnostic_log`` (P): compact projection — Snapshot Logger / IDC summary
     """
 
     timestamp: float
@@ -33,3 +37,4 @@ class ValidatorFrame:
     break_capability: BreakCapabilitySnapshot
     decision: str = "DISABLED"
     objective_diagnostics: ObjectiveAuditReport | None = None
+    diagnostic_log: DiagnosticLogProjection | None = None

@@ -9,6 +9,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, TextIO
 
+from hotirjam_ai5.live_validator.diagnostic_projection import DiagnosticLogProjection
 from hotirjam_ai5.live_validator.models import ValidatorFrame
 
 
@@ -76,8 +77,14 @@ class SnapshotLogger:
         except Exception:
             pass
 
-    def _maybe_rotate(self) -> None:
-        """Rotate after persistence when over size; reopen for continued appends."""
+    def _maybe_rotate(self) -> tuple[float, float]:
+        """Rotate after persistence when over size; reopen for continued appends.
+
+        Returns exclusive ``(rotate_ms, reopen_ms)``. Timers never overlap.
+        """
+        rotate_ms = 0.0
+        reopen_ms = 0.0
+        _r0 = time.perf_counter()
         try:
             try:
                 over = (
@@ -85,67 +92,127 @@ class SnapshotLogger:
                     and self._path.stat().st_size > self._max_file_size_bytes
                 )
             except OSError:
-                return
+                rotate_ms = (time.perf_counter() - _r0) * 1000.0
+                return rotate_ms, reopen_ms
             if not over:
-                return
+                rotate_ms = (time.perf_counter() - _r0) * 1000.0
+                return rotate_ms, reopen_ms
             if not self._handle.closed:
                 self._handle.close()
             from hotirjam_ai5.retention import rotate_log_if_needed
 
             rotate_log_if_needed(self._path, max_bytes=self._max_file_size_bytes)
+            rotate_ms = (time.perf_counter() - _r0) * 1000.0
+
+            _o0 = time.perf_counter()
             self._handle = self._path.open("a", encoding="utf-8")
+            reopen_ms = (time.perf_counter() - _o0) * 1000.0
         except Exception:
+            rotate_ms = max(rotate_ms, (time.perf_counter() - _r0) * 1000.0 - reopen_ms)
             try:
                 if getattr(self, "_handle", None) is None or self._handle.closed:
+                    _o0 = time.perf_counter()
                     self._handle = self._path.open("a", encoding="utf-8")
+                    reopen_ms += (time.perf_counter() - _o0) * 1000.0
             except Exception:
-                return
+                pass
+        return rotate_ms, reopen_ms
 
     def log(self, frame: ValidatorFrame) -> None:
         _t0 = time.perf_counter()
-        build_ms = 0.0
+        frame_prep_ms = 0.0
+        diagnostics_attachment_ms = 0.0
         serialize_ms = 0.0
         write_ms = 0.0
+        flush_ms = 0.0
+        rotate_ms = 0.0
+        reopen_ms = 0.0
         payload: dict[str, Any] | None = None
         line: str | None = None
         try:
-            _b0 = time.perf_counter()
-            payload = _jsonable(frame)
-            build_ms = (time.perf_counter() - _b0) * 1000.0
+            # H-6.9.4: never serialize runtime report R (objective_diagnostics).
+            # Diagnostics section is projection P envelope only.
+            items: list[tuple[str, Any]] = []
+            for f in fields(frame):
+                name = f.name
+                if name == "objective_diagnostics":
+                    continue
+                value = getattr(frame, name)
+                _p0 = time.perf_counter()
+                if name == "diagnostic_log":
+                    if isinstance(value, DiagnosticLogProjection):
+                        envelope = value.as_log_envelope()
+                        # Flatten envelope into top-level frame keys per schema.
+                        for key, val in envelope.items():
+                            items.append((key, val))
+                        diagnostics_attachment_ms += (
+                            time.perf_counter() - _p0
+                        ) * 1000.0
+                        continue
+                    converted = None
+                    diagnostics_attachment_ms += (time.perf_counter() - _p0) * 1000.0
+                    # Omit null diagnostic_log key entirely when absent.
+                    continue
+                converted = _jsonable(value)
+                frame_prep_ms += (time.perf_counter() - _p0) * 1000.0
+                items.append((name, converted))
+            items.sort(key=lambda item: item[0])
+            payload = {key: val for key, val in items}
 
             _s0 = time.perf_counter()
-            # Keys already sorted in _jsonable — identical to sort_keys=True.
             line = json.dumps(payload, separators=(",", ":"), sort_keys=False)
             serialize_ms = (time.perf_counter() - _s0) * 1000.0
 
             _w0 = time.perf_counter()
             self._handle.write(line)
             self._handle.write("\n")
-            self._handle.flush()
             write_ms = (time.perf_counter() - _w0) * 1000.0
+
+            _f0 = time.perf_counter()
+            self._handle.flush()
+            flush_ms = (time.perf_counter() - _f0) * 1000.0
+
             self._count += 1
-            # Rotate only after this frame was successfully persisted.
-            # Engines already consumed the frame before log() was called.
-            self._maybe_rotate()
+            rotate_ms, reopen_ms = self._maybe_rotate()
         finally:
             try:
                 from hotirjam_ai5.live_validator.loop_timing import (
                     add_logging_breakdown,
+                    add_logging_exclusive,
                     add_logging_ms,
                     set_logging_footprint,
                 )
+                from hotirjam_ai5.live_validator.snapshot_logger_probe import (
+                    record_snapshot_logger_phases,
+                )
 
-                add_logging_ms((time.perf_counter() - _t0) * 1000.0)
-                # Collect is not a distinct step (frame already in hand).
-                # Flush is folded into Write (explicit flush after each line).
+                total_ms = (time.perf_counter() - _t0) * 1000.0
+                add_logging_ms(total_ms)
                 add_logging_breakdown(
                     collect_ms=None,
-                    build_ms=build_ms,
+                    build_ms=frame_prep_ms + diagnostics_attachment_ms,
                     serialize_ms=serialize_ms,
-                    write_ms=write_ms,
+                    write_ms=write_ms + flush_ms,
                     flush_ms=None,
                 )
-                # Footprint after timing so existing stage totals stay unchanged.
+                add_logging_exclusive(
+                    build_ms=frame_prep_ms + diagnostics_attachment_ms,
+                    serialize_ms=serialize_ms,
+                    write_ms=write_ms,
+                    flush_ms=flush_ms,
+                    rotate_ms=rotate_ms,
+                    reopen_ms=reopen_ms,
+                )
+                record_snapshot_logger_phases(
+                    frame_prep_ms=frame_prep_ms,
+                    diagnostics_attachment_ms=diagnostics_attachment_ms,
+                    serialize_ms=serialize_ms,
+                    write_ms=write_ms,
+                    flush_ms=flush_ms,
+                    rotation_check_ms=rotate_ms,
+                    reopen_ms=reopen_ms,
+                    total_ms=total_ms,
+                )
                 if isinstance(payload, dict) and line is not None:
                     set_logging_footprint(
                         payload=payload,

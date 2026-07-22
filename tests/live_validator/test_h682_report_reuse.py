@@ -99,18 +99,33 @@ def test_h682_report_identity_and_fingerprints(tmp_path: Path) -> None:
     fp_frame = _fingerprint_report(frame_report)
     assert fp_engine == fp_frame
 
-    # Snapshot logger payload must carry the same diagnostics fingerprint.
+    # H-6.9.4: logger serializes projection P, not runtime report R.
+    # Frame still carries identical R (engine identity above).
     line = log_path.read_text(encoding="utf-8").strip().splitlines()[-1]
     payload = json.loads(line)
-    assert "objective_diagnostics" in payload
-    fp_logger = hashlib.sha256(
+    assert "objective_diagnostics" not in payload
+    assert "diagnostic_log_version" in payload
+    assert "diagnostic_log" in payload
+    assert frame.diagnostic_log is not None
+    fp_p = hashlib.sha256(
         json.dumps(
-            payload["objective_diagnostics"],
+            frame.diagnostic_log.as_log_envelope(),
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
     ).hexdigest()
-    assert fp_logger == fp_engine
+    fp_s = hashlib.sha256(
+        json.dumps(
+            {
+                "diagnostic_log_version": payload["diagnostic_log_version"],
+                "diagnostic_log": payload["diagnostic_log"],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    assert fp_p == fp_s
+    assert fp_p != fp_engine  # FP-R ≢ FP-P by design
 
     # Exactly one hierarchy.evaluate for this accepted tick.
     records = [r for r in hierarchy_evaluate_call_records() if r.tick_id == 1]

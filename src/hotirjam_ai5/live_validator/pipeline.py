@@ -24,6 +24,7 @@ from hotirjam_ai5.initiative import (
     OhlcCandle,
 )
 from hotirjam_ai5.live_validator.models import ValidatorFrame
+from hotirjam_ai5.live_validator.diagnostic_projection import derive_diagnostic_log
 from hotirjam_ai5.objective import (
     ConfirmedSwing,
     ObjectiveEngine,
@@ -155,6 +156,8 @@ class ArchitecturePipeline:
                 timestamp=timestamp,
             )
         )
+        # H-6.9.4: exactly one pure derive R→P per tick (after engines use R only).
+        diagnostic_log = derive_diagnostic_log(diagnostics, objective)
         return ValidatorFrame(
             timestamp=timestamp,
             current_price=current_price,
@@ -169,6 +172,7 @@ class ArchitecturePipeline:
             break_capability=break_capability,
             decision="DISABLED",
             objective_diagnostics=diagnostics,
+            diagnostic_log=diagnostic_log,
         )
 
     @staticmethod

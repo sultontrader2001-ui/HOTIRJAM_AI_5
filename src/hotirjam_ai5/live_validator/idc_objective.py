@@ -278,6 +278,8 @@ def render_objective_page(
     if report is not None and not isinstance(report, ObjectiveAuditReport):
         report = None
 
+    projection = frame.diagnostic_log
+
     obj = frame.objective
     high = _find_selected(report.highs, obj.nearest_high_price) if report else None
     low = _find_selected(report.lows, obj.nearest_low_price) if report else None
@@ -306,12 +308,32 @@ def render_objective_page(
     high_persist = obj.high_state.value if obj.high_state is not None else _NA
     low_persist = obj.low_state.value if obj.low_state is not None else _NA
 
+    # H-6.9.4: IDC summary from projection P (never evaluate).
+    summary_lines: list[str] = [
+        "SUMMARY (diagnostic_log)",
+    ]
+    if projection is None:
+        summary_lines.append(_NA)
+    else:
+        summary_lines.extend(
+            [
+                f"Log Version       {projection.diagnostic_log_version}",
+                f"Highs/Lows        {projection.high_count}/{projection.low_count}",
+                f"Eligible H/L      {projection.eligible_high_count}/{projection.eligible_low_count}",
+                f"Challenged        {projection.challenged_count}",
+                f"Hierarchy Ver     {projection.hierarchy_version}",
+                f"Transitions       {projection.transition_count}",
+            ]
+        )
+
     lines.extend(
         [
             f"Status            {status}",
             f"Health            {health}",
             f"Certification     {_certification_label(certifications)}",
             f"Last Evaluation   {_fmt_time(frame.timestamp)}",
+            "----------------------------------------",
+            *summary_lines,
             "----------------------------------------",
             "CURRENT SNAPSHOT",
             f"Current High      {_fmt(obj.nearest_high_price)}",
@@ -325,6 +347,8 @@ def render_objective_page(
             f"Low Objective     {low_life} (persist {low_persist})",
             f"Current Lifecycle {current_life}",
             f"Allowed Next States {allowed}",
+            "----------------------------------------",
+            "DETAIL (objective_diagnostics)",
             "----------------------------------------",
             "EVIDENCE",
         ]
