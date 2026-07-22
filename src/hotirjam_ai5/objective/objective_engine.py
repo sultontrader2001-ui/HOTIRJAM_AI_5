@@ -282,6 +282,13 @@ class ObjectiveEngine:
         self._invalidated_highs: set[_StoredObjective] = set()
         self._invalidated_lows: set[_StoredObjective] = set()
         self._structural_hierarchy = PersistentStructuralHierarchy()
+        # H-6.8.2: single-source ObjectiveAuditReport from the evaluate() path.
+        self._last_audit_report: ObjectiveAuditReport | None = None
+
+    @property
+    def last_audit_report(self) -> ObjectiveAuditReport | None:
+        """Exact report consumed by the latest evaluate() selection (or None)."""
+        return self._last_audit_report
 
     def evaluate(self, inputs: ObjectiveInputs) -> ObjectiveSnapshot:
         """Evaluate, reconcile, and retain persistent objectives."""
@@ -294,6 +301,8 @@ class ObjectiveEngine:
             _current, report, _high_pick, _low_pick = (
                 _evaluate_structural_candidates(inputs)
             )
+        # Always publish the report instance used for this evaluation (may be None).
+        self._last_audit_report = report
         if report is None:
             # Invalid/empty classification must not erase an existing objective.
             self._latest = ObjectiveSnapshot(

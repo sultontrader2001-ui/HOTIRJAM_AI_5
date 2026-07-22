@@ -81,10 +81,18 @@ class ArchitecturePipeline:
     def initiative_engine(self) -> InitiativeEngine:
         return self._initiative_engine
 
+    @property
+    def objective_engine(self) -> ObjectiveEngine:
+        return self._objective_engine
+
     def audit_objectives(
         self, inputs: ObjectiveDiagnosticsInputs
     ) -> ObjectiveAuditReport:
-        """Render diagnostics from the same hierarchy consumed by Objective."""
+        """Render diagnostics from the same hierarchy consumed by Objective.
+
+        Prefer ``ObjectiveEngine.last_audit_report`` on the live path (H-6.8.2).
+        This method remains for isolated diagnostics / tests only.
+        """
         with use_structural_hierarchy(self._structural_hierarchy):
             return audit_objectives(inputs)
 
@@ -108,6 +116,9 @@ class ArchitecturePipeline:
                     timestamp=timestamp,
                 )
             )
+            # H-6.8.2: reuse the exact report Objective just consumed — no second
+            # hierarchy.evaluate() for presentation.
+            diagnostics = self._objective_engine.last_audit_report
         initiative = self._initiative_engine.evaluate(
             InitiativeInputs(
                 candles=candles,
@@ -157,6 +168,7 @@ class ArchitecturePipeline:
             continuation=continuation,
             break_capability=break_capability,
             decision="DISABLED",
+            objective_diagnostics=diagnostics,
         )
 
     @staticmethod

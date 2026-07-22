@@ -11,7 +11,6 @@ from hotirjam_ai5.live_validator.logger import SnapshotLogger
 from hotirjam_ai5.live_validator.models import ValidatorFrame
 from hotirjam_ai5.live_validator.pipeline import ArchitecturePipeline
 from hotirjam_ai5.live_validator.swing_confirmer import SwingConfirmer
-from hotirjam_ai5.objective_diagnostics import ObjectiveDiagnosticsInputs
 from hotirjam_ai5.objective_diagnostics.persistent_hierarchy import StructuralTransition
 
 
@@ -59,7 +58,15 @@ class LiveValidatorController:
         newly_closed = self._bars.on_tick(tick)
         if newly_closed:
             self._swings.on_closed_candles(newly_closed)
-        return self._evaluate()
+        # H-6.8.1: assign Tick ID for hierarchy.evaluate correlation only.
+        try:
+            from hotirjam_ai5.objective_diagnostics.hierarchy_evaluate_probe import (
+                hierarchy_accepted_tick,
+            )
+        except Exception:
+            return self._evaluate()
+        with hierarchy_accepted_tick():
+            return self._evaluate()
 
     def evaluate_now(self) -> ValidatorFrame:
         """Force an evaluation from current buffers (e.g. on display refresh)."""
@@ -73,39 +80,14 @@ class LiveValidatorController:
         ts = self._last_tick_ts if self._last_tick_ts is not None else self._clock()
         highs = self._swings.confirmed_highs
         lows = self._swings.confirmed_lows
+        # H-6.8.2: pipeline attaches the exact ObjectiveAuditReport from the
+        # single hierarchy.evaluate() inside Objective — no second audit.
         frame = self._pipeline.evaluate(
             current_price=self._last_price,
             timestamp=ts,
             candles=self._bars.candles_for_engines(),
             confirmed_highs=highs,
             confirmed_lows=lows,
-        )
-        # Presentation-only attachment of the same structural classification
-        # consumed by Objective Engine V2. This does not re-evaluate or mutate
-        # the already-produced engine snapshots.
-        diagnostics = self._pipeline.audit_objectives(
-            ObjectiveDiagnosticsInputs(
-                current_price=self._last_price,
-                tick_size=self._pipeline.tick_size,
-                confirmed_highs=highs,
-                confirmed_lows=lows,
-                timestamp=ts,
-            )
-        )
-        frame = ValidatorFrame(
-            timestamp=frame.timestamp,
-            current_price=frame.current_price,
-            symbol=frame.symbol,
-            candle_count=frame.candle_count,
-            swing_high_count=frame.swing_high_count,
-            swing_low_count=frame.swing_low_count,
-            objective=frame.objective,
-            initiative=frame.initiative,
-            response=frame.response,
-            continuation=frame.continuation,
-            break_capability=frame.break_capability,
-            decision=frame.decision,
-            objective_diagnostics=diagnostics,
         )
         self._latest = frame
         self._evaluations += 1

@@ -180,31 +180,54 @@ class PersistentStructuralHierarchy:
 
     def evaluate(self, inputs: ObjectiveDiagnosticsInputs) -> ObjectiveAuditReport:
         """Ingest new swing events, apply lifecycle events, and adapt a report."""
-        if inputs.tick_size <= 0.0:
-            return ObjectiveAuditReport(
-                timestamp=inputs.timestamp,
-                current_price=inputs.current_price,
-                tick_size=inputs.tick_size,
-                highs=(),
-                lows=(),
-                summary_lines=("Invalid tick size — diagnostics skipped",),
-                hierarchy_version=self._version,
-                registry_size=len(self._records),
-                transition_count=len(self._journal),
-                checkpoint_version=CHECKPOINT_VERSION,
+        # H-6.8.1: diagnostics-only probe (no behavior / output change).
+        _probe = None
+        try:
+            from hotirjam_ai5.objective_diagnostics.hierarchy_evaluate_probe import (
+                begin_hierarchy_evaluate_probe,
             )
 
-        before = self._version
-        new_ids = self._ingest(inputs)
-        if new_ids:
-            self._classify_new(new_ids, inputs)
-            self._activate_new(new_ids, inputs)
-            self._resolve_challenges(new_ids, inputs)
-            self._apply_supersession(new_ids, inputs)
-        self._apply_challenges(inputs)
-        if self._version != before and self._checkpoint_path is not None:
-            self.checkpoint(self._checkpoint_path)
-        return self._to_report(inputs)
+            _probe = begin_hierarchy_evaluate_probe(self, inputs)
+        except Exception:
+            _probe = None
+        report: ObjectiveAuditReport | None = None
+        try:
+            if inputs.tick_size <= 0.0:
+                report = ObjectiveAuditReport(
+                    timestamp=inputs.timestamp,
+                    current_price=inputs.current_price,
+                    tick_size=inputs.tick_size,
+                    highs=(),
+                    lows=(),
+                    summary_lines=("Invalid tick size — diagnostics skipped",),
+                    hierarchy_version=self._version,
+                    registry_size=len(self._records),
+                    transition_count=len(self._journal),
+                    checkpoint_version=CHECKPOINT_VERSION,
+                )
+                return report
+
+            before = self._version
+            new_ids = self._ingest(inputs)
+            if new_ids:
+                self._classify_new(new_ids, inputs)
+                self._activate_new(new_ids, inputs)
+                self._resolve_challenges(new_ids, inputs)
+                self._apply_supersession(new_ids, inputs)
+            self._apply_challenges(inputs)
+            if self._version != before and self._checkpoint_path is not None:
+                self.checkpoint(self._checkpoint_path)
+            report = self._to_report(inputs)
+            return report
+        finally:
+            try:
+                from hotirjam_ai5.objective_diagnostics.hierarchy_evaluate_probe import (
+                    finish_hierarchy_evaluate_probe,
+                )
+
+                finish_hierarchy_evaluate_probe(_probe, self, report)
+            except Exception:
+                pass
 
     def archive(
         self,
@@ -248,12 +271,26 @@ class PersistentStructuralHierarchy:
 
     def checkpoint(self, path: Path | None = None) -> None:
         """Atomically persist registry, graph, lifecycle, and transition journal."""
+        try:
+            from hotirjam_ai5.objective_diagnostics.hierarchy_evaluate_probe import (
+                note_hierarchy_checkpoint_write,
+            )
+
+            note_hierarchy_checkpoint_write()
+        except Exception:
+            pass
         _t0 = time.perf_counter()
         collect_ms = 0.0
         build_ms = 0.0
         serialize_ms = 0.0
         write_ms = 0.0
         flush_ms = 0.0
+        # H-6.7.1 exclusive stages (non-overlapping).
+        assemble_ex_ms = 0.0
+        write_ex_ms = 0.0
+        flush_ex_ms = 0.0
+        fsync_ex_ms = 0.0
+        os_replace_ex_ms = 0.0
         payload: dict[str, object] | None = None
         document: str | None = None
         written_path: Path | None = None
@@ -278,24 +315,33 @@ class PersistentStructuralHierarchy:
                 "journal": self._journal,
             }
             build_ms = (time.perf_counter() - _b0) * 1000.0
+            assemble_ex_ms = build_ms  # document is already a JSON string
 
             fd, temporary_name = tempfile.mkstemp(
                 prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
             )
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                    _s0 = time.perf_counter()
+                    _w0 = time.perf_counter()
                     handle.write(document)
-                    serialize_ms = (time.perf_counter() - _s0) * 1000.0
+                    write_ex_ms = (time.perf_counter() - _w0) * 1000.0
+                    # Legacy: former "serialize" bucket was the write of the
+                    # pre-assembled document string.
+                    serialize_ms = write_ex_ms
 
-                    _f0 = time.perf_counter()
+                    _fl0 = time.perf_counter()
                     handle.flush()
-                    os.fsync(handle.fileno())
-                    flush_ms = (time.perf_counter() - _f0) * 1000.0
+                    flush_ex_ms = (time.perf_counter() - _fl0) * 1000.0
 
-                _w0 = time.perf_counter()
+                    _fs0 = time.perf_counter()
+                    os.fsync(handle.fileno())
+                    fsync_ex_ms = (time.perf_counter() - _fs0) * 1000.0
+                    flush_ms = flush_ex_ms + fsync_ex_ms
+
+                _r0 = time.perf_counter()
                 os.replace(temporary_name, target)
-                write_ms = (time.perf_counter() - _w0) * 1000.0
+                os_replace_ex_ms = (time.perf_counter() - _r0) * 1000.0
+                write_ms = os_replace_ex_ms
                 written_path = target
             finally:
                 if os.path.exists(temporary_name):
@@ -304,6 +350,7 @@ class PersistentStructuralHierarchy:
             try:
                 from hotirjam_ai5.live_validator.loop_timing import (
                     SectionSize,
+                    add_checkpoint_exclusive,
                     add_hierarchy_breakdown,
                     add_hierarchy_checkpoint_ms,
                     set_hierarchy_footprint,
@@ -316,6 +363,15 @@ class PersistentStructuralHierarchy:
                     serialize_ms=serialize_ms,
                     write_ms=write_ms,
                     flush_ms=flush_ms,
+                )
+                # Serialize N/A: hierarchy assembles a finished JSON document.
+                add_checkpoint_exclusive(
+                    assemble_ms=assemble_ex_ms,
+                    serialize_ms=None,
+                    write_ms=write_ex_ms,
+                    flush_ms=flush_ex_ms,
+                    fsync_ms=fsync_ex_ms,
+                    os_replace_ms=os_replace_ex_ms,
                 )
                 # Footprint after timing so existing stage totals stay unchanged.
                 if payload is not None and document is not None:
