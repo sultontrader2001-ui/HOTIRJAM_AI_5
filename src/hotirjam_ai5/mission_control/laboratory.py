@@ -1,9 +1,11 @@
-"""Window 2 — AI Laboratory grouped module list (H-7.1). Presentation only."""
+"""Window 2 — AI Laboratory grouped module list (H-7.2)."""
 
 from __future__ import annotations
 
+from hotirjam_ai5.mission_control.bind_laboratory import bind_laboratory_cards
 from hotirjam_ai5.mission_control.catalog import GROUP_ORDER, default_module_cards
-from hotirjam_ai5.mission_control.models import ModuleCardState, ModuleGroup
+from hotirjam_ai5.mission_control.models import ModuleCardState
+from hotirjam_ai5.mission_control.runtime_bundle import RuntimeBundle
 
 _WIDTH = 78
 
@@ -40,6 +42,7 @@ def _expanded_block(card: ModuleCardState) -> list[str]:
         f"    Reason ........ {card.reason}",
         f"    History ....... {card.history}",
         f"    Performance ... {card.performance}",
+        f"    Source Badge .. {spec.source_badge.value}",
         "    ------------------",
     ]
 
@@ -48,19 +51,22 @@ def render_laboratory(
     cards: list[ModuleCardState] | None = None,
     *,
     selected_index: int = 0,
+    bundle: RuntimeBundle | None = None,
 ) -> str:
-    """Render grouped Laboratory list. Cards collapsed by default."""
+    """Render grouped Laboratory list bound from runtime when provided."""
     items = cards if cards is not None else default_module_cards()
+    items = cards_in_group_order(items)
+    if bundle is not None:
+        bind_laboratory_cards(items, bundle)
     if not items:
         return "WINDOW 2 · AI LABORATORY\nN/A"
     index = max(0, min(selected_index, len(items) - 1))
     lines: list[str] = [
         "=" * _WIDTH,
         "WINDOW 2 · AI LABORATORY",
-        "Read-only · Collapsed by default · Expand never evaluates",
+        "Read-only · Values from existing runtime only",
         _rule("="),
     ]
-    # Index map for selection marker
     flat_i = 0
     for group in GROUP_ORDER:
         group_cards = [c for c in items if c.spec.group is group]

@@ -1,21 +1,23 @@
-"""Mission Control shell — window navigation and render dispatch (H-7.1).
+"""Mission Control shell — window navigation and render dispatch (H-7.2).
 
-Read-only consumer. Never imports or allocates engines.
-Never calls evaluate / calculate / recompute.
+Read-only consumer. Never allocates engines.
+Never calls evaluate / calculate / recompute / predict / derive.
 """
 
 from __future__ import annotations
+
+import time
+from collections.abc import Callable
 
 from hotirjam_ai5.mission_control.catalog import default_module_cards
 from hotirjam_ai5.mission_control.cockpit import render_cockpit
 from hotirjam_ai5.mission_control.developer import render_developer_placeholder
 from hotirjam_ai5.mission_control.laboratory import cards_in_group_order, render_laboratory
 from hotirjam_ai5.mission_control.models import (
-    CockpitPanelState,
     MissionWindow,
     ModuleCardState,
-    default_cockpit_placeholders,
 )
+from hotirjam_ai5.mission_control.runtime_bundle import RuntimeBundle
 
 
 class MissionControlShell:
@@ -24,12 +26,14 @@ class MissionControlShell:
     def __init__(
         self,
         *,
-        cockpit: CockpitPanelState | None = None,
         modules: list[ModuleCardState] | None = None,
         window: MissionWindow = MissionWindow.COCKPIT,
+        bundle: RuntimeBundle | None = None,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self._window = window
-        self._cockpit = cockpit if cockpit is not None else default_cockpit_placeholders()
+        self._clock = clock or time.time
+        self._bundle = bundle if bundle is not None else RuntimeBundle(now=float(self._clock()))
         raw = modules if modules is not None else default_module_cards()
         self._modules = cards_in_group_order(raw)
         self._selected = 0
@@ -46,6 +50,14 @@ class MissionControlShell:
     @property
     def modules(self) -> tuple[ModuleCardState, ...]:
         return tuple(self._modules)
+
+    @property
+    def bundle(self) -> RuntimeBundle:
+        return self._bundle
+
+    def set_bundle(self, bundle: RuntimeBundle) -> None:
+        """Replace the read-only runtime bundle (already-existing objects only)."""
+        self._bundle = bundle
 
     def set_window(self, window: MissionWindow) -> None:
         self._window = window
@@ -108,13 +120,25 @@ class MissionControlShell:
         return True
 
     def render(self) -> str:
+        # Refresh display_age clock without mutating runtime objects.
+        self._bundle = RuntimeBundle(
+            now=float(self._clock()),
+            dashboard=self._bundle.dashboard,
+            frame=self._bundle.frame,
+            loop_timing=self._bundle.loop_timing,
+            transition_summaries=self._bundle.transition_summaries,
+        )
         header = self._chrome()
         if self._help_visible:
             body = self._help_text()
         elif self._window is MissionWindow.COCKPIT:
-            body = render_cockpit(self._cockpit)
+            body = render_cockpit(self._bundle)
         elif self._window is MissionWindow.LABORATORY:
-            body = render_laboratory(self._modules, selected_index=self._selected)
+            body = render_laboratory(
+                self._modules,
+                selected_index=self._selected,
+                bundle=self._bundle,
+            )
         else:
             body = render_developer_placeholder()
         return f"{header}\n{body}"
@@ -131,8 +155,13 @@ class MissionControlShell:
             if self._window is MissionWindow.DEVELOPER
             else " 3 Developer "
         )
+        feed = "UNWIRED"
+        if self._bundle.dashboard is not None:
+            feed = self._bundle.dashboard.feed_health.feed_status.value
+        elif self._bundle.frame is not None:
+            feed = "BOUND"
         return (
-            "HOTIRJAM AI 5 · MISSION CONTROL  |  Feed: UNWIRED  |  Mode: OBSERVE\n"
+            f"HOTIRJAM AI 5 · MISSION CONTROL  |  Feed: {feed}  |  Mode: OBSERVE\n"
             f"{w1}  {w2}  {w3}  |  Decision: DISABLED  |  Execution: DISABLED"
         )
 
@@ -150,5 +179,6 @@ class MissionControlShell:
                 "",
                 "Mission Control is a READ-ONLY consumer.",
                 "It never evaluates engines or fabricates values.",
+                "Every field carries provenance (src + age).",
             ]
         )

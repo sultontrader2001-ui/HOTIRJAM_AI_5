@@ -1,4 +1,4 @@
-"""Mission Control interactive app — presentation loop only (H-7.1)."""
+"""Mission Control interactive app — presentation loop only (H-7.2)."""
 
 from __future__ import annotations
 
@@ -6,11 +6,17 @@ import argparse
 import sys
 import time
 from collections.abc import Callable
-from typing import TextIO
+from typing import Any, TextIO
 
+from hotirjam_ai5.dashboard.models import DashboardState
 from hotirjam_ai5.dashboard.terminal import TerminalDisplay
-from hotirjam_ai5.mission_control.shell import MissionControlShell
 from hotirjam_ai5.mission_control.models import MissionWindow
+from hotirjam_ai5.mission_control.runtime_bundle import (
+    RuntimeBundle,
+    read_lv_controller_latest,
+    read_lv_journal_summaries,
+)
+from hotirjam_ai5.mission_control.shell import MissionControlShell
 
 
 class _NullKeyboard:
@@ -25,7 +31,13 @@ class _NullKeyboard:
 
 
 class MissionControlApp:
-    """Terminal shell host. No engines. No ingress. Presentation only."""
+    """Terminal shell host. Presentation only.
+
+    May hold a Live Validator controller reference solely to read ``.latest``
+    and ``.structural_transition_journal``. Never calls on_tick / evaluate_now.
+    May hold an already-built ``DashboardState`` — never calls
+    ``DashboardController.snapshot()`` (that path evaluates engines).
+    """
 
     def __init__(
         self,
@@ -36,6 +48,10 @@ class MissionControlApp:
         refresh_seconds: float = 0.25,
         sleep_fn: Callable[[float], None] | None = None,
         stdout: TextIO | None = None,
+        lv_controller: Any | None = None,
+        dashboard_state: DashboardState | None = None,
+        loop_timing_reader: Callable[[], Any] | None = None,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self._shell = shell or MissionControlShell()
         self._keyboard = keyboard if keyboard is not None else _NullKeyboard()
@@ -43,12 +59,37 @@ class MissionControlApp:
         self._refresh_seconds = max(0.05, float(refresh_seconds))
         self._sleep = sleep_fn or time.sleep
         self._running = False
+        self._lv = lv_controller
+        self._dashboard_state = dashboard_state
+        self._loop_timing_reader = loop_timing_reader
+        self._clock = clock or time.time
 
     @property
     def shell(self) -> MissionControlShell:
         return self._shell
 
+    def _refresh_bundle(self) -> None:
+        """Re-read existing objects only. No evaluate / on_tick / snapshot()."""
+        frame = None
+        summaries: tuple[str, ...] = ()
+        if self._lv is not None:
+            frame = read_lv_controller_latest(self._lv)
+            summaries = read_lv_journal_summaries(self._lv)
+        timing = None
+        if self._loop_timing_reader is not None:
+            timing = self._loop_timing_reader()
+        self._shell.set_bundle(
+            RuntimeBundle(
+                now=float(self._clock()),
+                dashboard=self._dashboard_state,
+                frame=frame,
+                loop_timing=timing,
+                transition_summaries=summaries,
+            )
+        )
+
     def render_once(self) -> str:
+        self._refresh_bundle()
         return self._shell.render()
 
     def run(self, *, max_frames: int | None = None) -> None:
@@ -79,7 +120,6 @@ class MissionControlApp:
 
 
 def _build_keyboard() -> object:
-    """Best-effort keyboard; falls back to null if unavailable."""
     try:
         from hotirjam_ai5.live_validator.keyboard_input import KeyboardInput
 
@@ -91,7 +131,7 @@ def _build_keyboard() -> object:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="hotirjam-ai5-mission-control",
-        description="HOTIRJAM AI 5 Mission Control shell (H-7.1) — read-only UI.",
+        description="HOTIRJAM AI 5 Mission Control (H-7.2) — read-only UI.",
     )
     parser.add_argument(
         "--window",
