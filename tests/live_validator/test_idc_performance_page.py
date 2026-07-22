@@ -89,6 +89,11 @@ def test_performance_page_layout_with_snapshot() -> None:
     text = render_performance_page(_snap(), feed_status="LIVE")
     for section in (
         "PERFORMANCE",
+        "FEED INGRESS (TEMPORARY)",
+        "Gate",
+        "tail_lines",
+        "accepted_count",
+        "skipped_count",
         "Status",
         "Health",
         "Last Sample",
@@ -124,7 +129,29 @@ def test_performance_page_layout_with_snapshot() -> None:
 def test_unavailable_timing_shows_not_available() -> None:
     text = render_performance_page(None)
     assert "NOT AVAILABLE" in text
+    assert "FEED INGRESS (TEMPORARY)" in text
     assert "IMPLEMENTATION PENDING" not in text
+
+
+def test_performance_page_shows_ingress_poll_snapshot() -> None:
+    from hotirjam_ai5.live_data.ingress_poll_snapshot import IngressPollSnapshot
+
+    snap = IngressPollSnapshot(
+        tail_lines=0,
+        accepted_count=0,
+        skipped_count=0,
+        accepted_delta=0,
+        skipped_delta=0,
+        file_offset=4096,
+        file_size=4096,
+    )
+    text = render_performance_page(None, feed_status="WAITING", ingress_poll=snap)
+    assert "Gate              A_ZERO_TAIL_LINES" in text
+    assert "tail_lines        0" in text
+    assert "accepted_count    0" in text
+    assert "skipped_count     0" in text
+    assert "file_offset       4096" in text
+    assert "file_size         4096" in text
 
 
 def test_warnings_only_from_existing_severities() -> None:

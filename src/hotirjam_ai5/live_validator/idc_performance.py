@@ -6,6 +6,7 @@ timers, never calls evaluate().
 
 from __future__ import annotations
 
+from hotirjam_ai5.live_data.ingress_poll_snapshot import IngressPollSnapshot
 from hotirjam_ai5.live_validator.loop_timing import (
     LoopTimingSnapshot,
     StageBreakdown,
@@ -192,15 +193,53 @@ def _logging_footprint_lines(
     return lines
 
 
+def _ingress_poll_lines(snapshot: IngressPollSnapshot | None) -> list[str]:
+    """TEMPORARY Feed WAITING triage block (Gate A vs Gate B)."""
+    lines = [
+        "FEED INGRESS (TEMPORARY)",
+        "----------------------------------------",
+    ]
+    if snapshot is None:
+        lines.extend(
+            [
+                f"Gate              {_NA}",
+                f"tail_lines        {_NA}",
+                f"accepted_count    {_NA}",
+                f"skipped_count     {_NA}",
+                f"file_offset       {_NA}",
+                f"file_size         {_NA}",
+            ]
+        )
+        return lines
+    offset = _NA if snapshot.file_offset is None else str(snapshot.file_offset)
+    size = _NA if snapshot.file_size is None else str(snapshot.file_size)
+    lines.extend(
+        [
+            f"Gate              {snapshot.gate}",
+            f"tail_lines        {snapshot.tail_lines}",
+            f"accepted_count    {snapshot.accepted_count}",
+            f"skipped_count     {snapshot.skipped_count}",
+            f"accepted_delta    {snapshot.accepted_delta}",
+            f"skipped_delta     {snapshot.skipped_delta}",
+            f"file_offset       {offset}",
+            f"file_size         {size}",
+        ]
+    )
+    return lines
+
+
 def render_performance_page(
     timing: LoopTimingSnapshot | None,
     *,
     feed_status: str | None = None,
+    ingress_poll: IngressPollSnapshot | None = None,
 ) -> str:
     """Render the IDC Performance diagnostics page from existing timing only."""
     lines = [
         "==============================",
         "PERFORMANCE",
+        "----------------------------------------",
+        *_ingress_poll_lines(ingress_poll),
         "----------------------------------------",
     ]
 

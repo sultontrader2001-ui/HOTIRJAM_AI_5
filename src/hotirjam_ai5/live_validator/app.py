@@ -10,6 +10,7 @@ from pathlib import Path
 
 from hotirjam_ai5.dashboard.terminal import TerminalDisplay
 from hotirjam_ai5.live_data.ingress import LiveTickIngress
+from hotirjam_ai5.live_data.ingress_poll_snapshot import IngressPollSnapshot
 from hotirjam_ai5.live_data.paths import default_tick_path
 from hotirjam_ai5.live_validator.certification_dashboard import (
     AuditLog,
@@ -160,6 +161,13 @@ class LiveValidatorApp:
         except Exception:
             return None
 
+    @property
+    def ingress_poll(self) -> IngressPollSnapshot | None:
+        """TEMPORARY — last LiveTickIngress.poll() snapshot (Feed WAITING triage)."""
+        if self._ingress is None:
+            return None
+        return getattr(self._ingress, "last_poll", None)
+
     def poll_once(self) -> int:
         """Pull new ticks into the controller. Returns accepted tick count."""
         if self._ingress is None:
@@ -211,6 +219,7 @@ class LiveValidatorApp:
                 transitions=transitions,
                 feed_status=status,
                 loop_timing=self.loop_timing,
+                ingress_poll=self.ingress_poll,
             )
             self._display.render_frame(text)
             return text

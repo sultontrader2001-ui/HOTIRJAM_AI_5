@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
+from hotirjam_ai5.live_data.ingress_poll_snapshot import IngressPollSnapshot
 from hotirjam_ai5.live_validator.idc_initiative import render_initiative_page
 from hotirjam_ai5.live_validator.idc_objective import render_objective_page
 from hotirjam_ai5.live_validator.idc_performance import render_performance_page
@@ -63,6 +64,7 @@ def render_idc(
     feed_status: str | None = None,
     certifications: Mapping[str, str] | None = None,
     loop_timing: LoopTimingSnapshot | None = None,
+    ingress_poll: IngressPollSnapshot | None = None,
 ) -> str:
     """Render IDC menu, implemented engine pages, or a placeholder page."""
     if page is IdcPage.MENU:
@@ -84,6 +86,7 @@ def render_idc(
         return render_performance_page(
             loop_timing,
             feed_status=feed_status,
+            ingress_poll=ingress_poll,
         )
     return render_idc_placeholder(page)
 
