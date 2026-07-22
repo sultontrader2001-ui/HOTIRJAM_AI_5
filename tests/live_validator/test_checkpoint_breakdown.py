@@ -12,6 +12,8 @@ from hotirjam_ai5.live_validator import (
 )
 from hotirjam_ai5.live_validator.idc_performance import render_performance_page
 from hotirjam_ai5.live_validator.loop_timing import (
+    CheckpointExclusiveBreakdown,
+    LoggingExclusiveBreakdown,
     LoopTimingSnapshot,
     StageBreakdown,
     TimingSeverity,
@@ -76,6 +78,15 @@ def test_hierarchy_checkpoint_breakdown_stages(tmp_path: Path) -> None:
     assert bd.serialize_ms is not None and bd.serialize_ms >= 0.0
     assert bd.write_ms is not None and bd.write_ms >= 0.0
     assert bd.flush_ms is not None and bd.flush_ms >= 0.0
+    assert snap.checkpoint_exclusive is not None
+    cex = snap.checkpoint_exclusive
+    assert cex.assemble_ms >= 0.0
+    # Hierarchy-only: document is pre-assembled JSON → Serialize N/A.
+    assert cex.serialize_ms is None
+    assert cex.write_ms >= 0.0
+    assert cex.flush_ms >= 0.0
+    assert cex.fsync_ms >= 0.0
+    assert cex.os_replace_ms >= 0.0
 
 
 def test_snapshot_logger_breakdown_stages(tmp_path: Path) -> None:
@@ -92,7 +103,15 @@ def test_snapshot_logger_breakdown_stages(tmp_path: Path) -> None:
     assert bd.build_ms is not None and bd.build_ms >= 0.0
     assert bd.serialize_ms is not None and bd.serialize_ms >= 0.0
     assert bd.write_ms is not None and bd.write_ms >= 0.0
-    assert bd.flush_ms is None  # NOT APPLICABLE
+    assert bd.flush_ms is None  # NOT APPLICABLE (legacy combined write+flush)
+    assert snap.logging_exclusive is not None
+    lex = snap.logging_exclusive
+    assert lex.build_ms >= 0.0
+    assert lex.serialize_ms >= 0.0
+    assert lex.write_ms >= 0.0
+    assert lex.flush_ms >= 0.0
+    assert lex.rotate_ms >= 0.0
+    assert lex.reopen_ms >= 0.0
 
 
 def test_performance_page_shows_breakdown() -> None:
@@ -131,6 +150,22 @@ def test_performance_page_shows_breakdown() -> None:
             write_ms=0.5,
             flush_ms=None,
         ),
+        logging_exclusive=LoggingExclusiveBreakdown(
+            build_ms=3.0,
+            serialize_ms=1.5,
+            write_ms=0.4,
+            flush_ms=0.1,
+            rotate_ms=0.05,
+            reopen_ms=0.0,
+        ),
+        checkpoint_exclusive=CheckpointExclusiveBreakdown(
+            assemble_ms=4.0,
+            serialize_ms=None,
+            write_ms=0.5,
+            flush_ms=0.2,
+            fsync_ms=0.3,
+            os_replace_ms=0.4,
+        ),
     )
     text = render_performance_page(snap, feed_status="LIVE")
     assert "Hierarchy Checkpoint" in text
@@ -140,7 +175,13 @@ def test_performance_page_shows_breakdown() -> None:
     assert "Write..........." in text
     assert "Flush..........." in text
     assert "Snapshot Logger" in text
-    assert "NOT APPLICABLE" in text
+    assert "Rotate.........." in text
+    assert "Reopen.........." in text
+    assert "Combined Checkpoint" in text
+    assert "Assemble........" in text
+    assert "fsync..........." in text
+    assert "os.replace......" in text
+    assert "NOT APPLICABLE" in text  # Combined Checkpoint Serialize N/A
     assert "4.00 ms" in text
 
 

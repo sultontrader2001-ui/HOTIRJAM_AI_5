@@ -8,11 +8,14 @@ from __future__ import annotations
 
 from hotirjam_ai5.live_data.ingress_poll_snapshot import IngressPollSnapshot
 from hotirjam_ai5.live_validator.loop_timing import (
+    CheckpointExclusiveBreakdown,
+    HierarchyFootprint,
+    LoggingExclusiveBreakdown,
+    LoggingFootprint,
     LoopTimingSnapshot,
     StageBreakdown,
+    TickRetentionBreakdown,
     TimingSeverity,
-    HierarchyFootprint,
-    LoggingFootprint,
 )
 from hotirjam_ai5.retention import RetentionSnapshot
 
@@ -116,6 +119,7 @@ def _breakdown_lines(
     *,
     sample_available: bool,
 ) -> list[str]:
+    """Legacy Collect/Build/... lines (kept for Hierarchy internal sample)."""
     available = sample_available and breakdown is not None
     return [
         title,
@@ -125,6 +129,64 @@ def _breakdown_lines(
         f"  Serialize....... {_fmt_stage_ms(None if breakdown is None else breakdown.serialize_ms, available=available)}",
         f"  Write........... {_fmt_stage_ms(None if breakdown is None else breakdown.write_ms, available=available)}",
         f"  Flush........... {_fmt_stage_ms(None if breakdown is None else breakdown.flush_ms, available=available)}",
+    ]
+
+
+def _logging_exclusive_lines(
+    total_ms: float,
+    breakdown: LoggingExclusiveBreakdown | None,
+    *,
+    sample_available: bool,
+) -> list[str]:
+    """H-6.7.1 exclusive Snapshot Logger stages."""
+    available = sample_available and breakdown is not None
+    return [
+        "Snapshot Logger",
+        f"  Total........... {_fmt_ms(total_ms) if sample_available else _NA}",
+        f"  Build........... {_fmt_stage_ms(None if breakdown is None else breakdown.build_ms, available=available)}",
+        f"  Serialize....... {_fmt_stage_ms(None if breakdown is None else breakdown.serialize_ms, available=available)}",
+        f"  Write........... {_fmt_stage_ms(None if breakdown is None else breakdown.write_ms, available=available)}",
+        f"  Flush........... {_fmt_stage_ms(None if breakdown is None else breakdown.flush_ms, available=available)}",
+        f"  Rotate.......... {_fmt_stage_ms(None if breakdown is None else breakdown.rotate_ms, available=available)}",
+        f"  Reopen.......... {_fmt_stage_ms(None if breakdown is None else breakdown.reopen_ms, available=available)}",
+    ]
+
+
+def _checkpoint_exclusive_lines(
+    total_ms: float,
+    breakdown: CheckpointExclusiveBreakdown | None,
+    *,
+    sample_available: bool,
+) -> list[str]:
+    """H-6.7.1 exclusive Combined Checkpoint stages."""
+    available = sample_available and breakdown is not None
+    return [
+        "Combined Checkpoint",
+        f"  Total........... {_fmt_ms(total_ms) if sample_available else _NA}",
+        f"  Assemble........ {_fmt_stage_ms(None if breakdown is None else breakdown.assemble_ms, available=available)}",
+        f"  Serialize....... {_fmt_stage_ms(None if breakdown is None else breakdown.serialize_ms, available=available)}",
+        f"  Write........... {_fmt_stage_ms(None if breakdown is None else breakdown.write_ms, available=available)}",
+        f"  Flush........... {_fmt_stage_ms(None if breakdown is None else breakdown.flush_ms, available=available)}",
+        f"  fsync........... {_fmt_stage_ms(None if breakdown is None else breakdown.fsync_ms, available=available)}",
+        f"  os.replace...... {_fmt_stage_ms(None if breakdown is None else breakdown.os_replace_ms, available=available)}",
+    ]
+
+
+def _tick_retention_lines(
+    breakdown: TickRetentionBreakdown | None,
+    *,
+    sample_available: bool,
+) -> list[str]:
+    """H-6.7.1 exclusive Tick Retention stages."""
+    available = sample_available and breakdown is not None
+    return [
+        "Tick Retention",
+        f"  Total........... {_fmt_stage_ms(None if breakdown is None else breakdown.total_ms, available=available)}",
+        f"  stat............ {_fmt_stage_ms(None if breakdown is None else breakdown.stat_ms, available=available)}",
+        f"  read retained... {_fmt_stage_ms(None if breakdown is None else breakdown.read_ms, available=available)}",
+        f"  Write........... {_fmt_stage_ms(None if breakdown is None else breakdown.write_ms, available=available)}",
+        f"  fsync........... {_fmt_stage_ms(None if breakdown is None else breakdown.fsync_ms, available=available)}",
+        f"  replace......... {_fmt_stage_ms(None if breakdown is None else breakdown.replace_ms, available=available)}",
     ]
 
 
@@ -327,6 +389,8 @@ def render_performance_page(
                 f"Combined Checkpoint   {_NA}",
                 f"Status            {_NA}",
                 "----------------------------------------",
+                *_checkpoint_exclusive_lines(0.0, None, sample_available=False),
+                "----------------------------------------",
                 *_breakdown_lines(
                     "Hierarchy Checkpoint",
                     0.0,
@@ -334,12 +398,9 @@ def render_performance_page(
                     sample_available=False,
                 ),
                 "----------------------------------------",
-                *_breakdown_lines(
-                    "Snapshot Logger",
-                    0.0,
-                    None,
-                    sample_available=False,
-                ),
+                *_logging_exclusive_lines(0.0, None, sample_available=False),
+                "----------------------------------------",
+                *_tick_retention_lines(None, sample_available=False),
                 "----------------------------------------",
                 *_hierarchy_footprint_lines(None, sample_available=False),
                 "----------------------------------------",
@@ -394,6 +455,12 @@ def render_performance_page(
             f"Combined Checkpoint   {_fmt_ms(timing.checkpoint_ms)}",
             f"Status            {timing.checkpoint_severity.value}",
             "----------------------------------------",
+            *_checkpoint_exclusive_lines(
+                timing.checkpoint_ms,
+                timing.checkpoint_exclusive,
+                sample_available=True,
+            ),
+            "----------------------------------------",
             *_breakdown_lines(
                 "Hierarchy Checkpoint",
                 timing.hierarchy_checkpoint_ms,
@@ -401,13 +468,17 @@ def render_performance_page(
                 sample_available=True,
             ),
             "----------------------------------------",
-            *_breakdown_lines(
-                "Snapshot Logger",
+            *_logging_exclusive_lines(
                 timing.logging_ms,
-                timing.logging_breakdown,
+                timing.logging_exclusive,
                 sample_available=True,
             ),
             f"Status            {timing.logging_severity.value}",
+            "----------------------------------------",
+            *_tick_retention_lines(
+                timing.tick_retention,
+                sample_available=True,
+            ),
             "----------------------------------------",
             *_hierarchy_footprint_lines(
                 timing.hierarchy_footprint, sample_available=True

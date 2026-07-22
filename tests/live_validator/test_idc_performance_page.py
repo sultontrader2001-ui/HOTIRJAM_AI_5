@@ -125,6 +125,13 @@ def test_performance_page_layout_with_snapshot() -> None:
     assert "LIVE" in text
     assert "OK" in text
     assert "Collect........." in text
+    assert "Assemble........" in text
+    assert "Rotate.........." in text
+    assert "Reopen.........." in text
+    assert "fsync..........." in text
+    assert "os.replace......" in text
+    assert "Tick Retention" in text
+    assert "read retained..." in text
     assert "IMPLEMENTATION PENDING" not in text
 
 

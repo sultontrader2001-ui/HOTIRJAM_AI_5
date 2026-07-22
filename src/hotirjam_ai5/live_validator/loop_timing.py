@@ -1,7 +1,9 @@
-"""Passive Live Validator loop timing (H-6.6.4 / H-6.6.6).
+"""Passive Live Validator loop timing (H-6.6.4 / H-6.6.6 / H-6.7.1).
 
 Diagnostics only. Never changes execution order, polling, rendering,
 checkpoints, or keyboard behavior. Instrumentation failures are ignored.
+
+H-6.7.1: exclusive stage timings (no overlapping timers).
 """
 
 from __future__ import annotations
@@ -23,12 +25,49 @@ class TimingSeverity(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class StageBreakdown:
-    """Internal stage timings for one write path.
+class LoggingExclusiveBreakdown:
+    """Exclusive Snapshot Logger stages (H-6.7.1). Milliseconds; non-overlapping."""
 
-    ``None`` means the stage does not exist in that path (NOT APPLICABLE).
-    Values are milliseconds accumulated within the latest loop sample.
+    build_ms: float
+    serialize_ms: float
+    write_ms: float
+    flush_ms: float
+    rotate_ms: float
+    reopen_ms: float
+
+
+@dataclass(frozen=True, slots=True)
+class CheckpointExclusiveBreakdown:
+    """Exclusive Combined Checkpoint stages (H-6.7.1).
+
+    ``serialize_ms`` is ``None`` when the path has no distinct serialize step
+    (hierarchy assembles a pre-built JSON document string).
     """
+
+    assemble_ms: float
+    serialize_ms: float | None
+    write_ms: float
+    flush_ms: float
+    fsync_ms: float
+    os_replace_ms: float
+
+
+@dataclass(frozen=True, slots=True)
+class TickRetentionBreakdown:
+    """Exclusive tick NDJSON retention stages (H-6.7.1). Non-overlapping."""
+
+    total_ms: float
+    stat_ms: float
+    read_ms: float
+    write_ms: float
+    fsync_ms: float
+    replace_ms: float
+
+
+# Backward-compatible alias used by older tests/imports.
+@dataclass(frozen=True, slots=True)
+class StageBreakdown:
+    """Legacy stage timings. Prefer exclusive breakdown types (H-6.7.1)."""
 
     collect_ms: float | None
     build_ms: float | None
@@ -107,6 +146,10 @@ class LoopTimingSnapshot:
     logging_breakdown: StageBreakdown | None = None
     hierarchy_footprint: HierarchyFootprint | None = None
     logging_footprint: LoggingFootprint | None = None
+    # H-6.7.1 exclusive stage breakdowns
+    logging_exclusive: LoggingExclusiveBreakdown | None = None
+    checkpoint_exclusive: CheckpointExclusiveBreakdown | None = None
+    tick_retention: TickRetentionBreakdown | None = None
 
     def stage_severity(self, stage: str) -> TimingSeverity:
         """Return severity for a named stage, or OK if unknown."""
@@ -140,6 +183,10 @@ def _sum_optional(current: float | None, delta: float | None) -> float | None:
     return float(current) + max(0.0, float(delta))
 
 
+def _sum_float(current: float, delta: float) -> float:
+    return float(current) + max(0.0, float(delta))
+
+
 class _LoopTimingAccumulator:
     """Mutable per-iteration counters. Not part of the public API."""
 
@@ -166,6 +213,29 @@ class _LoopTimingAccumulator:
         "logging_breakdown_seen",
         "hierarchy_footprint",
         "logging_footprint",
+        # H-6.7.1 exclusive
+        "logging_build_ex_ms",
+        "logging_serialize_ex_ms",
+        "logging_write_ex_ms",
+        "logging_flush_ex_ms",
+        "logging_rotate_ex_ms",
+        "logging_reopen_ex_ms",
+        "logging_exclusive_seen",
+        "checkpoint_assemble_ms",
+        "checkpoint_serialize_ms",
+        "checkpoint_write_ms",
+        "checkpoint_flush_ms",
+        "checkpoint_fsync_ms",
+        "checkpoint_os_replace_ms",
+        "checkpoint_exclusive_seen",
+        "checkpoint_serialize_applicable",
+        "tick_retention_total_ms",
+        "tick_retention_stat_ms",
+        "tick_retention_read_ms",
+        "tick_retention_write_ms",
+        "tick_retention_fsync_ms",
+        "tick_retention_replace_ms",
+        "tick_retention_seen",
     )
 
     def __init__(self, *, start_time: float) -> None:
@@ -191,6 +261,28 @@ class _LoopTimingAccumulator:
         self.logging_breakdown_seen = False
         self.hierarchy_footprint: HierarchyFootprint | None = None
         self.logging_footprint: LoggingFootprint | None = None
+        self.logging_build_ex_ms = 0.0
+        self.logging_serialize_ex_ms = 0.0
+        self.logging_write_ex_ms = 0.0
+        self.logging_flush_ex_ms = 0.0
+        self.logging_rotate_ex_ms = 0.0
+        self.logging_reopen_ex_ms = 0.0
+        self.logging_exclusive_seen = False
+        self.checkpoint_assemble_ms = 0.0
+        self.checkpoint_serialize_ms: float | None = None
+        self.checkpoint_write_ms = 0.0
+        self.checkpoint_flush_ms = 0.0
+        self.checkpoint_fsync_ms = 0.0
+        self.checkpoint_os_replace_ms = 0.0
+        self.checkpoint_exclusive_seen = False
+        self.checkpoint_serialize_applicable = False
+        self.tick_retention_total_ms = 0.0
+        self.tick_retention_stat_ms = 0.0
+        self.tick_retention_read_ms = 0.0
+        self.tick_retention_write_ms = 0.0
+        self.tick_retention_fsync_ms = 0.0
+        self.tick_retention_replace_ms = 0.0
+        self.tick_retention_seen = False
 
     def build(self, *, end_time: float) -> LoopTimingSnapshot:
         checkpoint_ms = self.initiative_checkpoint_ms + self.hierarchy_checkpoint_ms
@@ -212,6 +304,45 @@ class _LoopTimingAccumulator:
                 serialize_ms=self.logging_serialize_ms,
                 write_ms=self.logging_write_ms,
                 flush_ms=self.logging_flush_ms,
+            )
+        logging_exclusive = None
+        if self.logging_exclusive_seen:
+            logging_exclusive = LoggingExclusiveBreakdown(
+                build_ms=self.logging_build_ex_ms,
+                serialize_ms=self.logging_serialize_ex_ms,
+                write_ms=self.logging_write_ex_ms,
+                flush_ms=self.logging_flush_ex_ms,
+                rotate_ms=self.logging_rotate_ex_ms,
+                reopen_ms=self.logging_reopen_ex_ms,
+            )
+        checkpoint_exclusive = None
+        if self.checkpoint_exclusive_seen:
+            serialize: float | None
+            if self.checkpoint_serialize_applicable:
+                serialize = (
+                    0.0
+                    if self.checkpoint_serialize_ms is None
+                    else self.checkpoint_serialize_ms
+                )
+            else:
+                serialize = None
+            checkpoint_exclusive = CheckpointExclusiveBreakdown(
+                assemble_ms=self.checkpoint_assemble_ms,
+                serialize_ms=serialize,
+                write_ms=self.checkpoint_write_ms,
+                flush_ms=self.checkpoint_flush_ms,
+                fsync_ms=self.checkpoint_fsync_ms,
+                os_replace_ms=self.checkpoint_os_replace_ms,
+            )
+        tick_retention = None
+        if self.tick_retention_seen:
+            tick_retention = TickRetentionBreakdown(
+                total_ms=self.tick_retention_total_ms,
+                stat_ms=self.tick_retention_stat_ms,
+                read_ms=self.tick_retention_read_ms,
+                write_ms=self.tick_retention_write_ms,
+                fsync_ms=self.tick_retention_fsync_ms,
+                replace_ms=self.tick_retention_replace_ms,
             )
         return LoopTimingSnapshot(
             loop_ms=loop_ms,
@@ -242,6 +373,9 @@ class _LoopTimingAccumulator:
             logging_breakdown=logging_breakdown,
             hierarchy_footprint=self.hierarchy_footprint,
             logging_footprint=self.logging_footprint,
+            logging_exclusive=logging_exclusive,
+            checkpoint_exclusive=checkpoint_exclusive,
+            tick_retention=tick_retention,
         )
 
 
@@ -326,7 +460,7 @@ def add_hierarchy_breakdown(
     write_ms: float | None = None,
     flush_ms: float | None = None,
 ) -> None:
-    """Accumulate hierarchy checkpoint internal stage timings."""
+    """Accumulate hierarchy checkpoint internal stage timings (legacy)."""
     try:
         acc = _active
         if acc is None:
@@ -351,7 +485,7 @@ def add_logging_breakdown(
     write_ms: float | None = None,
     flush_ms: float | None = None,
 ) -> None:
-    """Accumulate snapshot-logger internal stage timings."""
+    """Accumulate snapshot-logger internal stage timings (legacy)."""
     try:
         acc = _active
         if acc is None:
@@ -362,6 +496,97 @@ def add_logging_breakdown(
         acc.logging_serialize_ms = _sum_optional(acc.logging_serialize_ms, serialize_ms)
         acc.logging_write_ms = _sum_optional(acc.logging_write_ms, write_ms)
         acc.logging_flush_ms = _sum_optional(acc.logging_flush_ms, flush_ms)
+    except Exception:
+        return
+
+
+def add_logging_exclusive(
+    *,
+    build_ms: float = 0.0,
+    serialize_ms: float = 0.0,
+    write_ms: float = 0.0,
+    flush_ms: float = 0.0,
+    rotate_ms: float = 0.0,
+    reopen_ms: float = 0.0,
+) -> None:
+    """Accumulate exclusive Snapshot Logger stages (H-6.7.1)."""
+    try:
+        acc = _active
+        if acc is None:
+            return
+        acc.logging_exclusive_seen = True
+        acc.logging_build_ex_ms = _sum_float(acc.logging_build_ex_ms, build_ms)
+        acc.logging_serialize_ex_ms = _sum_float(
+            acc.logging_serialize_ex_ms, serialize_ms
+        )
+        acc.logging_write_ex_ms = _sum_float(acc.logging_write_ex_ms, write_ms)
+        acc.logging_flush_ex_ms = _sum_float(acc.logging_flush_ex_ms, flush_ms)
+        acc.logging_rotate_ex_ms = _sum_float(acc.logging_rotate_ex_ms, rotate_ms)
+        acc.logging_reopen_ex_ms = _sum_float(acc.logging_reopen_ex_ms, reopen_ms)
+    except Exception:
+        return
+
+
+def add_checkpoint_exclusive(
+    *,
+    assemble_ms: float = 0.0,
+    serialize_ms: float | None = None,
+    write_ms: float = 0.0,
+    flush_ms: float = 0.0,
+    fsync_ms: float = 0.0,
+    os_replace_ms: float = 0.0,
+) -> None:
+    """Accumulate exclusive Combined Checkpoint stages (H-6.7.1).
+
+    Pass ``serialize_ms=None`` when the path has no distinct serialize step.
+    Pass a float (including 0.0) when serialize applies.
+    """
+    try:
+        acc = _active
+        if acc is None:
+            return
+        acc.checkpoint_exclusive_seen = True
+        acc.checkpoint_assemble_ms = _sum_float(acc.checkpoint_assemble_ms, assemble_ms)
+        if serialize_ms is not None:
+            acc.checkpoint_serialize_applicable = True
+            acc.checkpoint_serialize_ms = _sum_optional(
+                acc.checkpoint_serialize_ms, serialize_ms
+            )
+        acc.checkpoint_write_ms = _sum_float(acc.checkpoint_write_ms, write_ms)
+        acc.checkpoint_flush_ms = _sum_float(acc.checkpoint_flush_ms, flush_ms)
+        acc.checkpoint_fsync_ms = _sum_float(acc.checkpoint_fsync_ms, fsync_ms)
+        acc.checkpoint_os_replace_ms = _sum_float(
+            acc.checkpoint_os_replace_ms, os_replace_ms
+        )
+    except Exception:
+        return
+
+
+def add_tick_retention_breakdown(
+    *,
+    total_ms: float = 0.0,
+    stat_ms: float = 0.0,
+    read_ms: float = 0.0,
+    write_ms: float = 0.0,
+    fsync_ms: float = 0.0,
+    replace_ms: float = 0.0,
+) -> None:
+    """Accumulate exclusive tick retention stages (H-6.7.1)."""
+    try:
+        acc = _active
+        if acc is None:
+            return
+        acc.tick_retention_seen = True
+        acc.tick_retention_total_ms = _sum_float(
+            acc.tick_retention_total_ms, total_ms
+        )
+        acc.tick_retention_stat_ms = _sum_float(acc.tick_retention_stat_ms, stat_ms)
+        acc.tick_retention_read_ms = _sum_float(acc.tick_retention_read_ms, read_ms)
+        acc.tick_retention_write_ms = _sum_float(acc.tick_retention_write_ms, write_ms)
+        acc.tick_retention_fsync_ms = _sum_float(acc.tick_retention_fsync_ms, fsync_ms)
+        acc.tick_retention_replace_ms = _sum_float(
+            acc.tick_retention_replace_ms, replace_ms
+        )
     except Exception:
         return
 
