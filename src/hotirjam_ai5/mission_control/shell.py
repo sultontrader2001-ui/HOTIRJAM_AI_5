@@ -119,29 +119,35 @@ class MissionControlShell:
                 return True
         return True
 
-    def render(self) -> str:
-        # Refresh display_age clock without mutating runtime objects.
-        self._bundle = RuntimeBundle(
-            now=float(self._clock()),
-            dashboard=self._bundle.dashboard,
-            frame=self._bundle.frame,
-            loop_timing=self._bundle.loop_timing,
-            transition_summaries=self._bundle.transition_summaries,
+    def render(self, *, width: int | None = None) -> str:
+        """Render active window once. Does not rebuild bundle clock (anti-flicker)."""
+        from hotirjam_ai5.mission_control.render_format import (
+            clamp_lines,
+            dedupe_consecutive,
+            fit_line,
+            terminal_width,
         )
-        header = self._chrome()
+
+        panel_width = max(40, int(width) if width is not None else terminal_width())
+        header_lines = [
+            fit_line(line, panel_width) for line in self._chrome().splitlines()
+        ]
         if self._help_visible:
             body = self._help_text()
         elif self._window is MissionWindow.COCKPIT:
-            body = render_cockpit(self._bundle)
+            body = render_cockpit(self._bundle, width=panel_width)
         elif self._window is MissionWindow.LABORATORY:
             body = render_laboratory(
                 self._modules,
                 selected_index=self._selected,
                 bundle=self._bundle,
+                width=panel_width,
             )
         else:
-            body = render_developer_placeholder()
-        return f"{header}\n{body}"
+            body = render_developer_placeholder(width=panel_width)
+        lines = header_lines + body.splitlines()
+        lines = dedupe_consecutive(clamp_lines(lines, panel_width))
+        return "\n".join(lines)
 
     def _chrome(self) -> str:
         w1 = "[1 Cockpit]" if self._window is MissionWindow.COCKPIT else " 1 Cockpit "

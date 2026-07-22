@@ -33,17 +33,13 @@ class ProvenancedField:
 
 
 def format_age(now: float, timestamp: float | None) -> str:
-    """Presentation age string from existing timestamps only."""
-    if timestamp is None:
-        return NA
-    age = now - timestamp
-    if age < 0:
-        age = 0.0
-    if age < 1.0:
-        return f"{age * 1000.0:.0f}ms"
-    if age < 60.0:
-        return f"{age:.1f}s"
-    return f"{age / 60.0:.1f}m"
+    """Presentation age string from existing timestamps only.
+
+    Impossible / cross-domain ages render as N/A (H-7.2A.1).
+    """
+    from hotirjam_ai5.mission_control.render_format import format_age_display
+
+    return format_age_display(now, timestamp)
 
 
 def fmt_value(value: Any, *, digits: int | None = 2) -> str:

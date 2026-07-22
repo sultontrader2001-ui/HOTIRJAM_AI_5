@@ -178,10 +178,10 @@ def test_render_includes_provenance_marker() -> None:
     dash = DashboardState(
         market=LiveMarketView(symbol="MNQ", last_price=101.0, bid=100.75, ask=101.25)
     )
-    text = render_cockpit(RuntimeBundle(now=time.time(), dashboard=dash))
-    assert "src=DashboardState.market.last_price" in text
-    assert "age=" in text
-    assert "No timeline available" in text or "AI TIMELINE" in text
+    text = render_cockpit(RuntimeBundle(now=time.time(), dashboard=dash), width=80)
+    assert "| DashboardState  |" in text or "| DashboardState |" in text
+    assert "DashboardState.market.last_price" not in text
+    assert "WINDOW 1 · TRADING COCKPIT" in text
 
 
 def test_events_capped_at_eight() -> None:

@@ -330,7 +330,7 @@ class LiveValidatorApp:
                     transition_summaries=read_lv_journal_summaries(self._controller),
                 )
             )
-            text = self._mc_shell.render()
+            text = self._mc_shell.render(width=self._display.terminal_width())
             self._display.render_frame(text)
             return text
 

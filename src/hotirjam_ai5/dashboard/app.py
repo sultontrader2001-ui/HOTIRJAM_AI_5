@@ -170,7 +170,7 @@ class DashboardApp:
             self._mc_shell.set_bundle(
                 RuntimeBundle(now=float(self._wall_clock()), dashboard=state)
             )
-            text = self._mc_shell.render()
+            text = self._mc_shell.render(width=self._display.terminal_width())
         else:
             width = self._renderer.fixed_width
             if width is None:
