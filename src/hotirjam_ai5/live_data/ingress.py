@@ -5,14 +5,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from hotirjam_ai5.live_data.diagnostics import IngressDiagnostics
+from hotirjam_ai5.live_data.diagnostics import IngressDiagnostics, ingress_poll_stderr_enabled
 from hotirjam_ai5.live_data.ingress_poll_snapshot import IngressPollSnapshot
 from hotirjam_ai5.live_data.ndjson_tail import NdjsonFileTail
 from hotirjam_ai5.live_data.paths import default_tick_path
 from hotirjam_ai5.live_data.tick import LiveTick
 from hotirjam_ai5.live_data.tick_parser import TickParseError, TickParser
 
-# TEMPORARY: always-on stderr for Feed WAITING triage. Remove after diagnosis.
+# Debug-only stderr prefix (H-8.1A: default OFF).
 _POLL_DIAG_PREFIX = "[INGRESS_POLL]"
 
 
@@ -140,7 +140,13 @@ class LiveTickIngress:
             return False
 
     def _emit_poll_snapshot(self, snapshot: IngressPollSnapshot) -> None:
-        """TEMPORARY stderr line after every poll (Feed WAITING triage)."""
+        """Optionally mirror poll snapshot to stderr (debug only; default OFF).
+
+        IngressPollSnapshot remains canonical via ``last_poll``. Production
+        operator TTY must not scroll (H-8.1A / H-7.2D).
+        """
+        if not ingress_poll_stderr_enabled():
+            return
         offset = "NA" if snapshot.file_offset is None else str(snapshot.file_offset)
         size = "NA" if snapshot.file_size is None else str(snapshot.file_size)
         sys.stderr.write(
