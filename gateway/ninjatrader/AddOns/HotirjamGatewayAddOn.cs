@@ -7,17 +7,21 @@ using NinjaTrader.Gui.Tools;
 using NinjaTrader.NinjaScript;
 #endregion
 
-// HOTIRJAM Gateway — NinjaTrader 8 AddOn foundation (Sprint NT-1).
+// HOTIRJAM Gateway — NinjaTrader 8 AddOn (TCP link to Python Gateway).
 // Loads with NinjaTrader. Clean startup/shutdown.
 // No Tick subscriptions. No DOM subscriptions. No Orders. No Broker API. No Trading Logic.
 
 namespace NinjaTrader.NinjaScript.AddOns
 {
 	/// <summary>
-	/// Standalone AddOn that hosts the HOTIRJAM <see cref="GatewayClient"/> skeleton.
+	/// Standalone AddOn that hosts the HOTIRJAM <see cref="GatewayClient"/> TCP link.
 	/// </summary>
 	public class HotirjamGatewayAddOn : AddOnBase
 	{
+		// Must match the Python TransportServer listen address.
+		private const string GatewayHost = "127.0.0.1";
+		private const int GatewayPort = GatewayClient.DefaultPort;
+
 		private GatewayClient _client;
 		private bool _runtimeStarted;
 
@@ -25,7 +29,7 @@ namespace NinjaTrader.NinjaScript.AddOns
 		{
 			if (State == State.SetDefaults)
 			{
-				Description = "HOTIRJAM Gateway connection host (foundation — no market data, no orders).";
+				Description = "HOTIRJAM Gateway TCP client (no market data, no orders).";
 				Name = "HOTIRJAM Gateway";
 				WriteLog("HOTIRJAM AddOn Loaded");
 			}
@@ -37,7 +41,6 @@ namespace NinjaTrader.NinjaScript.AddOns
 
 		protected override void OnWindowCreated(Window window)
 		{
-			// Control Center creation = NinjaTrader UI is up; start once.
 			if (!(window is ControlCenter))
 				return;
 
@@ -57,7 +60,7 @@ namespace NinjaTrader.NinjaScript.AddOns
 			if (_runtimeStarted)
 				return;
 
-			_client = new GatewayClient();
+			_client = new GatewayClient(GatewayHost, GatewayPort, WriteLog);
 			_client.Start();
 			_runtimeStarted = true;
 			WriteLog("HOTIRJAM AddOn Started");
