@@ -15,7 +15,8 @@ from hotirjam_ai5.dashboard.models import ConnectionQuality, FeedStatus
 from hotirjam_ai5.live_data.tick import LiveTick
 
 DEFAULT_STALL_SECONDS = 2.0
-DEFAULT_DISCONNECT_SECONDS = 5.0
+# Disconnect must be well above typical MNQ quiet gaps; short gaps are STALE only.
+DEFAULT_DISCONNECT_SECONDS = 15.0
 RATE_WINDOW_SECONDS = 1.0
 
 # Connection quality thresholds (last tick age, milliseconds).
@@ -119,7 +120,12 @@ class FeedHealthMonitor:
         return previous
 
     def snapshot(self) -> FeedHealthSnapshot:
-        """Build one immutable health snapshot."""
+        """Build one immutable health snapshot.
+
+        Always re-evaluates from receive-age so ``feed_status`` cannot disagree
+        with ``last_tick_age_ms`` when the caller skipped ``evaluate()``.
+        """
+        self.evaluate()
         now = self._clock()
         self._prune_recent(now)
         age_ms = None

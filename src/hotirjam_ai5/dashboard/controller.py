@@ -351,14 +351,13 @@ class DashboardController:
         current = self._feed_health.feed_status
         self._log_tick_transition(previous, current)
 
-        if current is FeedStatus.DISCONNECTED:
-            if self._connection_status is ConnectionStatus.CONNECTED:
-                self._connection_status = ConnectionStatus.DISCONNECTED
-                self._market_status = MarketStatus.WAITING
+        was_connected = self._connection_status is ConnectionStatus.CONNECTED
+        self._sync_system_status_from_feed(current)
+        # Clear memory once on the transition into disconnect — not every poll.
+        if current is FeedStatus.DISCONNECTED and (
+            was_connected or previous is not FeedStatus.DISCONNECTED
+        ):
             self._memory.clear()
-        elif current in (FeedStatus.HEALTHY, FeedStatus.STALE):
-            self._connection_status = ConnectionStatus.CONNECTED
-            self._market_status = MarketStatus.OPEN
 
         dom_previous = self._dom_health.evaluate()
         dom_current = self._dom_health.feed_status
@@ -377,10 +376,30 @@ class DashboardController:
                 status=self._dom.status,
             )
 
+    def _sync_system_status_from_feed(self, feed_status: FeedStatus) -> None:
+        """Align connection/market labels with receive-age feed health.
+
+        Market Status means quote availability (latched Price/Bid/Ask), not a
+        short transport quiet gap. WAITING only before the first live quote.
+        """
+        if feed_status in (FeedStatus.HEALTHY, FeedStatus.STALE):
+            self._connection_status = ConnectionStatus.CONNECTED
+            self._market_status = MarketStatus.OPEN
+            return
+        if feed_status is FeedStatus.DISCONNECTED:
+            # Pre-first-tick: keep CONNECTING/WAITING from start().
+            if self._market.last_price is None:
+                return
+            self._connection_status = ConnectionStatus.DISCONNECTED
+            self._market_status = MarketStatus.OPEN
+
     def snapshot(self) -> DashboardState:
         """Build one immutable dashboard state for rendering."""
         health = self._feed_health.snapshot()
         dom_health = self._dom_health.snapshot()
+        # Keep Market/Connection coherent with receive-age feed health so the
+        # UI cannot show WAITING/DISCONNECTED while a fresh tick is latched.
+        self._sync_system_status_from_feed(health.feed_status)
         tick_rate = self._statistics.tick_rate()
         tick_count = self._statistics.tick_count
         market_state = self._market_state.evaluate(

@@ -79,6 +79,37 @@ def test_tail_recovers_after_journal_truncate(tmp_path: Path) -> None:
     assert '"last_price":' in got[0]
 
 
+def test_tail_byte_offsets_with_crlf(tmp_path: Path) -> None:
+    """Windows NT journals may use CRLF; offsets must stay byte-accurate."""
+    path = tmp_path / "mnq_ticks.ndjson"
+    line0 = _tick_line(i=0).replace("\n", "\r\n")
+    path.write_bytes(line0.encode("utf-8"))
+    tail = NdjsonTail(path, start_at_eof=True)
+    assert tail.offset == path.stat().st_size
+    assert tail.poll() == []
+
+    line1 = _tick_line(i=1).replace("\n", "\r\n")
+    with path.open("ab") as handle:
+        handle.write(line1.encode("utf-8"))
+    got = tail.poll()
+    assert len(got) == 1
+    assert got[0].endswith("}") and "\r" not in got[0]
+    assert tail.offset == path.stat().st_size
+
+
+def test_tail_start_at_eof_then_append_nonzero_file(tmp_path: Path) -> None:
+    """Non-empty journal at startup must still catch later appends (Windows case)."""
+    path = tmp_path / "mnq_ticks.ndjson"
+    path.write_text(_tick_line(i=0) * 50, encoding="utf-8")
+    tail = NdjsonTail(path, start_at_eof=True)
+    assert tail.poll() == []
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(_tick_line(i=99))
+    got = tail.poll()
+    assert len(got) == 1
+    assert '"last_price":' in got[0]
+
+
 def test_sender_catches_new_tick_immediately(tmp_path: Path) -> None:
     path = tmp_path / "mnq_ticks.ndjson"
     path.write_text("", encoding="utf-8")

@@ -207,13 +207,38 @@ def test_cli_parser_defaults() -> None:
     assert args.tick_file is None
     assert args.dom_file is None
     assert args.stall_seconds == 2.0
-    assert args.stale_seconds == 5.0
+    assert args.stale_seconds == 15.0
     assert args.verbose is False
 
 
 def test_cli_parser_verbose_flag() -> None:
     args = build_arg_parser().parse_args(["--verbose"])
     assert args.verbose is True
+
+
+def test_main_pairs_dom_with_explicit_tick_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """--tick-file alone must bind DOM to the sibling mnq_dom.ndjson."""
+    tick = tmp_path / "HOTIRJAM" / "mnq_ticks.ndjson"
+    dom = tmp_path / "HOTIRJAM" / "mnq_dom.ndjson"
+    tick.parent.mkdir(parents=True)
+    tick.write_text("{}\n", encoding="utf-8")
+    dom.write_text("{}\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class StubApp:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def run(self, *, max_frames: int | None = None) -> int:
+            return 0
+
+    monkeypatch.setattr("hotirjam_ai5.dashboard.app.DashboardApp", StubApp)
+    assert main(["--tick-file", str(tick)]) == 0
+    ingress = captured["dom_ingress"]
+    assert ingress is not None
+    assert Path(ingress.path) == dom.resolve()  # type: ignore[attr-defined]
 
 
 def test_main_runs_one_frame_via_monkeypatch(monkeypatch: pytest.MonkeyPatch) -> None:

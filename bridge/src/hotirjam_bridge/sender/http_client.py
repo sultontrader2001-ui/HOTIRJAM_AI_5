@@ -5,12 +5,34 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import time
 import traceback
 from typing import Any
 
 import aiohttp
 
 from hotirjam_bridge.contracts import Channel, Envelope
+
+# Evidence-only instrumentation (no behaviour change).
+_EVIDENCE_TICK = "[BRIDGE_SENDER_EVIDENCE][TICK]"
+_EVIDENCE_HB = "[BRIDGE_SENDER_EVIDENCE][HEARTBEAT]"
+_EVIDENCE_DOM = "[BRIDGE_SENDER_EVIDENCE][DOM]"
+_EVIDENCE_OTHER = "[BRIDGE_SENDER_EVIDENCE][POST]"
+
+
+def _evidence_prefix(path: str) -> str:
+    if path == "/tick":
+        return _EVIDENCE_TICK
+    if path == "/heartbeat":
+        return _EVIDENCE_HB
+    if path == "/dom":
+        return _EVIDENCE_DOM
+    return _EVIDENCE_OTHER
+
+
+def _evidence_log(message: str) -> None:
+    sys.stderr.write(message + "\n")
+    sys.stderr.flush()
 
 
 class BridgeHttpClient:
@@ -77,19 +99,32 @@ class BridgeHttpClient:
     async def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         assert self._session is not None
         url = f"{self.base_url}{path}"
-        raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
-        payload_bytes = len(raw.encode("utf-8"))
-        # TEMP runtime debug — remove after POST failures diagnosed
-        print(
-            f"[BRIDGE_SENDER_DEBUG] POST url={url} payload_bytes={payload_bytes}",
-            file=sys.stderr,
-            flush=True,
-        )
+        prefix = _evidence_prefix(path)
+        seq = payload.get("seq") if isinstance(payload, dict) else None
         last_error: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
+            t0 = time.perf_counter()
+            http_status: int | None = None
+            body: Any = None
+            written: bool | None = None
             try:
                 async with self._session.post(url, json=payload) as resp:
+                    http_status = int(resp.status)
                     body = await resp.json(content_type=None)
+                    duration_ms = (time.perf_counter() - t0) * 1000.0
+                    if isinstance(body, dict) and "written" in body:
+                        written = bool(body["written"])
+                    _evidence_log(
+                        f"{prefix} "
+                        f"url={url} "
+                        f"seq={seq} "
+                        f"attempt={attempt}/{self.max_retries} "
+                        f"http_status={http_status} "
+                        f"written={written} "
+                        f"duration_ms={duration_ms:.2f} "
+                        f"exception=None "
+                        f"body={body!r}"
+                    )
                     if resp.status >= 400:
                         raise RuntimeError(f"HTTP {resp.status}: {body}")
                     if not isinstance(body, dict):
@@ -97,12 +132,19 @@ class BridgeHttpClient:
                     return body
             except Exception as exc:  # noqa: BLE001 — retry transport errors
                 last_error = exc
-                print(
-                    f"[BRIDGE_SENDER_DEBUG] POST_FAIL attempt={attempt}/{self.max_retries} "
-                    f"url={url} payload_bytes={payload_bytes} "
-                    f"exc_type={type(exc).__name__} exc={exc!r}",
-                    file=sys.stderr,
-                    flush=True,
+                duration_ms = (time.perf_counter() - t0) * 1000.0
+                # Classify common aiohttp disconnect / timeout shapes for evidence.
+                exc_type = type(exc).__name__
+                _evidence_log(
+                    f"{prefix} "
+                    f"url={url} "
+                    f"seq={seq} "
+                    f"attempt={attempt}/{self.max_retries} "
+                    f"http_status={http_status} "
+                    f"written={written} "
+                    f"duration_ms={duration_ms:.2f} "
+                    f"exception={exc_type}: {exc!r} "
+                    f"body={body!r}"
                 )
                 traceback.print_exc(file=sys.stderr)
                 if attempt >= self.max_retries:

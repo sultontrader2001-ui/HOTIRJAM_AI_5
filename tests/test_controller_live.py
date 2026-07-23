@@ -131,6 +131,29 @@ def test_feed_stalled_then_resumed_then_connection_lost() -> None:
     assert state.feed_health.feed_status is FeedStatus.DISCONNECTED
     assert state.system.connection_status is ConnectionStatus.DISCONNECTED
     assert "Connection lost" in state.events
+    # Quotes remain on screen → Market Status stays OPEN (not WAITING).
+    assert state.market.last_price == 20101.0
+    assert state.system.market_status is MarketStatus.OPEN
+
+
+def test_live_ticks_keep_feed_healthy_and_market_open() -> None:
+    """Receive-age HEALTHY must drive OPEN — not latched WAITING/DISCONNECTED."""
+    clock = FakeClock(0.0)
+    controller = DashboardController(
+        stall_seconds=2.0,
+        stale_seconds=5.0,
+        clock=clock,
+        wall_clock=FakeClock(1_700_000_000.0),
+    )
+    controller.start()
+    for i in range(5):
+        clock.now = float(i) * 0.2
+        controller.on_tick(_tick(price=20100.0 + i * 0.25, timestamp=1_700_000_000.0 + i))
+        controller.check_connection_health()
+        state = controller.snapshot()
+        assert state.feed_health.feed_status is FeedStatus.HEALTHY
+        assert state.system.market_status is MarketStatus.OPEN
+        assert state.system.connection_status is ConnectionStatus.CONNECTED
 
 
 def test_reconnect_logs_connected_again() -> None:

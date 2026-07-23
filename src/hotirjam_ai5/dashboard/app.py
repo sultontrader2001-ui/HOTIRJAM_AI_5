@@ -14,7 +14,11 @@ from hotirjam_ai5.dashboard.renderer import DashboardRenderer
 from hotirjam_ai5.dashboard.terminal import TerminalDisplay
 from hotirjam_ai5.live_data.dom_ingress import LiveDomIngress
 from hotirjam_ai5.live_data.ingress import LiveTickIngress
-from hotirjam_ai5.live_data.paths import default_dom_path, default_tick_path
+from hotirjam_ai5.live_data.paths import (
+    default_dom_path,
+    default_tick_path,
+    sibling_dom_path,
+)
 from hotirjam_ai5.mission_control.runtime_bundle import RuntimeBundle
 from hotirjam_ai5.mission_control.runtime_hub import get_runtime_hub
 from hotirjam_ai5.mission_control.shell import MissionControlShell
@@ -289,7 +293,14 @@ def main(argv: list[str] | None = None) -> int:
     """CLI entry used by ``python -m hotirjam_ai5`` and the console script."""
     args = build_arg_parser().parse_args(argv)
     tick_path = args.tick_file or default_tick_path()
-    dom_path = args.dom_file or default_dom_path()
+    # Keep DOM on the same HOTIRJAM folder as the tick journal. A decoy
+    # cwd/HOTIRJAM/mnq_dom.ndjson must not win when --tick-file points at bridge/.
+    if args.dom_file is not None:
+        dom_path = args.dom_file
+    elif args.tick_file is not None:
+        dom_path = sibling_dom_path(tick_path)
+    else:
+        dom_path = default_dom_path()
     controller = DashboardController(
         symbol=args.symbol,
         stall_seconds=args.stall_seconds,

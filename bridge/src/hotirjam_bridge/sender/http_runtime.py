@@ -62,9 +62,21 @@ class HttpSenderRuntime:
         self._stop = True
 
     async def run(self) -> BridgeMetrics:
+        tick_size = (
+            self.tick_file.stat().st_size if self.tick_file.is_file() else -1
+        )
+        dom_size = (
+            self.dom_file.stat().st_size
+            if self.dom_file is not None and self.dom_file.is_file()
+            else -1
+        )
         self._log(
             f"[BRIDGE_SENDER] HTTP start url={self.base_url} "
-            f"tick_file={self.tick_file} network=ON"
+            f"tick_file={self.tick_file} tick_size={tick_size} "
+            f"tick_offset={self._tick_tail.offset} "
+            f"dom_file={self.dom_file} dom_size={dom_size} "
+            f"dom_offset={self._dom_tail.offset if self._dom_tail else None} "
+            f"network=ON"
         )
         last_hb = 0.0
         last_status = 0.0

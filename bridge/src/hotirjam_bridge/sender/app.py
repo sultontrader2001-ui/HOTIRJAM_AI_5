@@ -58,6 +58,13 @@ class _TeeStream:
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     tick_file = Path(args.tick_file).expanduser()
+    # Always pair DOM with the tick journal folder unless --dom-file overrides.
+    # Missing file is OK — NdjsonTail waits; omitting DOM entirely was leaving
+    # ticks live while Dashboard DOM Health stayed DISCONNECTED forever.
+    if args.dom_file:
+        dom_file: Path | None = Path(args.dom_file).expanduser()
+    else:
+        dom_file = tick_file.with_name("mnq_dom.ndjson")
 
     log_handle = None
     stream = sys.stdout
@@ -68,9 +75,14 @@ def main(argv: list[str] | None = None) -> int:
         stream = _TeeStream(sys.stdout, log_handle)
 
     if args.url:
+        stream.write(
+            f"[BRIDGE_SENDER] DOM journal={dom_file} "
+            f"exists={dom_file.is_file()}\n"
+        )
+        stream.flush()
         runtime = HttpSenderRuntime(
             tick_file=tick_file,
-            dom_file=Path(args.dom_file).expanduser() if args.dom_file else None,
+            dom_file=dom_file,
             base_url=args.url,
             symbol=args.symbol,
             poll_interval=max(0.0, float(args.poll)),

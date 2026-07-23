@@ -81,6 +81,23 @@ def test_stall_then_disconnect_transitions() -> None:
     assert monitor.feed_status is FeedStatus.DISCONNECTED
 
 
+def test_snapshot_re_evaluates_receive_age() -> None:
+    """snapshot() must demote from HEALTHY when receive-age crosses stall."""
+    clock = FakeClock(0.0)
+    monitor = FeedHealthMonitor(
+        stall_seconds=2.0,
+        disconnect_seconds=5.0,
+        clock=clock,
+        wall_clock=FakeClock(1_700_000_000.0),
+    )
+    monitor.record_tick(_tick())
+    assert monitor.feed_status is FeedStatus.HEALTHY
+    clock.now = 3.0
+    # No explicit evaluate() — snapshot must still reflect age.
+    assert monitor.snapshot().feed_status is FeedStatus.STALE
+    assert monitor.feed_status is FeedStatus.STALE
+
+
 def test_peak_rate_tracks_burst() -> None:
     clock = FakeClock(0.0)
     monitor = FeedHealthMonitor(clock=clock, wall_clock=FakeClock(1_700_000_000.0))
