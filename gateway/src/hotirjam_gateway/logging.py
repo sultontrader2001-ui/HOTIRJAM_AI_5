@@ -27,6 +27,12 @@ class GatewayLogFormatter(logging.Formatter):
             "sender_id",
             "hb_ok",
             "hb_age_s",
+            "connection_id",
+            "host",
+            "port",
+            "remote_addr",
+            "messages_received",
+            "bytes_received",
         ):
             value = getattr(record, key, None)
             if value is not None:

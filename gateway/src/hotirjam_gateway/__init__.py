@@ -17,6 +17,12 @@ from hotirjam_gateway.health import HealthStatus
 from hotirjam_gateway.heartbeat import HeartbeatMonitor
 from hotirjam_gateway.lifecycle import Lifecycle, LifecycleError
 from hotirjam_gateway.logging import get_logger, setup_logging
+from hotirjam_gateway.transport import (
+    MessageReceiver,
+    PassThroughValidation,
+    TransportServer,
+    TransportSession,
+)
 
 __version__ = "0.1.0"
 
@@ -31,6 +37,10 @@ __all__ = [
     "HeartbeatMonitor",
     "Lifecycle",
     "LifecycleError",
+    "MessageReceiver",
+    "PassThroughValidation",
+    "TransportServer",
+    "TransportSession",
     "get_logger",
     "setup_logging",
     "__version__",
