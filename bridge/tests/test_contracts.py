@@ -33,10 +33,14 @@ def test_envelope_roundtrip() -> None:
             "ask": 1.25,
             "volume": 1.0,
         },
+        sender_id="HOTIRJAM_WINDOWS_01",
+        session_id="11111111-1111-4111-8111-111111111111",
     )
     restored = Envelope.from_dict(env.as_dict())
     assert restored == env
     assert NT01_REQUIRED_KEYS <= restored.payload.keys()
+    assert restored.session_id == env.session_id
+    assert restored.sender_id == env.sender_id
 
 
 def test_nt03_required_keys_documented() -> None:

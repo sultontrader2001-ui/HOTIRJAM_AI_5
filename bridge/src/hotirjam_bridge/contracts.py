@@ -13,6 +13,9 @@ from typing import Any
 
 BRIDGE_PROTOCOL_VERSION = 1
 
+# Envelope Identity v2 — stable sender label (ops may override via CLI)
+DEFAULT_SENDER_ID = "HOTIRJAM_WINDOWS_01"
+
 # Suggested defaults (ops may override)
 DEFAULT_WSS_PORT = 9443
 DEFAULT_WSS_PATH = "/bridge"
@@ -47,10 +50,13 @@ class SourceTag(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Envelope:
-    """One WebSocket text frame / logical bridge message.
+    """One bridge transport message (HTTP POST body / logical frame).
 
     ``payload`` for tick/dom MUST be the exact NT01/NT03 object.
     Envelope metadata must not be merged into journal lines on Mac.
+
+    Identity v2: dedupe key is ``(session_id, ch, seq)``.
+    ``sender_id`` is stable; ``session_id`` is UUID4 per sender process start.
     """
 
     v: int
@@ -59,6 +65,8 @@ class Envelope:
     src: str
     sent_at: float
     payload: dict[str, Any]
+    sender_id: str = DEFAULT_SENDER_ID
+    session_id: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -72,6 +80,8 @@ class Envelope:
             src=str(data["src"]),
             sent_at=float(data["sent_at"]),
             payload=dict(data["payload"]),
+            sender_id=str(data.get("sender_id") or DEFAULT_SENDER_ID),
+            session_id=str(data.get("session_id") or ""),
         )
 
 

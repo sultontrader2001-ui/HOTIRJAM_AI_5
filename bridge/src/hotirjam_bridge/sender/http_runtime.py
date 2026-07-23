@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import json as _json
 import sys
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TextIO
 
-from hotirjam_bridge.contracts import Channel, Envelope
+from hotirjam_bridge.contracts import DEFAULT_SENDER_ID, Channel, Envelope
 from hotirjam_bridge.metrics import BridgeMetrics, render_bridge_status
-from hotirjam_bridge.sender.envelope import wrap_tick
+from hotirjam_bridge.receiver.validate_dom import DomValidationError, validate_nt03_dom
+from hotirjam_bridge.sender.envelope import wrap_dom, wrap_tick
 from hotirjam_bridge.sender.http_client import BridgeHttpClient
 from hotirjam_bridge.sender.tail import NdjsonTail
 from hotirjam_bridge.sender.validate_tick import (
@@ -20,9 +23,6 @@ from hotirjam_bridge.sender.validate_tick import (
     parse_tick_json,
     validate_nt01_tick,
 )
-from hotirjam_bridge.contracts import BRIDGE_PROTOCOL_VERSION, SourceTag
-from hotirjam_bridge.receiver.validate_dom import DomValidationError, validate_nt03_dom
-import json as _json
 
 
 @dataclass
@@ -32,6 +32,8 @@ class HttpSenderRuntime:
     tick_file: Path
     base_url: str
     symbol: str = "MNQ"
+    sender_id: str = DEFAULT_SENDER_ID
+    session_id: str | None = None
     dom_file: Path | None = None
     poll_interval: float = 0.05
     start_at_eof: bool = True
@@ -48,6 +50,10 @@ class HttpSenderRuntime:
     def __post_init__(self) -> None:
         self.tick_file = Path(self.tick_file)
         self.dom_file = Path(self.dom_file) if self.dom_file else None
+        self.sender_id = str(self.sender_id or DEFAULT_SENDER_ID)
+        # Identity v2: one UUID4 per process lifetime (injectable for tests).
+        if not self.session_id:
+            self.session_id = str(uuid.uuid4())
         self._stop = False
         self._tick_tail = NdjsonTail(self.tick_file, start_at_eof=self.start_at_eof)
         self._dom_tail = (
@@ -72,6 +78,7 @@ class HttpSenderRuntime:
         )
         self._log(
             f"[BRIDGE_SENDER] HTTP start url={self.base_url} "
+            f"sender_id={self.sender_id} session_id={self.session_id} "
             f"tick_file={self.tick_file} tick_size={tick_size} "
             f"tick_offset={self._tick_tail.offset} "
             f"dom_file={self.dom_file} dom_size={dom_size} "
@@ -127,7 +134,13 @@ class HttpSenderRuntime:
                 self._log(f"[BRIDGE_SENDER] MALFORMED {exc}")
                 continue
             self._tick_seq += 1
-            envelope = wrap_tick(payload, seq=self._tick_seq, clock=self.clock)
+            envelope = wrap_tick(
+                payload,
+                seq=self._tick_seq,
+                sender_id=self.sender_id,
+                session_id=str(self.session_id),
+                clock=self.clock,
+            )
             await self._send(client, envelope)
 
     async def _poll_dom(self, client: BridgeHttpClient) -> None:
@@ -145,13 +158,12 @@ class HttpSenderRuntime:
                 self._log(f"[BRIDGE_SENDER] MALFORMED_DOM {exc}")
                 continue
             self._dom_seq += 1
-            envelope = Envelope(
-                v=BRIDGE_PROTOCOL_VERSION,
-                ch=Channel.DOM.value,
+            envelope = wrap_dom(
+                payload,
                 seq=self._dom_seq,
-                src=SourceTag.NT03.value,
-                sent_at=float(self.clock()),
-                payload=payload,
+                sender_id=self.sender_id,
+                session_id=str(self.session_id),
+                clock=self.clock,
             )
             await self._send(client, envelope)
 

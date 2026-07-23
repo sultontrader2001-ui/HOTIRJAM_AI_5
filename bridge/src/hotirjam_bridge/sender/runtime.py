@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import sys
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TextIO
 
-from hotirjam_bridge.contracts import Envelope
+from hotirjam_bridge.contracts import DEFAULT_SENDER_ID, Envelope
 from hotirjam_bridge.sender.envelope import wrap_tick
 from hotirjam_bridge.sender.tail import NdjsonTail
 from hotirjam_bridge.sender.validate_tick import (
@@ -34,6 +35,8 @@ class TickSenderRuntime:
 
     tick_file: Path
     symbol: str = "MNQ"
+    sender_id: str = DEFAULT_SENDER_ID
+    session_id: str | None = None
     poll_interval: float = 0.05
     start_at_eof: bool = True
     max_ticks: int | None = None
@@ -44,6 +47,9 @@ class TickSenderRuntime:
 
     def __post_init__(self) -> None:
         self.tick_file = Path(self.tick_file)
+        self.sender_id = str(self.sender_id or DEFAULT_SENDER_ID)
+        if not self.session_id:
+            self.session_id = str(uuid.uuid4())
         self._tail = NdjsonTail(self.tick_file, start_at_eof=self.start_at_eof)
         self._seq = 0
         self._stop = False
@@ -61,6 +67,7 @@ class TickSenderRuntime:
     def run(self) -> SenderRuntimeStats:
         self._log(
             f"[BRIDGE_SENDER] start file={self.tick_file} "
+            f"sender_id={self.sender_id} session_id={self.session_id} "
             f"symbol={self.symbol} from_eof={self.start_at_eof} "
             f"poll={self.poll_interval} network=OFF"
         )
@@ -103,6 +110,8 @@ class TickSenderRuntime:
             envelope = wrap_tick(
                 payload,
                 seq=self._seq,
+                sender_id=self.sender_id,
+                session_id=str(self.session_id),
                 clock=self.clock,
             )
             self.stats.ticks_accepted += 1

@@ -47,6 +47,8 @@ def _tick_env(seq: int) -> Envelope:
             "ask": 100.0,
             "volume": 1.0,
         },
+        sender_id="HOTIRJAM_WINDOWS_01",
+        session_id="dddddddd-dddd-4ddd-8ddd-dddddddddddd",
     )
 
 

@@ -8,6 +8,7 @@ import signal
 import sys
 from pathlib import Path
 
+from hotirjam_bridge.contracts import DEFAULT_SENDER_ID
 from hotirjam_bridge.sender.http_runtime import HttpSenderRuntime
 from hotirjam_bridge.sender.runtime import TickSenderRuntime
 
@@ -23,6 +24,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tick-file", required=True, help="Path to mnq_ticks.ndjson")
     parser.add_argument("--dom-file", default=None, help="Optional mnq_dom.ndjson")
     parser.add_argument("--symbol", default="MNQ")
+    parser.add_argument(
+        "--sender-id",
+        default=DEFAULT_SENDER_ID,
+        help=f"Stable sender identity (default: {DEFAULT_SENDER_ID})",
+    )
     parser.add_argument("--poll", type=float, default=0.05)
     parser.add_argument("--from-start", action="store_true")
     parser.add_argument("--max-ticks", type=int, default=None)
@@ -85,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
             dom_file=dom_file,
             base_url=args.url,
             symbol=args.symbol,
+            sender_id=args.sender_id,
             poll_interval=max(0.0, float(args.poll)),
             start_at_eof=not args.from_start,
             max_ticks=args.max_ticks,
@@ -115,6 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     runtime = TickSenderRuntime(
         tick_file=tick_file,
         symbol=args.symbol,
+        sender_id=args.sender_id,
         poll_interval=max(0.0, float(args.poll)),
         start_at_eof=not args.from_start,
         max_ticks=args.max_ticks,

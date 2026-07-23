@@ -28,6 +28,8 @@ class BridgeMetrics:
     heartbeat_ok: bool = False
     _next_tick_seq: int | None = None
     _next_dom_seq: int | None = None
+    _tick_session_id: str | None = None
+    _dom_session_id: str | None = None
     _clock: Callable[[], float] = field(default=time.time, repr=False)
 
     @property
@@ -57,14 +59,26 @@ class BridgeMetrics:
         self.send_failures += 1
         self.dropped += 1
 
-    def record_tick_received(self, seq: int, sent_at: float) -> None:
-        self._record_seq_gap("tick", seq)
+    def record_tick_received(
+        self,
+        seq: int,
+        sent_at: float,
+        *,
+        session_id: str = "",
+    ) -> None:
+        self._record_seq_gap("tick", seq, session_id=session_id)
         self.tick_received += 1
         self._record_latency(sent_at)
         self.touch_activity()
 
-    def record_dom_received(self, seq: int, sent_at: float) -> None:
-        self._record_seq_gap("dom", seq)
+    def record_dom_received(
+        self,
+        seq: int,
+        sent_at: float,
+        *,
+        session_id: str = "",
+    ) -> None:
+        self._record_seq_gap("dom", seq, session_id=session_id)
         self.dom_received += 1
         self._record_latency(sent_at)
         self.touch_activity()
@@ -94,9 +108,18 @@ class BridgeMetrics:
         self.latency_sum_ms += lag_ms
         self.latency_count += 1
 
-    def _record_seq_gap(self, channel: str, seq: int) -> None:
+    def _record_seq_gap(
+        self,
+        channel: str,
+        seq: int,
+        *,
+        session_id: str = "",
+    ) -> None:
         seq = int(seq)
         if channel == "tick":
+            if session_id != self._tick_session_id:
+                self._tick_session_id = session_id
+                self._next_tick_seq = None
             expected = self._next_tick_seq
             if expected is None:
                 self._next_tick_seq = seq + 1
@@ -108,6 +131,9 @@ class BridgeMetrics:
                 self._next_tick_seq = seq + 1
             # seq < expected: duplicate/reorder — duplicate counter handles dupes
         else:
+            if session_id != self._dom_session_id:
+                self._dom_session_id = session_id
+                self._next_dom_seq = None
             expected = self._next_dom_seq
             if expected is None:
                 self._next_dom_seq = seq + 1

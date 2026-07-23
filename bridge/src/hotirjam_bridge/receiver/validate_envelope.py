@@ -7,6 +7,7 @@ from typing import Any
 
 from hotirjam_bridge.contracts import (
     BRIDGE_PROTOCOL_VERSION,
+    DEFAULT_SENDER_ID,
     Channel,
     Envelope,
 )
@@ -70,6 +71,21 @@ def validate_envelope_dict(data: dict[str, Any]) -> Envelope:
     if not isinstance(payload, dict):
         raise EnvelopeValidationError("payload must be a JSON object")
 
+    # Identity v2: required on new senders; missing → legacy defaults (compat).
+    raw_sender = data.get("sender_id", DEFAULT_SENDER_ID)
+    if raw_sender is None or not isinstance(raw_sender, str) or not raw_sender:
+        sender_id = DEFAULT_SENDER_ID
+    else:
+        sender_id = raw_sender
+
+    raw_session = data.get("session_id", "")
+    if raw_session is None:
+        session_id = ""
+    elif not isinstance(raw_session, str):
+        raise EnvelopeValidationError("session_id must be a string")
+    else:
+        session_id = raw_session
+
     return Envelope(
         v=version,
         ch=ch,
@@ -77,6 +93,8 @@ def validate_envelope_dict(data: dict[str, Any]) -> Envelope:
         src=src,
         sent_at=sent_at,
         payload=payload,
+        sender_id=sender_id,
+        session_id=session_id,
     )
 
 

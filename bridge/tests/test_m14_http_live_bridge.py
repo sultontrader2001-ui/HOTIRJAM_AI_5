@@ -155,6 +155,7 @@ async def test_http_duplicate_and_heartbeat(tmp_path: Path) -> None:
         },
         seq=1,
         sent_at=1.0,
+        session_id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     )
     async with BridgeHttpClient(base) as client:
         await client.post_envelope(env)
@@ -197,6 +198,7 @@ async def test_sequence_gap_counts_dropped(tmp_path: Path) -> None:
             },
             seq=seq,
             sent_at=float(seq),
+            session_id="cccccccc-cccc-4ccc-8ccc-cccccccccccc",
         )
 
     async with BridgeHttpClient(base) as client:

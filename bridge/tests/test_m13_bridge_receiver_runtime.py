@@ -18,6 +18,9 @@ from hotirjam_bridge.receiver.integrity import (
 from hotirjam_bridge.receiver.runtime import EnvelopeReceiverRuntime
 from hotirjam_bridge.sender.envelope import wrap_tick
 
+_TEST_SESSION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+_TEST_SENDER = "HOTIRJAM_WINDOWS_01"
+
 
 def _tick_payload(i: int) -> dict:
     px = 18000.0 + (i % 17) * 0.25
@@ -54,7 +57,13 @@ def test_1000_ticks_written_in_seq_order(tmp_path: Path) -> None:
     log = io.StringIO()
     runtime = EnvelopeReceiverRuntime(out_dir=tmp_path / "out", log_stream=log)
     for i in range(1, 1001):
-        env = wrap_tick(_tick_payload(i), seq=i, sent_at=float(i))
+        env = wrap_tick(
+            _tick_payload(i),
+            seq=i,
+            sent_at=float(i),
+            sender_id=_TEST_SENDER,
+            session_id=_TEST_SESSION,
+        )
         assert runtime.accept(env) is True
 
     assert runtime.stats.accepted_tick == 1000
@@ -72,7 +81,13 @@ def test_duplicate_not_written(tmp_path: Path) -> None:
         out_dir=tmp_path / "out",
         log_stream=io.StringIO(),
     )
-    env = wrap_tick(_tick_payload(1), seq=1, sent_at=1.0)
+    env = wrap_tick(
+        _tick_payload(1),
+        seq=1,
+        sent_at=1.0,
+        sender_id=_TEST_SENDER,
+        session_id=_TEST_SESSION,
+    )
     assert runtime.accept(env) is True
     assert runtime.accept(env) is False
     assert runtime.stats.duplicates == 1
@@ -94,6 +109,8 @@ def test_malformed_envelope_rejected(tmp_path: Path) -> None:
         src="NT01",
         sent_at=1.0,
         payload={"symbol": "MNQ"},
+        sender_id=_TEST_SENDER,
+        session_id=_TEST_SESSION,
     )
     assert runtime.accept(bad) is False
     assert runtime.stats.malformed >= 3
@@ -113,6 +130,8 @@ def test_dom_written_to_mnq_dom(tmp_path: Path) -> None:
         src="NT03",
         sent_at=1.0,
         payload=_dom_payload(0),
+        sender_id=_TEST_SENDER,
+        session_id=_TEST_SESSION,
     )
     assert runtime.accept(env) is True
     assert runtime.stats.accepted_dom == 1
@@ -148,7 +167,13 @@ def test_cli_inbox_max_messages(tmp_path: Path) -> None:
     inbox = tmp_path / "envelopes.ndjson"
     with inbox.open("w", encoding="utf-8") as handle:
         for i in range(1, 6):
-            env = wrap_tick(_tick_payload(i), seq=i, sent_at=float(i))
+            env = wrap_tick(
+                _tick_payload(i),
+                seq=i,
+                sent_at=float(i),
+                sender_id=_TEST_SENDER,
+                session_id=_TEST_SESSION,
+            )
             handle.write(json.dumps(env.as_dict(), separators=(",", ":")) + "\n")
     log_file = tmp_path / "receiver_runtime.log"
     code = main(

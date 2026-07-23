@@ -126,7 +126,7 @@ class EnvelopeReceiverRuntime:
             _diag(f"ACCEPT_ABORT reason=reject {exc}")
             return False
 
-        key = (envelope.ch, int(envelope.seq))
+        key = (envelope.session_id, envelope.ch, int(envelope.seq))
         if key in self._dedupe:
             _diag("DUPLICATE=YES")
             self.stats.duplicates += 1
@@ -134,7 +134,8 @@ class EnvelopeReceiverRuntime:
             if self.metrics is not None:
                 self.metrics.record_duplicate()
             self._log(
-                f"[BRIDGE_RECEIVER] DUPLICATE ch={envelope.ch} seq={envelope.seq}"
+                f"[BRIDGE_RECEIVER] DUPLICATE session_id={envelope.session_id} "
+                f"ch={envelope.ch} seq={envelope.seq}"
             )
             _diag("ACCEPT_ABORT reason=duplicate")
             return False
@@ -150,7 +151,11 @@ class EnvelopeReceiverRuntime:
                 self.accepted_seq_tick.append(envelope.seq)
                 channel_file = TICK_FILENAME
                 if self.metrics is not None:
-                    self.metrics.record_tick_received(envelope.seq, envelope.sent_at)
+                    self.metrics.record_tick_received(
+                        envelope.seq,
+                        envelope.sent_at,
+                        session_id=envelope.session_id,
+                    )
             else:
                 digest = self._dom_writer.append_payload(envelope.payload)
                 self.stats.accepted_dom += 1
@@ -158,7 +163,11 @@ class EnvelopeReceiverRuntime:
                 self.accepted_seq_dom.append(envelope.seq)
                 channel_file = DOM_FILENAME
                 if self.metrics is not None:
-                    self.metrics.record_dom_received(envelope.seq, envelope.sent_at)
+                    self.metrics.record_dom_received(
+                        envelope.seq,
+                        envelope.sent_at,
+                        session_id=envelope.session_id,
+                    )
         except ValueError as exc:
             self.stats.malformed += 1
             self._processed += 1
@@ -169,14 +178,15 @@ class EnvelopeReceiverRuntime:
             return False
 
         # Record dedupe only after a successful verified write.
-        self._dedupe.seen_before(envelope.ch, envelope.seq)
+        self._dedupe.seen_before(envelope.session_id, envelope.ch, envelope.seq)
 
         self._processed += 1
         self._log(
             f"[BRIDGE_RECEIVER] write ch={envelope.ch} seq={envelope.seq} "
+            f"sender_id={envelope.sender_id} session_id={envelope.session_id} "
             f"file={channel_file} sha256={digest} "
             f"sent_at={envelope.sent_at:.6f} "
-            f"envelope={json.dumps({'v': envelope.v, 'ch': envelope.ch, 'seq': envelope.seq, 'src': envelope.src}, separators=(',', ':'))}"
+            f"envelope={json.dumps({'v': envelope.v, 'ch': envelope.ch, 'seq': envelope.seq, 'src': envelope.src, 'sender_id': envelope.sender_id, 'session_id': envelope.session_id}, separators=(',', ':'))}"
         )
         return True
 
