@@ -31,6 +31,8 @@ class NdjsonFileTail:
         self._initialized = False
         self._diagnostics = diagnostics or IngressDiagnostics(enabled=False)
         self._logged_missing = False
+        # TEMPORARY — last poll() early-return / success reason (Feed WAITING triage).
+        self.last_return_reason = "not_polled"
         self._diagnostics.log(f"Opened file path: {self.path}")
 
     @property
@@ -49,6 +51,9 @@ class NdjsonFileTail:
         """Return newly completed NDJSON lines since the last poll."""
         if not self.path.exists():
             # Do not mark initialized: when the file appears, seek to EOF (live).
+            self.last_return_reason = (
+                f"missing_file path={self.path} exists=False"
+            )
             if not self._logged_missing:
                 self._diagnostics.log(f"Waiting for file (does not exist yet): {self.path}")
                 self._logged_missing = True
@@ -57,12 +62,16 @@ class NdjsonFileTail:
         try:
             size = self.path.stat().st_size
         except OSError as exc:
+            self.last_return_reason = f"stat_failed err={exc!r}"
             self._diagnostics.log(f"stat failed: {exc}")
             return ()
 
         if not self._initialized:
             self._initialized = True
             self._offset = size
+            self.last_return_reason = (
+                f"eof_arm offset={self._offset} size={size} path={self.path}"
+            )
             self._diagnostics.log(
                 f"Tail armed at EOF offset={self._offset} size={size} path={self.path}"
             )
@@ -74,17 +83,34 @@ class NdjsonFileTail:
             )
             self._offset = 0
 
+        if size == self._offset:
+            # No new bytes since last arm/read — primary WAITING cause when path is correct.
+            self.last_return_reason = (
+                f"no_new_bytes offset={self._offset} size={size} path={self.path}"
+            )
+            return ()
+
         try:
             content = self._read_from_offset()
         except OSError as exc:
+            self.last_return_reason = (
+                f"read_failed offset={self._offset} size={size} err={exc!r}"
+            )
             self._diagnostics.log(f"read failed: {exc}")
             return ()
 
         last_newline = content.rfind(b"\n")
         if last_newline < 0:
             if content:
+                self.last_return_reason = (
+                    f"partial_line buffered={len(content)} offset={self._offset} size={size}"
+                )
                 self._diagnostics.log(
                     f"Partial line buffered ({len(content)} bytes, waiting for newline)"
+                )
+            else:
+                self.last_return_reason = (
+                    f"empty_read offset={self._offset} size={size}"
                 )
             return ()
 
@@ -94,6 +120,10 @@ class NdjsonFileTail:
             line.decode("utf-8", errors="replace").strip()
             for line in complete.splitlines()
             if line.strip()
+        )
+        self.last_return_reason = (
+            f"lines={len(lines)} offset={self._offset} size={size} "
+            f"bytes_consumed={len(complete)}"
         )
         for line in lines:
             self._diagnostics.log(f"Line read: {line}")

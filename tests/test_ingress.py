@@ -30,6 +30,7 @@ def test_ingress_reads_only_new_valid_ticks(tmp_path: Path) -> None:
     assert ingress.last_poll is not None
     assert ingress.last_poll.tail_lines == 0
     assert ingress.last_poll.gate == "A_ZERO_TAIL_LINES"
+    assert ingress.last_poll.tail_return.startswith("eof_arm ")
 
     with path.open("a", encoding="utf-8") as handle:
         handle.write(_tick_line(2) + "\n")
@@ -48,9 +49,15 @@ def test_ingress_reads_only_new_valid_ticks(tmp_path: Path) -> None:
     assert ingress.last_poll.accepted_delta == 2
     assert ingress.last_poll.skipped_delta == 2
     assert ingress.last_poll.gate == "OK"
+    assert ingress.last_poll.tail_return.startswith("lines=4 ")
     assert ingress.last_poll.file_offset is not None
     assert ingress.last_poll.file_size is not None
     assert ingress.last_poll.file_offset == ingress.last_poll.file_size
+
+    assert ingress.poll() == ()
+    assert ingress.last_poll is not None
+    assert ingress.last_poll.gate == "A_ZERO_TAIL_LINES"
+    assert ingress.last_poll.tail_return.startswith("no_new_bytes ")
 
 
 def test_ingress_poll_snapshot_gate_b_all_rejected(tmp_path: Path) -> None:

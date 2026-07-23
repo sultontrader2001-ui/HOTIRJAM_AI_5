@@ -266,6 +266,7 @@ def _ingress_poll_lines(snapshot: IngressPollSnapshot | None) -> list[str]:
         lines.extend(
             [
                 f"Gate              {_NA}",
+                f"tail_return       {_NA}",
                 f"tail_lines        {_NA}",
                 f"accepted_count    {_NA}",
                 f"skipped_count     {_NA}",
@@ -279,6 +280,7 @@ def _ingress_poll_lines(snapshot: IngressPollSnapshot | None) -> list[str]:
     lines.extend(
         [
             f"Gate              {snapshot.gate}",
+            f"tail_return       {snapshot.tail_return or _NA}",
             f"tail_lines        {snapshot.tail_lines}",
             f"accepted_count    {snapshot.accepted_count}",
             f"skipped_count     {snapshot.skipped_count}",

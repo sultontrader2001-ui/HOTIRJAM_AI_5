@@ -29,6 +29,17 @@ class NdjsonTail:
         if not self.path.is_file():
             return []
 
+        try:
+            size = self.path.stat().st_size
+        except OSError:
+            return []
+
+        # Journal truncated/replaced (common after first session write on Windows).
+        # Without this, seek stays past EOF and continuous tick forwarding stops forever
+        # while DOM (separate file) keeps flowing.
+        if size < self._offset:
+            self._offset = size
+
         lines: list[str] = []
         with self.path.open("r", encoding="utf-8") as handle:
             handle.seek(self._offset)

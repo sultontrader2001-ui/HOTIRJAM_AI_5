@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import sys
+import traceback
 from typing import Any
 
 import aiohttp
@@ -74,6 +77,14 @@ class BridgeHttpClient:
     async def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         assert self._session is not None
         url = f"{self.base_url}{path}"
+        raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        payload_bytes = len(raw.encode("utf-8"))
+        # TEMP runtime debug — remove after POST failures diagnosed
+        print(
+            f"[BRIDGE_SENDER_DEBUG] POST url={url} payload_bytes={payload_bytes}",
+            file=sys.stderr,
+            flush=True,
+        )
         last_error: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -86,6 +97,14 @@ class BridgeHttpClient:
                     return body
             except Exception as exc:  # noqa: BLE001 — retry transport errors
                 last_error = exc
+                print(
+                    f"[BRIDGE_SENDER_DEBUG] POST_FAIL attempt={attempt}/{self.max_retries} "
+                    f"url={url} payload_bytes={payload_bytes} "
+                    f"exc_type={type(exc).__name__} exc={exc!r}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                traceback.print_exc(file=sys.stderr)
                 if attempt >= self.max_retries:
                     break
                 await asyncio.sleep(self.retry_delay * attempt)

@@ -156,6 +156,7 @@ def test_performance_page_shows_ingress_poll_snapshot() -> None:
     )
     text = render_performance_page(None, feed_status="WAITING", ingress_poll=snap)
     assert "Gate              A_ZERO_TAIL_LINES" in text
+    assert "tail_return" in text
     assert "tail_lines        0" in text
     assert "accepted_count    0" in text
     assert "skipped_count     0" in text

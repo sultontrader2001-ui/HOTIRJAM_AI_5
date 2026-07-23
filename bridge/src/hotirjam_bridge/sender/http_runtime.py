@@ -36,7 +36,7 @@ class HttpSenderRuntime:
     poll_interval: float = 0.05
     start_at_eof: bool = True
     max_ticks: int | None = None
-    timeout: float = 2.0
+    timeout: float = 10.0
     max_retries: int = 3
     retry_delay: float = 0.2
     heartbeat_interval: float = 1.0
@@ -148,7 +148,17 @@ class HttpSenderRuntime:
             await client.post_envelope(envelope)
         except Exception as exc:  # noqa: BLE001
             self.metrics.record_send_failure()
-            self._log(f"[BRIDGE_SENDER] SEND_FAIL ch={envelope.ch} seq={envelope.seq} {exc}")
+            path = (
+                "/tick"
+                if envelope.ch == Channel.TICK.value
+                else "/dom"
+                if envelope.ch == Channel.DOM.value
+                else "/envelope"
+            )
+            self._log(
+                f"[BRIDGE_SENDER] SEND_FAIL ch={envelope.ch} seq={envelope.seq} "
+                f"url={client.base_url}{path} {exc}"
+            )
             return
         if envelope.ch == Channel.TICK.value:
             self.metrics.record_tick_sent()
@@ -172,8 +182,9 @@ class HttpSenderRuntime:
             self.metrics.record_heartbeat(ok=True)
         except Exception as exc:  # noqa: BLE001
             self.metrics.heartbeat_ok = False
-            self.metrics.connected = False
-            self._log(f"[BRIDGE_SENDER] HEARTBEAT_FAIL {exc}")
+            self._log(
+                f"[BRIDGE_SENDER] HEARTBEAT_FAIL url={client.base_url}/heartbeat {exc}"
+            )
 
     async def _refresh_status(
         self,
@@ -184,10 +195,18 @@ class HttpSenderRuntime:
         try:
             remote = await client.get_metrics()
             self.metrics.merge_remote(remote)
+            # Successful GET /metrics means the link is up. Do not adopt the
+            # receiver's connected/heartbeat_ok flags (those stay false until
+            # the receiver has seen POSTs).
+            self.metrics.touch_activity()
             self.metrics.connected = True
-            self.metrics.heartbeat_ok = bool(remote.get("heartbeat_ok", True))
-        except Exception:
-            self.metrics.refresh_connected()
+            if self.metrics.last_hb_at is not None:
+                age = float(self.clock()) - float(self.metrics.last_hb_at)
+                self.metrics.heartbeat_ok = age <= 5.0
+        except Exception as exc:  # noqa: BLE001
+            self.metrics.connected = False
+            self.metrics.heartbeat_ok = False
+            self._log(f"[BRIDGE_SENDER] METRICS_FAIL url={client.base_url}/metrics {exc}")
         render_bridge_status(self.metrics, self.log_stream, clear=clear)
 
     def _log(self, message: str) -> None:

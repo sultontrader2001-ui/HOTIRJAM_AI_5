@@ -54,6 +54,31 @@ def test_tail_skips_incomplete_line(tmp_path: Path) -> None:
     assert len(lines) == 1
 
 
+def test_tail_recovers_after_journal_truncate(tmp_path: Path) -> None:
+    """After first live lines, a shrink/replace must not park the offset past EOF."""
+    path = tmp_path / "mnq_ticks.ndjson"
+    path.write_text(_tick_line(i=0) + _tick_line(i=1), encoding="utf-8")
+    tail = NdjsonTail(path, start_at_eof=True)
+    assert tail.poll() == []
+
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(_tick_line(i=2))
+    assert len(tail.poll()) == 1
+    stuck_offset = tail.offset
+    assert stuck_offset > 0
+
+    # NT01 / retention style: replace journal with a shorter file, then append.
+    path.write_text(_tick_line(i=10), encoding="utf-8")
+    assert path.stat().st_size < stuck_offset
+    assert tail.poll() == []  # re-armed at new EOF
+
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(_tick_line(i=11))
+    got = tail.poll()
+    assert len(got) == 1
+    assert '"last_price":' in got[0]
+
+
 def test_sender_catches_new_tick_immediately(tmp_path: Path) -> None:
     path = tmp_path / "mnq_ticks.ndjson"
     path.write_text("", encoding="utf-8")

@@ -48,3 +48,28 @@ def test_prefers_candidate_that_already_has_tick_file(
 
     assert default_ninjatrader_user_data_dir() == onedrive.resolve()
     assert default_tick_path() == tick.resolve()
+
+
+def test_falls_back_to_bridge_host_when_nt_has_no_tick(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Mac AI host: no NT Documents journal → use bridge/HOTIRJAM if present."""
+    home = tmp_path / "empty_home"
+    home.mkdir()
+    bridge_root = tmp_path / "bridge_pkg"
+    tick = bridge_root / "HOTIRJAM" / "mnq_ticks.ndjson"
+    tick.parent.mkdir(parents=True)
+    tick.write_text('{"symbol":"MNQ"}\n', encoding="utf-8")
+
+    monkeypatch.setattr(
+        "hotirjam_ai5.live_data.paths.Path.home",
+        classmethod(lambda cls: home),
+    )
+    monkeypatch.setattr(
+        "hotirjam_ai5.live_data.paths._bridge_host_user_data_dirs",
+        lambda: (bridge_root,),
+    )
+    monkeypatch.delenv("HOTIRJAM_NINJATRADER_USER_DATA_DIR", raising=False)
+
+    assert default_ninjatrader_user_data_dir() == bridge_root.resolve()
+    assert default_tick_path() == tick.resolve()

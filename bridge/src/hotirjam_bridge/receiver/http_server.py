@@ -56,7 +56,7 @@ def create_http_app(
         return web.json_response(metrics.as_dict())
 
     async def get_status(_request: web.Request) -> web.Response:
-        text = format_bridge_status(metrics) + "\n"
+        text = format_bridge_status(metrics, refresh=True) + "\n"
         return web.Response(text=text, content_type="text/plain")
 
     async def get_health(_request: web.Request) -> web.Response:
@@ -136,7 +136,7 @@ async def run_http_receiver(
 
     async def _status_loop() -> None:
         while not stop.is_set():
-            render_bridge_status(metrics, stream, clear=True)
+            render_bridge_status(metrics, stream, clear=True, refresh=True)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=status_interval)
             except asyncio.TimeoutError:
@@ -155,4 +155,4 @@ async def run_http_receiver(
             f"dom={metrics.dom_received} dropped={metrics.dropped} "
             f"duplicate={metrics.duplicate}"
         )
-        render_bridge_status(metrics, stream, clear=False)
+        render_bridge_status(metrics, stream, clear=False, refresh=True)

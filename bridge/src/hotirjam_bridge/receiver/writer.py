@@ -37,8 +37,33 @@ class NdjsonJournalWriter:
 
 
 def _read_last_line(path: Path) -> str:
-    data = path.read_text(encoding="utf-8")
-    if not data:
-        raise ValueError(f"journal empty after write: {path}")
-    parts = data.splitlines(keepends=True)
-    return parts[-1]
+    """Read only the trailing NDJSON line (avoid O(n) full-file scans)."""
+    with path.open("rb") as handle:
+        handle.seek(0, 2)
+        size = handle.tell()
+        if size == 0:
+            raise ValueError(f"journal empty after write: {path}")
+        # Walk backward to the previous newline (or start of file).
+        pos = size - 1
+        # Skip final newline byte(s)
+        while pos >= 0:
+            handle.seek(pos)
+            ch = handle.read(1)
+            if ch not in (b"\n", b"\r"):
+                break
+            pos -= 1
+        end = pos + 1
+        while pos >= 0:
+            handle.seek(pos)
+            if handle.read(1) == b"\n":
+                pos += 1
+                break
+            pos -= 1
+        else:
+            pos = 0
+        handle.seek(pos)
+        data = handle.read(end - pos + 1)
+    line = data.decode("utf-8")
+    if not line.endswith("\n"):
+        line = line + "\n"
+    return line

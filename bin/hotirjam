@@ -1,0 +1,280 @@
+#!/usr/bin/env bash
+# hotirjam — single-command macOS launcher for HOTIRJAM AI 5
+#
+# Starts Bridge Receiver + Live Validator using existing entry points only.
+# No menus. No Control Center. No AI/bridge logic changes.
+#
+# Usage:
+#   ./bin/hotirjam
+#   hotirjam                 # after: ./bin/install_hotirjam_macos.sh
+#
+# Note: do not place this file at HOTIRJAM_AI_5/hotirjam — on macOS that path
+# collides with the HOTIRJAM/ journal directory (case-insensitive FS).
+#
+set -euo pipefail
+
+readonly RECEIVER_PORT="${HOTIRJAM_RECEIVER_PORT:-8765}"
+readonly RECEIVER_HOST="${HOTIRJAM_RECEIVER_HOST:-0.0.0.0}"
+readonly SYMBOL="${HOTIRJAM_SYMBOL:-MNQ}"
+readonly READY_TIMEOUT_SEC="${HOTIRJAM_READY_TIMEOUT_SEC:-20}"
+
+die() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+info() {
+  printf '%s\n' "$*"
+}
+
+find_ai5_root() {
+  local start here cand
+  if [[ -n "${HOTIRJAM_AI5_ROOT:-}" ]]; then
+    printf '%s\n' "$(cd "$HOTIRJAM_AI5_ROOT" && pwd)"
+    return 0
+  fi
+  start="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  here="$start"
+  while true; do
+    if [[ -f "$here/pyproject.toml" ]] \
+      && grep -q 'name = "hotirjam-ai5"' "$here/pyproject.toml" 2>/dev/null \
+      && [[ -f "$here/bridge/pyproject.toml" ]] \
+      && grep -q 'name = "hotirjam-bridge"' "$here/bridge/pyproject.toml" 2>/dev/null; then
+      printf '%s\n' "$here"
+      return 0
+    fi
+    [[ "$here" == "/" ]] && break
+    here="$(cd "$here/.." && pwd)"
+  done
+  cand="$(pwd)"
+  if [[ -f "$cand/pyproject.toml" ]] \
+    && grep -q 'name = "hotirjam-ai5"' "$cand/pyproject.toml" 2>/dev/null \
+    && [[ -f "$cand/bridge/pyproject.toml" ]]; then
+    printf '%s\n' "$cand"
+    return 0
+  fi
+  return 1
+}
+
+resolve_python() {
+  if [[ -n "${HOTIRJAM_PYTHON:-}" ]] && command -v "$HOTIRJAM_PYTHON" >/dev/null 2>&1; then
+    command -v "$HOTIRJAM_PYTHON"
+    return 0
+  fi
+  command -v python3 2>/dev/null || command -v python 2>/dev/null || return 1
+}
+
+build_commands() {
+  local root="$1"
+  local bridge="$root/bridge"
+  local out_dir="${HOTIRJAM_OUT_DIR:-$bridge/HOTIRJAM}"
+  local tick_file="$out_dir/mnq_ticks.ndjson"
+  local log_dir="$root/logs"
+  local py
+
+  mkdir -p "$out_dir" "$log_dir" "$log_dir/run"
+
+  RECEIVER_LOG="$log_dir/bridge_receiver.log"
+  VALIDATOR_LOG="$log_dir/live_validator.log"
+  RECEIVER_PID_FILE="$log_dir/run/bridge_receiver.pid"
+  VALIDATOR_PID_FILE="$log_dir/run/live_validator.pid"
+  VALIDATOR_WRAPPER="$log_dir/run/launch_live_validator.sh"
+  OUT_DIR="$out_dir"
+  TICK_FILE="$tick_file"
+  LOG_DIR="$log_dir"
+
+  RECEIVER_CMD=()
+  if command -v hotirjam-bridge-receiver >/dev/null 2>&1; then
+    RECEIVER_LABEL="hotirjam-bridge-receiver"
+    RECEIVER_CMD=( "$(command -v hotirjam-bridge-receiver)" )
+  elif command -v bridge_receiver >/dev/null 2>&1; then
+    RECEIVER_LABEL="bridge_receiver"
+    RECEIVER_CMD=( "$(command -v bridge_receiver)" )
+  else
+    py="$(resolve_python)" || die "No bridge receiver CLI and no python3"
+    [[ -d "$bridge/src/hotirjam_bridge" ]] || die "bridge package not found at $bridge/src"
+    RECEIVER_LABEL="python -m hotirjam_bridge.receiver"
+    RECEIVER_CMD=(
+      env "PYTHONPATH=$bridge/src${PYTHONPATH:+:$PYTHONPATH}"
+      "$py" -m hotirjam_bridge.receiver
+    )
+  fi
+  RECEIVER_CMD+=(
+    --http
+    --out-dir "$out_dir"
+    --host "$RECEIVER_HOST"
+    --port "$RECEIVER_PORT"
+    --symbol "$SYMBOL"
+    --log-file "$RECEIVER_LOG"
+  )
+
+  VALIDATOR_CMD=()
+  if command -v hotirjam-ai5-live-validator >/dev/null 2>&1; then
+    VALIDATOR_LABEL="hotirjam-ai5-live-validator"
+    VALIDATOR_CMD=( "$(command -v hotirjam-ai5-live-validator)" )
+  else
+    py="$(resolve_python)" || die "No Live Validator CLI and no python3"
+    [[ -d "$root/src/hotirjam_ai5/live_validator" ]] || die "live_validator package not found"
+    VALIDATOR_LABEL="python -m hotirjam_ai5.live_validator.app"
+    VALIDATOR_CMD=(
+      env "PYTHONPATH=$root/src${PYTHONPATH:+:$PYTHONPATH}"
+      "$py" -m hotirjam_ai5.live_validator.app
+    )
+  fi
+  VALIDATOR_CMD+=(
+    --tick-file "$tick_file"
+    --symbol "$SYMBOL"
+  )
+}
+
+pid_alive() {
+  local pid="${1:-}"
+  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+port_listening() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+    return $?
+  fi
+  if command -v nc >/dev/null 2>&1; then
+    nc -z 127.0.0.1 "$port" >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
+http_ready() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS --max-time 2 "http://127.0.0.1:${RECEIVER_PORT}/health" >/dev/null 2>&1
+    return $?
+  fi
+  port_listening "$RECEIVER_PORT"
+}
+
+start_receiver() {
+  local pid
+  if [[ -f "$RECEIVER_PID_FILE" ]]; then
+    pid="$(tr -d '[:space:]' <"$RECEIVER_PID_FILE" || true)"
+    if pid_alive "$pid"; then
+      info "Bridge Receiver already running (pid $pid)."
+      return 0
+    fi
+  fi
+  if port_listening "$RECEIVER_PORT"; then
+    info "Port $RECEIVER_PORT already listening — leaving existing receiver."
+    return 0
+  fi
+
+  info "Starting Bridge Receiver ($RECEIVER_LABEL)…"
+  (
+    cd "$BRIDGE_ROOT"
+    nohup "${RECEIVER_CMD[@]}" >>"$RECEIVER_LOG" 2>>"$RECEIVER_LOG" &
+    echo $! >"$RECEIVER_PID_FILE"
+  )
+}
+
+write_validator_wrapper() {
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'set -euo pipefail\n'
+    printf 'cd %q\n' "$AI5_ROOT"
+    printf 'exec'
+    local arg
+    for arg in "${VALIDATOR_CMD[@]}"; do
+      printf ' %q' "$arg"
+    done
+    printf '\n'
+  } >"$VALIDATOR_WRAPPER"
+  chmod +x "$VALIDATOR_WRAPPER"
+}
+
+start_validator_background() {
+  (
+    cd "$AI5_ROOT"
+    nohup "${VALIDATOR_CMD[@]}" >>"$VALIDATOR_LOG" 2>>"$VALIDATOR_LOG" &
+    echo $! >"$VALIDATOR_PID_FILE"
+  )
+  sleep 0.4
+  local pid
+  pid="$(tr -d '[:space:]' <"$VALIDATOR_PID_FILE" || true)"
+  if ! pid_alive "$pid"; then
+    die "Live Validator exited early. See $VALIDATOR_LOG"
+  fi
+  info "Live Validator running in background (pid $pid). Log: $VALIDATOR_LOG"
+}
+
+start_validator() {
+  local pid
+  if [[ -f "$VALIDATOR_PID_FILE" ]]; then
+    pid="$(tr -d '[:space:]' <"$VALIDATOR_PID_FILE" || true)"
+    if [[ "$pid" =~ ^[0-9]+$ ]] && pid_alive "$pid"; then
+      info "Live Validator already running (pid $pid)."
+      return 0
+    fi
+  fi
+
+  info "Starting Live Validator ($VALIDATOR_LABEL)…"
+  write_validator_wrapper
+
+  if [[ "$(uname -s)" == "Darwin" ]] \
+    && command -v osascript >/dev/null 2>&1 \
+    && [[ "${HOTIRJAM_VALIDATOR_MODE:-terminal}" == "terminal" ]]; then
+    if osascript \
+      -e 'tell application "Terminal" to activate' \
+      -e "tell application \"Terminal\" to do script \"exec $(printf %q "$VALIDATOR_WRAPPER")\"" \
+      >/dev/null 2>&1; then
+      echo "terminal" >"$VALIDATOR_PID_FILE"
+      info "Live Validator opened in Terminal.app"
+      return 0
+    fi
+    info "Terminal.app launch unavailable — starting Live Validator in background."
+  fi
+
+  start_validator_background
+}
+
+wait_ready() {
+  local deadline
+  deadline=$((SECONDS + READY_TIMEOUT_SEC))
+
+  info "Waiting for Bridge Receiver on :$RECEIVER_PORT (timeout ${READY_TIMEOUT_SEC}s)…"
+  while (( SECONDS < deadline )); do
+    if http_ready; then
+      return 0
+    fi
+    if [[ -f "$RECEIVER_PID_FILE" ]]; then
+      local pid
+      pid="$(tr -d '[:space:]' <"$RECEIVER_PID_FILE" || true)"
+      if [[ "$pid" =~ ^[0-9]+$ ]] && ! pid_alive "$pid" && ! port_listening "$RECEIVER_PORT"; then
+        die "Bridge Receiver exited early. See $RECEIVER_LOG"
+      fi
+    fi
+    sleep 0.25
+  done
+  die "Bridge Receiver not ready on :$RECEIVER_PORT within ${READY_TIMEOUT_SEC}s. See $RECEIVER_LOG"
+}
+
+main() {
+  AI5_ROOT="$(find_ai5_root)" || die "HOTIRJAM_AI_5 root not found. Set HOTIRJAM_AI5_ROOT or run from the project tree."
+  BRIDGE_ROOT="$AI5_ROOT/bridge"
+
+  build_commands "$AI5_ROOT"
+
+  info "HOTIRJAM AI5 root: $AI5_ROOT"
+  info "Journal out-dir:   $OUT_DIR"
+
+  start_receiver
+  wait_ready
+  start_validator
+
+  info ""
+  info "HOTIRJAM started successfully."
+  info "  Receiver:  http://127.0.0.1:${RECEIVER_PORT}/health"
+  info "  Tick file: $TICK_FILE"
+  info "  Logs:      $LOG_DIR/"
+  exit 0
+}
+
+main "$@"

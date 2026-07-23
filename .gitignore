@@ -10,5 +10,8 @@ build/
 .venv/
 venv/
 *.log
+*.err
 logs/
+HOTIRJAM/
+**/HOTIRJAM/
 .DS_Store

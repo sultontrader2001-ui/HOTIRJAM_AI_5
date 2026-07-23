@@ -32,7 +32,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Receiver base URL (e.g. http://127.0.0.1:8765). Enables HTTP mode.",
     )
-    parser.add_argument("--timeout", type=float, default=2.0)
+    parser.add_argument("--timeout", type=float, default=10.0)
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--retry-delay", type=float, default=0.2)
     parser.add_argument("--heartbeat", type=float, default=1.0)

@@ -137,31 +137,34 @@ class BridgeMetrics:
         }
 
     def merge_remote(self, remote: dict[str, object]) -> None:
-        """Fill receive-side fields from Receiver GET /metrics."""
+        """Fill receive-side counters from Receiver GET /metrics.
+
+        Do **not** copy remote ``connected`` / ``heartbeat_ok`` onto the sender
+        display: those flags mean "receiver saw recent inbound traffic", which is
+        false until POSTs succeed — even when the HTTP link is healthy.
+        """
         if "tick_received" in remote:
             self.tick_received = int(remote["tick_received"])  # type: ignore[arg-type]
         if "dom_received" in remote:
             self.dom_received = int(remote["dom_received"])  # type: ignore[arg-type]
         if "dropped" in remote:
-            # Prefer max so sender-local send_failures are not erased incorrectly;
-            # remote dropped is authoritative for gaps.
             self.dropped = max(self.dropped, int(remote["dropped"]))  # type: ignore[arg-type]
         if "duplicate" in remote:
             self.duplicate = int(remote["duplicate"])  # type: ignore[arg-type]
         if "latency_avg_ms" in remote and remote["latency_avg_ms"] is not None:
-            # Display remote avg when present
             avg = float(remote["latency_avg_ms"])  # type: ignore[arg-type]
             self.latency_sum_ms = avg
             self.latency_count = 1
-        if "heartbeat_ok" in remote:
-            self.heartbeat_ok = bool(remote["heartbeat_ok"])
-        if "connected" in remote:
-            self.connected = bool(remote["connected"])
 
 
-def format_bridge_status(metrics: BridgeMetrics) -> str:
-    """Terminal Bridge Status board (always visible layout)."""
-    metrics.refresh_connected()
+def format_bridge_status(metrics: BridgeMetrics, *, refresh: bool = False) -> str:
+    """Terminal Bridge Status board (always visible layout).
+
+    ``refresh=False`` by default so a successful metrics poll is not wiped by
+    stale-activity logic before the board is drawn.
+    """
+    if refresh:
+        metrics.refresh_connected()
     latency = metrics.latency_avg_ms
     latency_s = f"{latency:.2f} ms" if latency is not None else "n/a"
     connected = "YES" if metrics.connected else "NO"
@@ -185,9 +188,10 @@ def render_bridge_status(
     stream: TextIO,
     *,
     clear: bool = True,
+    refresh: bool = False,
 ) -> None:
     """Write status board to terminal (optional ANSI clear)."""
-    board = format_bridge_status(metrics)
+    board = format_bridge_status(metrics, refresh=refresh)
     if clear:
         stream.write("\033[H\033[2J")
     stream.write(board + "\n")

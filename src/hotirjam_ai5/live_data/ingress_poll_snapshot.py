@@ -20,6 +20,8 @@ class IngressPollSnapshot:
     skipped_delta: int
     file_offset: int | None
     file_size: int | None
+    # Exact NdjsonFileTail.poll() return reason (condition + values).
+    tail_return: str = ""
 
     @property
     def gate(self) -> str:

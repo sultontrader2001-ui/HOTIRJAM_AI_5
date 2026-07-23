@@ -109,6 +109,7 @@ class LiveTickIngress:
             skipped_delta=self._skipped - before_skipped,
             file_offset=self._tail.offset,
             file_size=file_size,
+            tail_return=getattr(self._tail, "last_return_reason", ""),
         )
         self._last_poll = snapshot
         self._emit_poll_snapshot(snapshot)
@@ -152,6 +153,7 @@ class LiveTickIngress:
         sys.stderr.write(
             f"{_POLL_DIAG_PREFIX} "
             f"gate={snapshot.gate} "
+            f"tail_return={snapshot.tail_return!r} "
             f"tail_lines={snapshot.tail_lines} "
             f"accepted_count={snapshot.accepted_count} "
             f"skipped_count={snapshot.skipped_count} "

@@ -84,7 +84,15 @@ class EnvelopeReceiverRuntime:
 
     def accept(self, envelope: Envelope) -> bool:
         """Accept one envelope. Returns True if a journal line was written."""
+        # TEMP diagnostics — stderr only; do not alter control flow.
+        def _diag(message: str) -> None:
+            sys.stderr.write(message + "\n")
+            sys.stderr.flush()
+
+        _diag(f"ACCEPT_BEGIN ch={envelope.ch} seq={envelope.seq}")
+
         if self._stop:
+            _diag("ACCEPT_ABORT reason=stopped")
             return False
 
         if envelope.ch in {Channel.HB.value, Channel.CTRL.value}:
@@ -96,25 +104,31 @@ class EnvelopeReceiverRuntime:
                 f"[BRIDGE_RECEIVER] skip ch={envelope.ch} seq={envelope.seq} "
                 f"(non-journal)"
             )
+            _diag(f"ACCEPT_ABORT reason=non-journal ch={envelope.ch}")
             return False
 
         try:
             if envelope.ch == Channel.TICK.value:
                 validate_nt01_tick(envelope.payload, expected_symbol=self.symbol)
+                _diag("VALIDATE_TICK=PASS")
             elif envelope.ch == Channel.DOM.value:
                 validate_nt03_dom(envelope.payload, expected_symbol=self.symbol)
             else:
                 raise EnvelopeValidationError(f"unsupported ch for write: {envelope.ch}")
         except (TickValidationError, DomValidationError, EnvelopeValidationError) as exc:
+            if envelope.ch == Channel.TICK.value:
+                _diag(f"VALIDATE_TICK=FAIL reason={exc}")
             self.stats.malformed += 1
             self._processed += 1
             if self.metrics is not None:
                 self.metrics.record_malformed()
             self._log(f"[BRIDGE_RECEIVER] REJECT {exc}")
+            _diag(f"ACCEPT_ABORT reason=reject {exc}")
             return False
 
         key = (envelope.ch, int(envelope.seq))
         if key in self._dedupe:
+            _diag("DUPLICATE=YES")
             self.stats.duplicates += 1
             self._processed += 1
             if self.metrics is not None:
@@ -122,11 +136,15 @@ class EnvelopeReceiverRuntime:
             self._log(
                 f"[BRIDGE_RECEIVER] DUPLICATE ch={envelope.ch} seq={envelope.seq}"
             )
+            _diag("ACCEPT_ABORT reason=duplicate")
             return False
+        _diag("DUPLICATE=NO")
 
         try:
             if envelope.ch == Channel.TICK.value:
+                _diag(f"WRITING_TICK path={self._tick_writer.path}")
                 digest = self._tick_writer.append_payload(envelope.payload)
+                _diag(f"WRITE_OK sha={digest}")
                 self.stats.accepted_tick += 1
                 self.stats.last_tick_seq = envelope.seq
                 self.accepted_seq_tick.append(envelope.seq)
@@ -147,6 +165,7 @@ class EnvelopeReceiverRuntime:
             if self.metrics is not None:
                 self.metrics.record_malformed()
             self._log(f"[BRIDGE_RECEIVER] INTEGRITY_FAIL {exc}")
+            _diag(f"ACCEPT_ABORT reason=integrity_fail {exc}")
             return False
 
         # Record dedupe only after a successful verified write.
